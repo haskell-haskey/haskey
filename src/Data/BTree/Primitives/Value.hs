@@ -2,11 +2,11 @@
 
 module Data.BTree.Primitives.Value where
 
-import Control.Applicative
-import Data.Binary     (Binary)
-import Data.ByteString (ByteString)
+import Control.Applicative ((<$>),(<*>))
+import Data.Binary         (Binary)
+import Data.ByteString     (ByteString)
 import Data.Int
-import Data.Proxy      (Proxy (..))
+import Data.Proxy          (Proxy (..))
 import Data.Typeable
 import Data.Word
 

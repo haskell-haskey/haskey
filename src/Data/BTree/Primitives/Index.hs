@@ -26,7 +26,7 @@ data Index key node = Index
     { indexKeys  :: !(Vector key)
     , indexNodes :: !(Vector node)
     }
-  deriving (Functor, Foldable, Show, Traversable)
+  deriving (Eq, Functor, Foldable, Show, Traversable)
 
 {-| Validate an index.
 
@@ -92,7 +92,14 @@ mergeIndex leftIndex middleKey rightIndex = Index
 indexFromList :: [key] -> [val] -> Index key val
 indexFromList ks vs = Index (V.fromList ks) (V.fromList vs)
 
-{-
+{-| Create an index with a single value.
+-}
+singletonIndex :: val -> Index key val
+singletonIndex = Index V.empty . V.singleton
+
+{-| Test if the index consists of a single value.
+
+    Returns the element if the index is a singleton. Otherwise fails.
 -}
 fromSingletonIndex :: Index key val -> Maybe val
 fromSingletonIndex idx
@@ -109,7 +116,7 @@ fromSingletonIndex idx
 --     pure  = return
 --     (<*>) = ap
 -- instance Monad (Index key) where
---     return            = Index V.empty . V.singleton
+--     return            = singletonIndex
 --     Index ks is >>= f
 --       | Just (i,itail) <- vecUncons (V.map f is)
 --       = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)

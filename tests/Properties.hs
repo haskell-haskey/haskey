@@ -3,6 +3,7 @@
 
 module Main (main) where
 
+import qualified Data.BTree.Pure as Tree
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 
@@ -13,6 +14,8 @@ import qualified Data.Vector as V
 import Test.Framework (Test, defaultMain, testGroup)
 import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
+
+import Debug.Trace
 
 default (Int64)
 
@@ -49,6 +52,10 @@ prop_fromSingletonIndex_singletonIndex :: Int64 -> Bool
 prop_fromSingletonIndex_singletonIndex i =
     fromSingletonIndex (singletonIndex i) == Just i
 
+prop_foldable :: [(Int64, Int)] -> Bool
+prop_foldable xs = foldMap snd xs' == foldMap id (Tree.fromList xs')
+  where xs' = traceShowId (map (\x -> (fst x, Sum $ snd x)) xs)
+
 tests :: [Test]
 tests =
     [ testGroup "Index"
@@ -57,6 +64,9 @@ tests =
         , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
         , testProperty "fromSingletonIndex singletonIndex"
             prop_fromSingletonIndex_singletonIndex
+        ]
+    , testGroup "Tree"
+        [ testProperty "foldable" prop_foldable
         ]
     ]
 

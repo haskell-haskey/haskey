@@ -13,6 +13,7 @@ import Data.Int
 import Data.Monoid
 import Data.List (nub, nubBy)
 import qualified Data.Foldable as F
+import qualified Data.Map as M
 import qualified Data.Vector as V
 
 import Test.Framework (Test, defaultMain, testGroup)
@@ -58,6 +59,9 @@ prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
   where xs' = nubBy (\x y -> fst x == fst y) . map (\x -> (fst x, Sum $ snd x)) $ xs
 
+prop_toList_fromList :: [(Int64, Int)] -> Bool
+prop_toList_fromList xs = F.toList (Tree.fromList xs) == F.toList (M.fromList xs)
+
 tests :: [Test]
 tests =
     [ testGroup "Index"
@@ -69,6 +73,7 @@ tests =
         ]
     , testGroup "Tree"
         [ testProperty "foldable" prop_foldable
+        , testProperty "toList fromList" prop_toList_fromList
         ]
     ]
 

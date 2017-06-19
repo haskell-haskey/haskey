@@ -1,7 +1,9 @@
 name:                haskey
 version:             0.1.0.0
--- synopsis:
--- description:
+synopsis:            A transcatoinal, ACID compliant, embeddable key-value store.
+description:
+    Haskey is a transactional, ACID compliant, embeddable, scalable key-value
+    store written entirely in Haskell.
 homepage:            https://github.com/haskell-haskey
 license:             BSD3
 license-file:        LICENSE
@@ -70,3 +72,7 @@ test-suite haskey-properties
   default-language:    Haskell2010
   ghc-options:         -Wall
   hs-source-dirs:      tests
+
+source-repository head
+  type:     git
+  location: https://github.com/haskell-haskey/haskey

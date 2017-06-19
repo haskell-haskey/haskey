@@ -3,6 +3,8 @@
 
 module Main (main) where
 
+import Control.Applicative ((<$>))
+
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 
@@ -21,7 +23,7 @@ default (Int64)
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
   arbitrary = do
       keys <- V.fromList . nub <$> orderedList
-      vals <- V.fromList <$> vector (length keys + 1)
+      vals <- V.fromList <$> vector (V.length keys + 1)
       return (Index keys vals)
   shrink (Index keys vals) =
       [ Index newKeys newVals

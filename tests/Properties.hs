@@ -3,6 +3,8 @@
 
 module Main (main) where
 
+import Control.Applicative ((<$>),(<*>))
+
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 

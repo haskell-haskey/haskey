@@ -233,6 +233,22 @@ findWithDefault v k = fromMaybe v . lookup k
 
 --------------------------------------------------------------------------------
 
+-- | Make a tree node foldable over its value.
+newtype FoldableNode height key val = FoldableNode (Node key val height)
+
+instance F.Foldable (Tree key) where
+    foldMap _ (Tree Nothing) = mempty
+    foldMap f (Tree (Just n)) = foldMap f (FoldableNode n)
+
+instance F.Foldable (FoldableNode height key) where
+    foldMap f (FoldableNode (Idx Index { indexNodes = nodes })) =
+        foldMap (foldMap f . FoldableNode) nodes
+
+    foldMap f (FoldableNode (Leaf items)) = foldMap f items
+
+
+--------------------------------------------------------------------------------
+
 test3 :: Tree Int64 String
 test3 = insert 3 "bar" empty
 

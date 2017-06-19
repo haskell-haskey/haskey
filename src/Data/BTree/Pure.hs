@@ -56,8 +56,8 @@ data Node key val (height :: Nat) where
             } -> Node key val 'Z
 
 data Tree key val where
-    Tree :: -- | An empty tree is represented by 'Nothing'. Otherwise it's 'Just'
-            --   the root of the tree. The height is existentially quantified.
+    Tree :: -- An empty tree is represented by 'Nothing'. Otherwise it's 'Just'
+            -- the root of the tree. The height is existentially quantified.
             Maybe (Node key val height)
          -> Tree key val
 

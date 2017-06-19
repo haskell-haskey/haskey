@@ -26,7 +26,7 @@ minFanout :: Int
 minFanout = 2
 
 maxFanout :: Int
-maxFanout = 2*maxFanout-1
+maxFanout = 2*minFanout
 
 minIdxKeys :: Int
 minIdxKeys = minFanout - 1

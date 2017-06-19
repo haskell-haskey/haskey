@@ -17,3 +17,5 @@ cabal-dev
 cabal.config
 cabal.sandbox.config
 dist
+.stack-work
+.*.sw[a-z]

@@ -9,7 +9,7 @@ import Data.BTree.Primitives.Key
 
 import Data.Int
 import Data.Monoid
-import Data.List (nub)
+import Data.List (nub, nubBy)
 import qualified Data.Vector as V
 import Test.Framework (Test, defaultMain, testGroup)
 import Test.Framework.Providers.QuickCheck2
@@ -52,7 +52,7 @@ prop_fromSingletonIndex_singletonIndex i =
 
 prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = foldMap snd xs' == foldMap id (Tree.fromList xs')
-  where xs' = map (\x -> (fst x, Sum $ snd x)) xs
+  where xs' = nubBy (\x y -> fst x == fst y) . map (\x -> (fst x, Sum $ snd x)) $ xs
 
 tests :: [Test]
 tests =

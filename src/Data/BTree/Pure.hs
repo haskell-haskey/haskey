@@ -238,13 +238,13 @@ newtype FoldableNode height key val = FoldableNode (Node key val height)
 
 instance F.Foldable (Tree key) where
     foldMap _ (Tree Nothing) = mempty
-    foldMap f (Tree (Just n)) = foldMap f (FoldableNode n)
+    foldMap f (Tree (Just n)) = F.foldMap f (FoldableNode n)
 
 instance F.Foldable (FoldableNode height key) where
     foldMap f (FoldableNode (Idx Index { indexNodes = nodes })) =
-        foldMap (foldMap f . FoldableNode) nodes
+        F.foldMap (F.foldMap f . FoldableNode) nodes
 
-    foldMap f (FoldableNode (Leaf items)) = foldMap f items
+    foldMap f (FoldableNode (Leaf items)) = F.foldMap f items
 
 
 --------------------------------------------------------------------------------

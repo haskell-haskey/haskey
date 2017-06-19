@@ -26,4 +26,7 @@ splitLeaf items
     = error "splitLeaf: constraint violation, got a Map with with less than \
             \two elements"
 
+splitLeafMany :: Key key => Map key val -> ([key], [Map key val])
+splitLeafMany = undefined
+
 --------------------------------------------------------------------------------

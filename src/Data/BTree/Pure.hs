@@ -88,6 +88,22 @@ checkSplitLeaf items
     | (leftLeaf, middleKey, rightLeaf) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftLeaf, Leaf rightLeaf]
 
+checkSplitIdxMany :: Key key
+                  => Index key (Node height key val)
+                  -> Index key (Node ('S height) key val)
+checkSplitIdxMany idx
+    | V.length (indexKeys idx) <= maxIdxKeys
+    = indexFromList [] [Idx idx]
+    | (keys, idxs) <- splitIndexMany idx
+    = indexFromList keys (map Idx idxs)
+
+checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
+checkSplitLeafMany items
+    | M.size items <= maxLeafItems
+    = indexFromList [] [Leaf items]
+    | (keys, leafs) <- splitLeafMany items
+    = indexFromList keys (map Leaf leafs)
+
 --------------------------------------------------------------------------------
 
 {-| Insert a key-value pair into a tree.
@@ -131,6 +147,42 @@ insert k d (Tree (Just rootNode))
 insert k d (Tree Nothing)
     = -- Inserting into an empty tree creates a new singleton tree.
       Tree (Just (Leaf (M.singleton k d)))
+
+insertRecMany ::
+       Key key
+    => Map key val
+    -> Node height key val
+    -> Index key (Node height key val)
+insertRecMany kvs (Idx idx)
+    | Index { indexNodes = dist } <- distribute kvs idx
+    , newChildrenIdxs             <- V.map (uncurry insertRecMany) dist
+    = checkSplitIdxMany (joinIndex idx newChildrenIdxs)
+  where
+    -- Create a new node containing the old children and the new children
+    --
+    -- Note that: V.length toAdd == 1 + V.length (indexKeys orig)
+    joinIndex :: Index k node -> V.Vector (Index k node) -> Index k node
+    joinIndex orig toAdd
+        | numKeys  <- V.length toAdd + V.length (indexKeys orig)
+        , numNodes <- V.length toAdd + V.length (indexNodes orig)
+        , newKeys  <- F.foldMap id $ V.generate numKeys getKey
+        , newNodes <- F.foldMap id $ V.generate numNodes getVal
+        = Index newKeys newNodes
+        where
+          getKey i | 0 <- i `mod` 2 = indexKeys $ toAdd  V.! (i `div` 2)
+                   | otherwise      = V.singleton $ indexKeys orig V.! (i `div` 2)
+          getVal i | 0 <- i `mod` 2 = indexNodes $ toAdd V.! (i `div` 2)
+                   | otherwise      = V.singleton $ indexNodes orig V.! (i `div` 2)
+
+insertRecMany kvs (Leaf items)
+    = checkSplitLeafMany (M.union items kvs)
+
+insertMany :: Key k => Map k v -> Tree k v -> Tree k v
+insertMany kvs (Tree (Just rootNode))
+    | newRootIdx <- insertRecMany kvs rootNode
+    = undefined
+insertMany kvs (Tree Nothing)
+    = Tree (Just (Leaf kvs))
 
 fromList :: Key k => [(k,v)] -> Tree k v
 fromList = foldr (uncurry insert) empty

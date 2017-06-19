@@ -7,6 +7,7 @@ module Data.BTree.Primitives.Index where
 import           Data.BTree.Internal
 
 import           Data.Foldable (Foldable)
+import qualified Data.Map as M
 import           Data.Traversable (Traversable)
 import           Data.Monoid
 import           Data.Vector (Vector)
@@ -64,6 +65,9 @@ splitIndex Index { indexKeys = keys, indexNodes = nodes }
       )
     | otherwise
     = error "splitIndex: empty Index"
+
+splitIndexMany :: Index key node -> ([key], [Index key node])
+splitIndexMany = undefined
 
 {-| Merge two indices.
 
@@ -173,6 +177,21 @@ valView key Index { indexKeys = keys, indexNodes = vals }
       )
     | otherwise
     = error "valView: empty Index"
+
+distribute :: Ord k => M.Map k v -> Index k node -> Index k (M.Map k v, node)
+distribute kvs Index { indexKeys = keys, indexNodes = nodes }
+    | a <- V.imap rangeTail          (Nothing `V.cons` V.map Just keys)
+    , b <- V.map (uncurry rangeHead) (V.zip (V.map Just keys `V.snoc` Nothing) a)
+    = Index { indexKeys = keys
+            , indexNodes = b }
+  where
+    rangeTail idx Nothing    = (kvs, nodes V.! idx)
+    rangeTail idx (Just key) = (takeWhile' (> key) kvs, nodes V.! idx)
+    rangeHead Nothing (tail', node)    = (tail', node)
+    rangeHead (Just key) (tail', node)  = (takeWhile' (<= key) tail', node)
+
+    takeWhile' :: (k -> Bool) -> M.Map k v -> M.Map k v
+    takeWhile' p = fst . M.partitionWithKey (\k _ -> p k)
 
 leftView :: IndexCtx key val -> Maybe (IndexCtx key val, val, key)
 leftView ctx = do

@@ -55,6 +55,18 @@ prop_fromSingletonIndex_singletonIndex :: Int64 -> Bool
 prop_fromSingletonIndex_singletonIndex i =
     fromSingletonIndex (singletonIndex i) == Just i
 
+prop_distribute :: M.Map Int64 Int -> Index Int64 Int -> Bool
+prop_distribute kvs idx
+    | idx'@Index { indexKeys = keys, indexNodes = vs } <- distribute kvs idx
+    , x <- V.all pred1 $ V.zip keys (V.init $ V.map fst vs)
+    , y <- V.all pred2 $ V.zip keys (V.tail $ V.map fst vs)
+    , z <- M.unions (V.toList $ V.map fst vs) == kvs
+    , u <- validIndex idx'
+    = x && y && z && u
+  where
+    pred1 (key, sub) = M.null sub || fst (M.findMax sub) <= key
+    pred2 (key, sub) = M.null sub || fst (M.findMin sub) > key
+
 prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
   where xs' = nubBy (\x y -> fst x == fst y) . map (\x -> (fst x, Sum $ snd x)) $ xs
@@ -70,6 +82,7 @@ tests =
         , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
         , testProperty "fromSingletonIndex singletonIndex"
             prop_fromSingletonIndex_singletonIndex
+        , testProperty "distribute" prop_distribute
         ]
     , testGroup "Tree"
         [ testProperty "foldable" prop_foldable

@@ -68,8 +68,25 @@ splitIndex Index { indexKeys = keys, indexNodes = nodes }
     | otherwise
     = error "splitIndex: empty Index"
 
-splitIndexMany :: Index key node -> ([key], [Index key node])
-splitIndexMany = undefined
+splitIndexMany :: Int -> Index key node -> ([key], [Index key node])
+splitIndexMany maxIdxKeys idx = split' idx ([], [])
+  where
+    split' ::  Index key node -> ([key], [Index key node]) -> ([key], [Index key node])
+    split' Index {indexKeys = keysToSplit, indexNodes = nodesToSplit } (keys, children)
+        | V.length nodesToSplit > 2*maxIdxItems
+        , (leftKeys, middleAndRightKeys) <- V.splitAt maxIdxKeys keysToSplit
+        , Just (middleKey, rightKeys)    <- vecUncons middleAndRightKeys
+        , (leftNodes, rightNodes)        <- V.splitAt maxIdxItems nodesToSplit
+        = split' (Index rightKeys rightNodes)
+                 (middleKey:keys, Index leftKeys leftNodes : children)
+        | V.length nodesToSplit > maxIdxItems
+        , (left, key, right) <- splitIndex $ Index keysToSplit nodesToSplit
+        = (reverse (key:keys), reverse $ right:(left:children))
+        | otherwise
+        = error $ "splitIndexMany: constraint violation, got index with " ++
+                  " length indexNodes <= maxIdxItems"
+
+    maxIdxItems = maxIdxKeys + 1
 
 {-| Merge two indices.
 

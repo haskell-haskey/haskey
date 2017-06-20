@@ -69,6 +69,21 @@ prop_distribute kvs idx
     pred1 (key, sub) = M.null sub || fst (M.findMax sub) <= key
     pred2 (key, sub) = M.null sub || fst (M.findMin sub) > key
 
+prop_splitIndexMany :: Index Int64 Int -> Bool
+prop_splitIndexMany idx
+    | V.length (indexKeys idx) <= maxIdxKeys = True
+    | (keys, idxs)  <- splitIndexMany maxIdxKeys idx
+    , numKeyIdxsOK  <- length idxs == 1 + length keys
+    , validIdxs     <- all validIndex idxs
+    , keysMaxOK     <- all (\(key, idx') -> V.last (indexKeys idx') <= key) $ zip keys idxs
+    , keysMinOK     <- all (\(key, idx') -> V.head (indexKeys idx') >  key) $ zip keys (tail idxs)
+    , keysOrderOK   <- isSorted keys
+    , joinedNodesOK <- V.concat (map indexNodes idxs) == indexNodes idx
+    = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
+  where
+    minIdxKeys = 1
+    maxIdxKeys = (minIdxKeys + 1) * 2 - 1
+
 prop_splitLeafMany  :: M.Map Int64 Int -> Bool
 prop_splitLeafMany m
     | M.size m <= maxLeafItems = True
@@ -104,6 +119,7 @@ tests =
         , testProperty "fromSingletonIndex singletonIndex"
             prop_fromSingletonIndex_singletonIndex
         , testProperty "distribute" prop_distribute
+        , testProperty "splitIndexMany" prop_splitIndexMany
         ]
     , testGroup "Leaf"
         [ testProperty "splitLeafMany" prop_splitLeafMany

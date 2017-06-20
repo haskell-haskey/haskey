@@ -94,7 +94,7 @@ checkSplitIdxMany :: Key key
 checkSplitIdxMany idx
     | V.length (indexKeys idx) <= maxIdxKeys
     = indexFromList [] [Idx idx]
-    | (keys, idxs) <- splitIndexMany idx
+    | (keys, idxs) <- splitIndexMany maxIdxKeys idx
     = indexFromList keys (map Idx idxs)
 
 checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)

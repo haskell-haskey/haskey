@@ -8,6 +8,7 @@ import Control.Applicative ((<$>))
 import qualified Data.BTree.Pure as Tree
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
+import Data.BTree.Primitives.Leaf
 
 import Data.Int
 import Data.Monoid
@@ -67,6 +68,19 @@ prop_distribute kvs idx
     pred1 (key, sub) = M.null sub || fst (M.findMax sub) <= key
     pred2 (key, sub) = M.null sub || fst (M.findMin sub) > key
 
+prop_splitLeafMany  :: M.Map Int64 Int -> Bool
+prop_splitLeafMany m
+    | M.size m <= maxLeafItems = True
+    | (keys, maps) <- splitLeafMany maxLeafItems m
+    , numKeyMapsOK <- length maps == 1 + length keys
+    , sizeMapsOK   <- all (\m' -> M.size m' >= minLeafItems && M.size m' <= maxLeafItems) maps
+    , keysMaxOK    <- all (\(key, m') -> fst (M.findMax m') <= key) $ zip keys maps
+    , keysMinOK    <- all (\(key, m') -> fst (M.findMin m') >  key) $ zip keys (tail maps)
+    = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK
+  where
+    minLeafItems = 2
+    maxLeafItems = 2*minLeafItems
+
 prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
   where xs' = nubByFstEq . map (\x -> (fst x, Sum $ snd x)) $ xs
@@ -87,6 +101,9 @@ tests =
         , testProperty "fromSingletonIndex singletonIndex"
             prop_fromSingletonIndex_singletonIndex
         , testProperty "distribute" prop_distribute
+        ]
+    , testGroup "Leaf"
+        [ testProperty "splitLeafMany" prop_splitLeafMany
         ]
     , testGroup "Tree"
         [ testProperty "foldable" prop_foldable

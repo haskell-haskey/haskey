@@ -101,7 +101,7 @@ checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeafMany items
     | M.size items <= maxLeafItems
     = indexFromList [] [Leaf items]
-    | (keys, leafs) <- splitLeafMany items
+    | (keys, leafs) <- splitLeafMany maxLeafItems items
     = indexFromList keys (map Leaf leafs)
 
 --------------------------------------------------------------------------------

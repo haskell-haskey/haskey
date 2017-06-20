@@ -26,7 +26,7 @@ minFanout :: Int
 minFanout = 2
 
 maxFanout :: Int
-maxFanout = 2*maxFanout-1
+maxFanout = 2*minFanout
 
 minIdxKeys :: Int
 minIdxKeys = minFanout - 1
@@ -49,20 +49,20 @@ maxLeafItems = 2*maxFanout-1
     length. The height is the number of edges from the root to the leaves,
     i.e. leaves are at height zero and index nodes increase the height.
 -}
-data Node key val (height :: Nat) where
-    Idx  :: { idxChildren   :: Index key (Node key val height)
-            } -> Node key val ('S height)
+data Node (height :: Nat) key val where
+    Idx  :: { idxChildren   :: Index key (Node height key val)
+            } -> Node ('S height) key val
     Leaf :: { leafItems     :: Map key val
-            } -> Node key val 'Z
+            } -> Node 'Z key val
 
 data Tree key val where
     Tree :: -- An empty tree is represented by 'Nothing'. Otherwise it's 'Just'
             -- the root of the tree. The height is existentially quantified.
-            Maybe (Node key val height)
+            Maybe (Node height key val)
          -> Tree key val
 
 
-deriving instance (Show key, Show val) => Show (Node key val height)
+deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
 
 empty :: Tree key val
@@ -71,8 +71,8 @@ empty = Tree Nothing
 --------------------------------------------------------------------------------
 
 checkSplitIdx :: Key key =>
-   Index key (Node key val height) ->
-   Index key (Node key val ('S height))
+   Index key (Node height key val) ->
+   Index key (Node ('S height) key val)
 checkSplitIdx idx
     -- In case the branching fits in one index node we create it.
     | V.length (indexKeys idx) <= maxIdxKeys
@@ -81,7 +81,7 @@ checkSplitIdx idx
     | (leftIdx, middleKey, rightIdx) <- splitIndex idx
     = indexFromList [middleKey] [Idx leftIdx, Idx rightIdx]
 
-checkSplitLeaf :: Key key => Map key val -> Index key (Node key val 'Z)
+checkSplitLeaf :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeaf items
     | M.size items <= maxLeafItems
     = indexFromList [] [Leaf items]
@@ -103,8 +103,8 @@ insertRec ::
        Key key
     => key
     -> val
-    -> Node key val height
-    -> Index key (Node key val height)
+    -> Node height key val
+    -> Index key (Node height key val)
 insertRec key val (Idx children)
     | -- Punch a hole into the index at the sub-tree we recurse into.
       (ctx, child) <- valView key children
@@ -137,17 +137,17 @@ fromList = foldr (uncurry insert) empty
 
 --------------------------------------------------------------------------------
 
-nodeNeedsMerge :: Node key value height -> Bool
+nodeNeedsMerge :: Node height key value -> Bool
 nodeNeedsMerge Idx  { idxChildren = children } =
     V.length (indexKeys children) < minIdxKeys
 nodeNeedsMerge Leaf { leafItems   = items }    =
     M.size items < minLeafItems
 
 mergeNodes :: Key key
-    => Node key val height
+    => Node height key val
     -> key
-    -> Node key val height
-    -> Index key (Node key val height)
+    -> Node height key val
+    -> Index key (Node height key val)
 mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
     checkSplitLeaf (leftItems <> rightItems)
 mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
@@ -156,8 +156,8 @@ mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
 deleteRec ::
        Key k
     => k
-    -> Node k v n
-    -> Node k v n
+    -> Node n k v
+    -> Node n k v
 deleteRec key (Idx children)
     | childNeedsMerge, Just (rKey, rChild, rCtx) <- rightView ctx
     = Idx (putIdx rCtx (mergeNodes newChild rKey rChild))
@@ -194,7 +194,7 @@ delete key  (Tree (Just rootNode))
 
 lookupRec :: Key key
     => key
-    -> Node key val height
+    -> Node height key val
     -> Maybe val
 lookupRec key (Idx children)
     | (_, childNode) <- valView key children
@@ -214,7 +214,7 @@ singleton k v = insert k v empty
 null :: Tree k v -> Bool
 null (Tree n) = isNothing n
 
-sizeNode :: Node k v n -> Int
+sizeNode :: Node n k v -> Int
 sizeNode (Leaf items) = M.size items
 sizeNode (Idx nodes)  = F.sum (fmap sizeNode nodes)
 
@@ -230,6 +230,21 @@ notMember k = isNothing . lookup k
 
 findWithDefault :: Key k => v -> k -> Tree k v -> v
 findWithDefault v k = fromMaybe v . lookup k
+
+--------------------------------------------------------------------------------
+
+-- | Make a tree node foldable over its value.
+
+instance F.Foldable (Tree key) where
+    foldMap _ (Tree Nothing) = mempty
+    foldMap f (Tree (Just n)) = F.foldMap f n
+
+instance F.Foldable (Node height key) where
+    foldMap f (Idx Index { indexNodes = nodes }) =
+        F.foldMap (F.foldMap f) nodes
+
+    foldMap f (Leaf items) = F.foldMap f items
+
 
 --------------------------------------------------------------------------------
 

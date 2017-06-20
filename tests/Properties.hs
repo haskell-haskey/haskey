@@ -5,13 +5,17 @@ module Main (main) where
 
 import Control.Applicative ((<$>))
 
+import qualified Data.BTree.Pure as Tree
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 
 import Data.Int
 import Data.Monoid
-import Data.List (nub)
+import Data.List (nub, nubBy)
+import qualified Data.Foldable as F
+import qualified Data.Map as M
 import qualified Data.Vector as V
+
 import Test.Framework (Test, defaultMain, testGroup)
 import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
@@ -51,6 +55,17 @@ prop_fromSingletonIndex_singletonIndex :: Int64 -> Bool
 prop_fromSingletonIndex_singletonIndex i =
     fromSingletonIndex (singletonIndex i) == Just i
 
+prop_foldable :: [(Int64, Int)] -> Bool
+prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
+  where xs' = nubByFstEq . map (\x -> (fst x, Sum $ snd x)) $ xs
+
+prop_toList_fromList :: [(Int64, Int)] -> Bool
+prop_toList_fromList xs = F.toList (Tree.fromList xs') == F.toList (M.fromList xs')
+  where xs' = nubByFstEq xs
+
+nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
+nubByFstEq = nubBy (\x y -> fst x == fst y)
+
 tests :: [Test]
 tests =
     [ testGroup "Index"
@@ -59,6 +74,10 @@ tests =
         , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
         , testProperty "fromSingletonIndex singletonIndex"
             prop_fromSingletonIndex_singletonIndex
+        ]
+    , testGroup "Tree"
+        [ testProperty "foldable" prop_foldable
+        , testProperty "toList fromList" prop_toList_fromList
         ]
     ]
 

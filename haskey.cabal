@@ -42,11 +42,10 @@ library
     StandaloneDeriving
 
   build-depends:
-    base          >=4.6  && <5,
-    containers    >=0.5  && <1,
+    base          >=4.7  && <5,
     binary        >=0.6  && <0.9 || >0.9 && <1,
     bytestring    >=0.10 && <1,
-    tagged        >=0.7  && <1,
+    containers    >=0.5  && <1,
     vector        >=0.10 && <1
 
   default-language:    Haskell2010
@@ -58,12 +57,11 @@ test-suite haskey-properties
   type:                exitcode-stdio-1.0
 
   build-depends:
-    base          >=4.6  && <5,
-    containers    >=0.5  && <1,
+    base          >=4.7  && <5,
     binary        >=0.6  && <0.9 || >0.9 && <1,
     bytestring    >=0.10 && <1,
+    containers    >=0.5  && <1,
     data-ordlist  >=0.4  && <1,
-    tagged        >=0.7  && <1,
     vector        >=0.10 && <1,
 
     QuickCheck                 >=2    && <3,

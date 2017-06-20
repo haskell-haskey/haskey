@@ -20,6 +20,9 @@ library
   exposed-modules:
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
+    Data.BTree.Delete
+    Data.BTree.Insert
+    Data.BTree.Lookup
     Data.BTree.Primitives
     Data.BTree.Primitives.Height
     Data.BTree.Primitives.Ids

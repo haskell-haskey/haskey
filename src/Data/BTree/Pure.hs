@@ -157,22 +157,6 @@ insertRecMany kvs (Idx idx)
     | dist            <- distribute kvs idx
     --, newChildrenIdxs <- uncurry insertRecMany <$> dist
     = checkSplitIdxMany (dist >>= uncurry insertRecMany)
-  where
-    -- Create a new node containing the old children and the new children
-    --
-    -- Note that: V.length toAdd == 1 + V.length (indexKeys orig)
-    joinIndex :: Index k node -> V.Vector (Index k node) -> Index k node
-    joinIndex orig toAdd
-        | numKeys  <- V.length toAdd + V.length (indexKeys orig)
-        , numNodes <- V.length toAdd + V.length (indexNodes orig)
-        , newKeys  <- F.foldMap id $ V.generate numKeys getKey
-        , newNodes <- F.foldMap id $ V.generate numNodes getVal
-        = Index newKeys newNodes
-        where
-          getKey i | 0 <- i `mod` 2 = indexKeys $ toAdd  V.! (i `div` 2)
-                   | otherwise      = V.singleton $ indexKeys orig V.! (i `div` 2)
-          getVal i | 0 <- i `mod` 2 = indexNodes $ toAdd V.! (i `div` 2)
-                   | otherwise      = V.singleton $ indexNodes orig V.! (i `div` 2)
 
 insertRecMany kvs (Leaf items)
     = checkSplitLeafMany (M.union items kvs)

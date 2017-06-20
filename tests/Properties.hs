@@ -66,8 +66,8 @@ prop_distribute kvs idx
     , u <- validIndex idx'
     = x && y && z && u
   where
-    pred1 (key, sub) = M.null sub || fst (M.findMax sub) <= key
-    pred2 (key, sub) = M.null sub || fst (M.findMin sub) > key
+    pred1 (key, sub) = M.null sub || fst (M.findMax sub) <  key
+    pred2 (key, sub) = M.null sub || fst (M.findMin sub) >= key
 
 prop_splitIndexMany :: Index Int64 Int -> Bool
 prop_splitIndexMany idx
@@ -90,8 +90,8 @@ prop_splitLeafMany m
     | (keys, maps) <- splitLeafMany maxLeafItems m
     , numKeyMapsOK <- length maps == 1 + length keys
     , sizeMapsOK   <- all (\m' -> M.size m' >= minLeafItems && M.size m' <= maxLeafItems) maps
-    , keysMaxOK    <- all (\(key, m') -> fst (M.findMax m') <= key) $ zip keys maps
-    , keysMinOK    <- all (\(key, m') -> fst (M.findMin m') >  key) $ zip keys (tail maps)
+    , keysMaxOK    <- all (\(key, m') -> fst (M.findMax m') <  key) $ zip keys maps
+    , keysMinOK    <- all (\(key, m') -> fst (M.findMin m') >= key) $ zip keys (tail maps)
     , keysOrderOK  <- isSorted keys
     , joinedMapsOK <- M.unions maps == m
     = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK && keysOrderOK && joinedMapsOK

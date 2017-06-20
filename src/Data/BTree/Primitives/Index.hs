@@ -206,9 +206,9 @@ distribute kvs Index { indexKeys = keys, indexNodes = nodes }
             , indexNodes = b }
   where
     rangeTail idx Nothing    = (kvs, nodes V.! idx)
-    rangeTail idx (Just key) = (takeWhile' (> key) kvs, nodes V.! idx)
+    rangeTail idx (Just key) = (takeWhile' (>= key) kvs, nodes V.! idx)
     rangeHead Nothing (tail', node)    = (tail', node)
-    rangeHead (Just key) (tail', node)  = (takeWhile' (<= key) tail', node)
+    rangeHead (Just key) (tail', node)  = (takeWhile' (< key) tail', node)
 
     takeWhile' :: (k -> Bool) -> M.Map k v -> M.Map k v
     takeWhile' p = fst . M.partitionWithKey (\k _ -> p k)

@@ -33,12 +33,12 @@ splitLeafMany maxLeafItems m' = split' m' ([], [])
     split' m (keys, leafs)
         | M.size m > 2*maxLeafItems
         , (leaf, rem') <- mapSplitAt maxLeafItems m
-        , (key, _)    <- M.findMax leaf
+        , (key, _)    <- M.findMin rem'
         = split' rem' (key:keys, leaf:leafs)
         | M.size m > maxLeafItems
         , numLeft       <- div (M.size m) 2
         , (left, right) <- mapSplitAt numLeft m
-        , (key, _)      <- M.findMax left
+        , (key, _)      <- M.findMin right
         = split' M.empty (key:keys, right:(left:leafs))
         | M.null m
         = (reverse keys, reverse leafs)

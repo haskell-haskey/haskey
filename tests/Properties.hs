@@ -75,8 +75,8 @@ prop_splitIndexMany idx
     | (keys, idxs)  <- splitIndexMany maxIdxKeys idx
     , numKeyIdxsOK  <- length idxs == 1 + length keys
     , validIdxs     <- all validIndex idxs
-    , keysMaxOK     <- all (\(key, idx') -> V.last (indexKeys idx') <= key) $ zip keys idxs
-    , keysMinOK     <- all (\(key, idx') -> V.head (indexKeys idx') >  key) $ zip keys (tail idxs)
+    , keysMaxOK     <- all (\(key, idx') -> V.last (indexKeys idx') < key) $ zip keys idxs
+    , keysMinOK     <- all (\(key, idx') -> V.head (indexKeys idx') > key) $ zip keys (tail idxs)
     , keysOrderOK   <- isSorted keys
     , joinedNodesOK <- V.concat (map indexNodes idxs) == indexNodes idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK

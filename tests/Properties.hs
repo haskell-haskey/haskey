@@ -81,8 +81,7 @@ prop_splitIndexMany idx
     , joinedNodesOK <- V.concat (map indexNodes idxs) == indexNodes idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
   where
-    minIdxKeys = 1
-    maxIdxKeys = (minIdxKeys + 1) * 2 - 1
+    maxIdxKeys = Tree.maxFanout - 1
 
 prop_splitLeafMany  :: M.Map Int64 Int -> Bool
 prop_splitLeafMany m
@@ -96,8 +95,8 @@ prop_splitLeafMany m
     , joinedMapsOK <- M.unions maps == m
     = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK && keysOrderOK && joinedMapsOK
   where
-    minLeafItems = 2
-    maxLeafItems = 2*minLeafItems
+    minLeafItems = Tree.minLeafItems
+    maxLeafItems = Tree.maxLeafItems
 
 prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')

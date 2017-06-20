@@ -4,6 +4,8 @@
 
 module Data.BTree.Primitives.Index where
 
+import           Control.Monad (ap)
+
 import           Data.BTree.Internal
 
 import           Data.Foldable (Foldable)
@@ -116,14 +118,15 @@ fromSingletonIndex idx
 --------------------------------------------------------------------------------
 
 -- Unused 'Monad' instance.
--- instance Applicative (Index key) where
---     pure  = return
---     (<*>) = ap
--- instance Monad (Index key) where
---     return            = singletonIndex
---     Index ks is >>= f
---       | Just (i,itail) <- vecUncons (V.map f is)
---       = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
+instance Applicative (Index key) where
+    pure  = return
+    (<*>) = ap
+instance Monad (Index key) where
+    return            = singletonIndex
+    Index ks is >>= f
+      | Just (i,itail) <- vecUncons (V.map f is)
+      = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
+      | otherwise = Index ks V.empty
 
 --------------------------------------------------------------------------------
 

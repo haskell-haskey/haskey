@@ -154,15 +154,15 @@ insertRecMany ::
     -> Node height key val
     -> Index key (Node height key val)
 insertRecMany kvs (Idx idx)
-    | Index { indexNodes = dist } <- distribute kvs idx
-    , newChildrenIdxs             <- V.map (uncurry insertRecMany) dist
-    = checkSplitIdxMany (joinIndex idx newChildrenIdxs)
+    | dist            <- distribute kvs idx
+    --, newChildrenIdxs <- uncurry insertRecMany <$> dist
+    = checkSplitIdxMany (dist >>= uncurry insertRecMany)
   where
     -- Create a new node containing the old children and the new children
     --
     -- Note that: V.length toAdd == 1 + V.length (indexKeys orig)
-    joinIndex :: Index k node -> V.Vector (Index k node) -> Index k node
-    joinIndex orig toAdd
+    _joinIndex :: Index k node -> V.Vector (Index k node) -> Index k node
+    _joinIndex orig toAdd
         | numKeys  <- V.length toAdd + V.length (indexKeys orig)
         , numNodes <- V.length toAdd + V.length (indexNodes orig)
         , newKeys  <- F.foldMap id $ V.generate numKeys getKey

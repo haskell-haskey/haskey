@@ -4,6 +4,7 @@
 
 module Data.BTree.Primitives.Index where
 
+import           Control.Applicative (Applicative)
 import           Control.Monad (ap)
 
 import           Data.BTree.Internal

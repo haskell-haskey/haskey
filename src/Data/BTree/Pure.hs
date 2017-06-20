@@ -180,7 +180,16 @@ insertRecMany kvs (Leaf items)
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v
 insertMany kvs (Tree (Just rootNode))
     | newRootIdx <- insertRecMany kvs rootNode
-    = undefined
+    = case fromSingletonIndex newRootIdx of
+          Just newRootNode ->
+              -- The result from the recursive insert is a single node. Use
+              -- this as a new root.
+              Tree (Just newRootNode)
+          Nothing          ->
+              -- The insert resulted in a index with multiple nodes, i.e.
+              -- the splitting propagated to the root. Create a new 'Idx'
+              -- node with the index. This increments the height.
+              Tree (Just (Idx newRootIdx))
 insertMany kvs (Tree Nothing)
     = Tree (Just (Leaf kvs))
 

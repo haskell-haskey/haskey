@@ -37,10 +37,8 @@ validIndex (Index keys nodes) =
 
 {-| Validate the size of an index. -}
 validIndexSize :: Ord key => Int -> Int -> Index key node -> Bool
-validIndexSize minIdxKeys maxIdxKeys idx@(Index keys nodes) =
-    validIndex idx &&
-    V.length keys >= minIdxKeys && V.length keys <= maxIdxKeys &&
-    V.length nodes >= (minIdxKeys + 1) && V.length nodes <= (maxIdxKeys + 1)
+validIndexSize minIdxKeys maxIdxKeys idx@(Index keys _) =
+    validIndex idx && V.length keys >= minIdxKeys && V.length keys <= maxIdxKeys
 
 {-| Split an index node.
 

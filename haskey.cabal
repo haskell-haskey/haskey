@@ -18,6 +18,8 @@ extra-source-files:  README.md
 
 library
   exposed-modules:
+    Data.BTree.Alloc.Append
+    Data.BTree.Alloc.Class
     Data.BTree.Primitives
     Data.BTree.Primitives.Height
     Data.BTree.Primitives.Ids
@@ -26,6 +28,8 @@ library
     Data.BTree.Primitives.Leaf
     Data.BTree.Primitives.Value
     Data.BTree.Pure
+    Data.BTree.Store.Class
+    Data.BTree.Store.Debug
     Data.BTree.TwoThree
 
   other-modules:
@@ -47,6 +51,8 @@ library
     binary        >=0.6  && <0.9 || >0.9 && <1,
     bytestring    >=0.10 && <1,
     containers    >=0.5  && <1,
+    mtl           >=2.1  && <3,
+    transformers  >=0.3  && <1,
     vector        >=0.10 && <1
 
   default-language:    Haskell2010
@@ -63,6 +69,8 @@ test-suite haskey-properties
     bytestring    >=0.10 && <1,
     containers    >=0.5  && <1,
     data-ordlist  >=0.4  && <1,
+    mtl           >=2.1  && <3,
+    transformers  >=0.3  && <1,
     vector        >=0.10 && <1,
 
     QuickCheck                 >=2    && <3,

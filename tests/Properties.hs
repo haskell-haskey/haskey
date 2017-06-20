@@ -107,6 +107,18 @@ prop_toList_fromList :: [(Int64, Int)] -> Bool
 prop_toList_fromList xs = F.toList (Tree.fromList xs') == F.toList (M.fromList xs')
   where xs' = nubByFstEq xs
 
+prop_insertRecMany :: [(Int64, Int)] -> Int -> Bool
+prop_insertRecMany xs i = F.toList fromListSeparately == F.toList fromListSimul
+  where
+    foldrInsert = foldr (uncurry Tree.insert)
+
+    fromListSeparately = foldrInsert (foldrInsert Tree.empty a) b
+    fromListSimul      = Tree.insertMany (M.fromList b) $ foldrInsert Tree.empty a
+
+    xs' = nubByFstEq xs
+    (a, b) | null xs'  = ([], [])
+           | otherwise = splitAt (i `mod` length xs') xs'
+
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
 nubByFstEq = nubBy (\x y -> fst x == fst y)
 
@@ -127,6 +139,7 @@ tests =
     , testGroup "Tree"
         [ testProperty "foldable" prop_foldable
         , testProperty "toList fromList" prop_toList_fromList
+        , testProperty "insertRecMany" prop_insertRecMany
         ]
     ]
 

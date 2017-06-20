@@ -168,14 +168,28 @@ insertMany kvs (Tree (Just rootNode))
           Just newRootNode ->
               -- The result from the recursive insert is a single node. Use
               -- this as a new root.
-              Tree (Just newRootNode)
+              fixUp $ Tree (Just newRootNode)
           Nothing          ->
               -- The insert resulted in a index with multiple nodes, i.e.
               -- the splitting propagated to the root. Create a new 'Idx'
               -- node with the index. This increments the height.
-              Tree (Just (Idx newRootIdx))
+              fixUp $ Tree (Just (Idx newRootIdx))
 insertMany kvs (Tree Nothing)
-    = Tree (Just (Leaf kvs))
+    = fixUp $ Tree (Just (Leaf kvs))
+
+fixUp :: Key k => Tree k v -> Tree k v
+fixUp (Tree Nothing) = Tree Nothing
+fixUp (Tree (Just (Leaf items)))
+    | newRootIdx <- checkSplitLeafMany items
+    = case fromSingletonIndex newRootIdx of
+        Just newRootNode -> Tree (Just newRootNode)
+        Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
+fixUp (Tree (Just (Idx idx)))
+    | newRootIdx <- checkSplitIdxMany idx
+    = case fromSingletonIndex newRootIdx of
+        Just newRootNode -> Tree (Just newRootNode)
+        Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
+
 
 fromList :: Key k => [(k,v)] -> Tree k v
 fromList = foldr (uncurry insert) empty

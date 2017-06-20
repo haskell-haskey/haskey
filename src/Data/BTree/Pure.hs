@@ -161,8 +161,8 @@ insertRecMany kvs (Idx idx)
     -- Create a new node containing the old children and the new children
     --
     -- Note that: V.length toAdd == 1 + V.length (indexKeys orig)
-    _joinIndex :: Index k node -> V.Vector (Index k node) -> Index k node
-    _joinIndex orig toAdd
+    joinIndex :: Index k node -> V.Vector (Index k node) -> Index k node
+    joinIndex orig toAdd
         | numKeys  <- V.length toAdd + V.length (indexKeys orig)
         , numNodes <- V.length toAdd + V.length (indexNodes orig)
         , newKeys  <- F.foldMap id $ V.generate numKeys getKey

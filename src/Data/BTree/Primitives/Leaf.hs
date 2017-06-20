@@ -27,14 +27,14 @@ splitLeaf items
             \two elements"
 
 splitLeafMany :: Key key => Int -> Map key val -> ([key], [Map key val])
-splitLeafMany maxLeafItems m = split' m ([], [])
+splitLeafMany maxLeafItems m' = split' m' ([], [])
   where
     split' :: Key key => Map key val -> ([key], [Map key val]) -> ([key], [Map key val])
     split' m (keys, leafs)
         | M.size m > 2*maxLeafItems
-        , (leaf, rem) <- mapSplitAt maxLeafItems m
+        , (leaf, rem') <- mapSplitAt maxLeafItems m
         , (key, _)    <- M.findMax leaf
-        = split' rem (key:keys, leaf:leafs)
+        = split' rem' (key:keys, leaf:leafs)
         | M.size m > maxLeafItems
         , numLeft       <- div (M.size m) 2
         , (left, right) <- mapSplitAt numLeft m

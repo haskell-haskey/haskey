@@ -167,7 +167,6 @@ insertRecMany ::
     -> Index key (Node height key val)
 insertRecMany kvs (Idx idx)
     | dist            <- distribute kvs idx
-    --, newChildrenIdxs <- uncurry insertRecMany <$> dist
     = checkSplitIdxMany (dist `bindIndex` uncurry insertRecMany)
 
 insertRecMany kvs (Leaf items)

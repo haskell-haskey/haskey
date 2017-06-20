@@ -20,6 +20,7 @@ library
   exposed-modules:
     Data.BTree.Primitives
     Data.BTree.Primitives.Height
+    Data.BTree.Primitives.Ids
     Data.BTree.Primitives.Index
     Data.BTree.Primitives.Key
     Data.BTree.Primitives.Leaf

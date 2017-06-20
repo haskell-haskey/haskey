@@ -35,7 +35,7 @@ maxIdxKeys :: Int
 maxIdxKeys = maxFanout - 1
 
 minLeafItems :: Int
-minLeafItems = maxFanout
+minLeafItems = minFanout
 
 maxLeafItems :: Int
 maxLeafItems = 2*maxFanout-1

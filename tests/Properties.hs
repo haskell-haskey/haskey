@@ -107,7 +107,10 @@ prop_toList_fromList xs = F.toList (Tree.fromList xs') == F.toList (M.fromList x
   where xs' = nubByFstEq xs
 
 prop_insertRecMany :: [(Int64, Int)] -> Int -> Bool
-prop_insertRecMany xs i = F.toList fromListSeparately == F.toList fromListSimul
+prop_insertRecMany xs i
+    | isValid   <- Tree.validTree fromListSimul
+    , equiv     <- F.toList fromListSeparately == F.toList fromListSimul
+    = isValid && equiv
   where
     foldrInsert = foldr (uncurry Tree.insert)
 

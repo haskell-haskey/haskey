@@ -68,6 +68,18 @@ deriving instance (Show key, Show val) => Show (Tree key val)
 empty :: Tree key val
 empty = Tree Nothing
 
+validTree :: Ord key => Tree key val -> Bool
+validTree (Tree Nothing) = True
+validTree (Tree (Just (Leaf items))) = M.size items <= maxLeafItems
+validTree (Tree (Just (Idx idx))) =
+    validIndexSize 1 maxIdxKeys idx && F.all validNode idx
+
+validNode :: Ord key => Node height key val -> Bool
+validNode (Leaf items) =
+    M.size items >= minLeafItems && M.size items <= maxLeafItems
+validNode (Idx idx) =
+    validIndexSize minIdxKeys maxIdxKeys idx && F.all validNode idx
+
 --------------------------------------------------------------------------------
 
 checkSplitIdx :: Key key =>

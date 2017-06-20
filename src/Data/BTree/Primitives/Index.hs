@@ -29,14 +29,18 @@ data Index key node = Index
     }
   deriving (Eq, Functor, Foldable, Show, Traversable)
 
-{-| Validate an index.
-
-    Checks the invariants on 'Index'.
--}
+{-| Validate the key/node count invariant of an index.  -}
 validIndex :: Ord key => Index key node -> Bool
 validIndex (Index keys nodes) =
     V.length keys + 1 == V.length nodes &&
     isStrictlyIncreasing keys
+
+{-| Validate the size of an index. -}
+validIndexSize :: Ord key => Int -> Int -> Index key node -> Bool
+validIndexSize minIdxKeys maxIdxKeys idx@(Index keys nodes) =
+    validIndex idx &&
+    V.length keys >= minIdxKeys && V.length keys <= maxIdxKeys &&
+    V.length nodes >= (minIdxKeys + 1) && V.length nodes <= (maxIdxKeys + 1)
 
 {-| Split an index node.
 

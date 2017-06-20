@@ -68,6 +68,14 @@ splitIndex Index { indexKeys = keys, indexNodes = nodes }
     | otherwise
     = error "splitIndex: empty Index"
 
+{-| Split an index node many times.
+
+    This function splits an index node into a list of valid nodes, such that
+    each returned node has less than maxIdxKeys nodes (but more than minIdxKeys).
+
+    This function raises an exception when the index should not be split, i.e.
+    when the the amount of keys in the index <= maxIdxKeys.
+-}
 splitIndexMany :: Int -> Index key node -> ([key], [Index key node])
 splitIndexMany maxIdxKeys idx = split' idx ([], [])
   where
@@ -194,6 +202,7 @@ valView key Index { indexKeys = keys, indexNodes = vals }
     | otherwise
     = error "valView: empty Index"
 
+{-| Distribute a map of key-value pairs over an index. -}
 distribute :: Ord k => M.Map k v -> Index k node -> Index k (M.Map k v, node)
 distribute kvs Index { indexKeys = keys, indexNodes = nodes }
     | a <- V.imap rangeTail          (Nothing `V.cons` V.map Just keys)

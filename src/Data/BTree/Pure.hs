@@ -68,12 +68,14 @@ deriving instance (Show key, Show val) => Show (Tree key val)
 empty :: Tree key val
 empty = Tree Nothing
 
+{-| Check whether a given tree is valid. -}
 validTree :: Ord key => Tree key val -> Bool
 validTree (Tree Nothing) = True
 validTree (Tree (Just (Leaf items))) = M.size items <= maxLeafItems
 validTree (Tree (Just (Idx idx))) =
     validIndexSize 1 maxIdxKeys idx && F.all validNode idx
 
+{-| Check whether a (non-root) node is valid. -}
 validNode :: Ord key => Node height key val -> Bool
 validNode (Leaf items) =
     M.size items >= minLeafItems && M.size items <= maxLeafItems
@@ -172,6 +174,7 @@ insertRecMany kvs (Idx idx)
 insertRecMany kvs (Leaf items)
     = checkSplitLeafMany (M.union items kvs)
 
+{-| Insert a bunch of key-value pairs simultaneously. -}
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v
 insertMany kvs (Tree (Just rootNode))
     | newRootIdx <- insertRecMany kvs rootNode
@@ -188,6 +191,12 @@ insertMany kvs (Tree (Just rootNode))
 insertMany kvs (Tree Nothing)
     = fixUp $ Tree (Just (Leaf kvs))
 
+{-| Fix up the root node of a tree.
+
+    Fix up the root node of a tree, where all other nodes are valid, but the
+    root node may contain more items than allowed. Do this by repeatedly
+    splitting up the root node.
+-}
 fixUp :: Key k => Tree k v -> Tree k v
 fixUp (Tree Nothing) = Tree Nothing
 fixUp (Tree (Just (Leaf items)))

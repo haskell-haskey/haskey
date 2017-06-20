@@ -13,6 +13,7 @@ import Data.BTree.Primitives.Leaf
 import Data.Int
 import Data.Monoid
 import Data.List (nub, nubBy)
+import Data.List.Ordered (isSorted)
 import qualified Data.Foldable as F
 import qualified Data.Map as M
 import qualified Data.Vector as V
@@ -76,7 +77,8 @@ prop_splitLeafMany m
     , sizeMapsOK   <- all (\m' -> M.size m' >= minLeafItems && M.size m' <= maxLeafItems) maps
     , keysMaxOK    <- all (\(key, m') -> fst (M.findMax m') <= key) $ zip keys maps
     , keysMinOK    <- all (\(key, m') -> fst (M.findMin m') >  key) $ zip keys (tail maps)
-    = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK
+    , keysOrderOK  <- isSorted keys
+    = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK && keysOrderOK
   where
     minLeafItems = 2
     maxLeafItems = 2*minLeafItems

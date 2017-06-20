@@ -38,7 +38,7 @@ minLeafItems :: Int
 minLeafItems = minFanout
 
 maxLeafItems :: Int
-maxLeafItems = 2*maxFanout-1
+maxLeafItems = 2*minFanout-1
 
 --------------------------------------------------------------------------------
 

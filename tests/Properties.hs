@@ -13,7 +13,7 @@ import Data.BTree.Primitives.Leaf
 import Data.Int
 import Data.Monoid
 import Data.List (nub, nubBy)
-import Data.List.Ordered (isSorted)
+import Data.List.Ordered (isSortedBy)
 import qualified Data.Foldable as F
 import qualified Data.Map as M
 import qualified Data.Vector as V
@@ -77,7 +77,7 @@ prop_splitIndexMany idx
     , validIdxs     <- all validIndex idxs
     , keysMaxOK     <- all (\(key, idx') -> V.last (indexKeys idx') < key) $ zip keys idxs
     , keysMinOK     <- all (\(key, idx') -> V.head (indexKeys idx') > key) $ zip keys (tail idxs)
-    , keysOrderOK   <- isSorted keys
+    , keysOrderOK   <- isSortedBy (<) keys
     , joinedNodesOK <- V.concat (map indexNodes idxs) == indexNodes idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
   where
@@ -92,7 +92,7 @@ prop_splitLeafMany m
     , sizeMapsOK   <- all (\m' -> M.size m' >= minLeafItems && M.size m' <= maxLeafItems) maps
     , keysMaxOK    <- all (\(key, m') -> fst (M.findMax m') <  key) $ zip keys maps
     , keysMinOK    <- all (\(key, m') -> fst (M.findMin m') >= key) $ zip keys (tail maps)
-    , keysOrderOK  <- isSorted keys
+    , keysOrderOK  <- isSortedBy (<) keys
     , joinedMapsOK <- M.unions maps == m
     = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK && keysOrderOK && joinedMapsOK
   where

@@ -78,7 +78,8 @@ prop_splitLeafMany m
     , keysMaxOK    <- all (\(key, m') -> fst (M.findMax m') <= key) $ zip keys maps
     , keysMinOK    <- all (\(key, m') -> fst (M.findMin m') >  key) $ zip keys (tail maps)
     , keysOrderOK  <- isSorted keys
-    = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK && keysOrderOK
+    , joinedMapsOK <- M.unions maps == m
+    = numKeyMapsOK && sizeMapsOK && keysMaxOK && keysMinOK && keysOrderOK && joinedMapsOK
   where
     minLeafItems = 2
     maxLeafItems = 2*minLeafItems

@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Data.BTree.Pure where
 
@@ -199,6 +200,22 @@ fixUp (Tree (Just (Idx idx)))
 -}
 fromList :: Key k => [(k,v)] -> Tree k v
 fromList = L.foldl' (flip $ uncurry insert) empty
+
+{-| /O(n)/. Fold key\/value pairs in the B-tree.
+-}
+foldrWithKey :: forall k v w. (k -> v -> w -> w) -> w -> Tree k v -> w
+foldrWithKey f z0 (Tree mbRoot) = case mbRoot of
+    Nothing   -> z0
+    Just root -> go z0 root
+  where
+    go :: w -> Node h k v -> w
+    go z1 (Leaf items) = M.foldrWithKey f z1 items
+    go z1 (Idx index)  = F.foldr (flip go) z1 index
+
+{-| /O(n)/. Convert the B-tree to a sorted list of key\/value pairs.
+-}
+toList :: Tree k v -> [(k,v)]
+toList = foldrWithKey (\k v kvs -> (k,v):kvs) []
 
 --------------------------------------------------------------------------------
 

@@ -111,6 +111,11 @@ prop_foldableToList_fromList xs =
     F.toList (Tree.fromList xs) ==
     F.toList (M.fromList xs)
 
+prop_toList_fromList :: [(Int64, Int)] -> Bool
+prop_toList_fromList xs =
+    Tree.toList (Tree.fromList xs) ==
+    M.toList    (M.fromList xs)
+
 prop_insertRecMany :: [(Int64, Int)] -> Int -> Bool
 prop_insertRecMany xs i
     | isValid   <- Tree.validTree fromListSimul
@@ -147,6 +152,7 @@ tests =
         [ testProperty "foldable" prop_foldable
         , testProperty "validTree fromList" prop_validTree_fromList
         , testProperty "foldableToList fromList" prop_foldableToList_fromList
+        , testProperty "toList fromList" prop_toList_fromList
         , testProperty "insertRecMany" prop_insertRecMany
         ]
     ]

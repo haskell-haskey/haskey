@@ -154,7 +154,7 @@ insertRecMany kvs (Idx idx)
     = checkSplitIdxMany (dist `bindIndex` uncurry insertRecMany)
 
 insertRecMany kvs (Leaf items)
-    = checkSplitLeafMany (M.union items kvs)
+    = checkSplitLeafMany (M.union kvs items)
 
 {-| Insert a bunch of key-value pairs simultaneously. -}
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v

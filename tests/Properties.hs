@@ -27,6 +27,8 @@ default (Int64)
 
 --------------------------------------------------------------------------------
 
+-- ** Index
+
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
   arbitrary = do
       keys <- V.fromList . nub <$> orderedList
@@ -84,6 +86,10 @@ prop_splitIndexMany idx
   where
     maxIdxKeys = Tree.maxFanout - 1
 
+--------------------------------------------------------------------------------
+
+-- ** Leaves
+
 prop_splitLeafMany  :: M.Map Int64 Int -> Bool
 prop_splitLeafMany m
     | M.size m <= maxLeafItems = True
@@ -98,6 +104,14 @@ prop_splitLeafMany m
   where
     minLeafItems = Tree.minLeafItems
     maxLeafItems = Tree.maxLeafItems
+
+--------------------------------------------------------------------------------
+
+-- ** Trees
+
+instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Tree.Tree k v) where
+  arbitrary = Tree.fromList <$> arbitrary
+  shrink    = map Tree.fromList . shrink . Tree.toList
 
 prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
@@ -116,20 +130,22 @@ prop_toList_fromList xs =
     Tree.toList (Tree.fromList xs) ==
     M.toList    (M.fromList xs)
 
-prop_insertRecMany :: [(Int64, Int)] -> Int -> Bool
-prop_insertRecMany xs i
-    | isValid   <- Tree.validTree fromListSimul
-    , equiv     <- F.toList fromListSeparately == F.toList fromListSimul
+prop_insertMany :: [(Int64, Int)] -> [(Int64, Int)] -> Bool
+prop_insertMany xs ys
+    | isValid   <- Tree.validTree txy
+    , equiv     <- Tree.toList txy == M.toList mxy
     = isValid && equiv
   where
-    foldrInsert = foldr (uncurry Tree.insert)
+    mx  = M.fromList xs
+    my  = M.fromList ys
+    mxy = M.union mx my
+    ty  = Tree.fromList ys
+    txy = Tree.insertMany mx ty
 
-    fromListSeparately = foldrInsert (foldrInsert Tree.empty a) b
-    fromListSimul      = Tree.insertMany (M.fromList b) $ foldrInsert Tree.empty a
-
-    xs' = nubByFstEq xs
-    (a, b) | null xs'  = ([], [])
-           | otherwise = splitAt (i `mod` length xs') xs'
+prop_insert_insertMany :: Int64 -> Int -> Tree.Tree Int64 Int -> Bool
+prop_insert_insertMany k v t =
+    Tree.toList (Tree.insertMany (M.singleton k v) t) ==
+    Tree.toList (Tree.insert k v t)
 
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
 nubByFstEq = nubBy (\x y -> fst x == fst y)
@@ -153,7 +169,8 @@ tests =
         , testProperty "validTree fromList" prop_validTree_fromList
         , testProperty "foldableToList fromList" prop_foldableToList_fromList
         , testProperty "toList fromList" prop_toList_fromList
-        , testProperty "insertRecMany" prop_insertRecMany
+        , testProperty "insertMany" prop_insertMany
+        , testProperty "insert insertMany" prop_insert_insertMany
         ]
     ]
 

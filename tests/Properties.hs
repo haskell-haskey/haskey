@@ -6,6 +6,7 @@ module Main (main) where
 import Control.Applicative ((<$>))
 
 import qualified Data.BTree.Pure as Tree
+import qualified Data.BTree.TwoThree as Tree
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf

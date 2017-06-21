@@ -11,6 +11,7 @@ import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf
 
+import Data.Function (on)
 import Data.Int
 import Data.Monoid
 import Data.List (nub, nubBy)
@@ -43,11 +44,11 @@ instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
             newVals           = preVals <> V.drop 1 sufVals
       ]
 
-prop_valid_arbitrary :: Index Int64 Bool -> Bool
-prop_valid_arbitrary = validIndex
+prop_validIndex_arbitrary :: Index Int64 Bool -> Bool
+prop_validIndex_arbitrary = validIndex
 
-prop_valid_singletonIndex :: Int64 -> Bool
-prop_valid_singletonIndex i =
+prop_validIndex_singletonIndex :: Int64 -> Bool
+prop_validIndex_singletonIndex i =
     validIndex (singletonIndex i :: Index Int64 Int64)
 
 prop_mergeIndex_splitIndex :: Property
@@ -148,13 +149,13 @@ prop_insert_insertMany k v t =
     Tree.toList (Tree.insert k v t)
 
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
-nubByFstEq = nubBy (\x y -> fst x == fst y)
+nubByFstEq = nubBy ((==) `on` fst)
 
 tests :: [Test]
 tests =
     [ testGroup "Index"
-        [ testProperty "valid arbitrary" prop_valid_arbitrary
-        , testProperty "valid singletonIndex" prop_valid_singletonIndex
+        [ testProperty "validIndex arbitrary" prop_validIndex_arbitrary
+        , testProperty "validIndex singletonIndex" prop_validIndex_singletonIndex
         , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
         , testProperty "fromSingletonIndex singletonIndex"
             prop_fromSingletonIndex_singletonIndex

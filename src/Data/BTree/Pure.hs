@@ -37,10 +37,14 @@ data Node (height :: Nat) key val where
     Leaf :: { leafItems     :: Map key val
             } -> Node 'Z key val
 
+{-| A pure B+-tree.
+
+    This is a simple wrapper around a root 'Node'. An empty tree is represented
+    by 'Nothing'. Otherwise it's 'Just' the root. The height is existentially
+    quantified.
+-}
 data Tree key val where
-    Tree :: -- An empty tree is represented by 'Nothing'. Otherwise it's 'Just'
-            -- the root of the tree. The height is existentially quantified.
-            Maybe (Node height key val)
+    Tree :: Maybe (Node height key val)
          -> Tree key val
 
 
@@ -81,8 +85,8 @@ checkSplitLeaf :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeaf items
     | M.size items <= maxLeafItems
     = indexFromList [] [Leaf items]
-    | (leftLeaf, middleKey, rightLeaf) <- splitLeaf items
-    = indexFromList [middleKey] [Leaf leftLeaf, Leaf rightLeaf]
+    | (leftItems, middleKey, rightItems) <- splitLeaf items
+    = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
 
 checkSplitIdxMany :: Key key
                   => Index key (Node height key val)

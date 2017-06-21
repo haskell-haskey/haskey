@@ -103,9 +103,13 @@ prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
   where xs' = nubByFstEq . map (\x -> (fst x, Sum $ snd x)) $ xs
 
-prop_toList_fromList :: [(Int64, Int)] -> Bool
-prop_toList_fromList xs = F.toList (Tree.fromList xs') == F.toList (M.fromList xs')
-  where xs' = nubByFstEq xs
+prop_validTree_fromList :: [(Int64, Int)] -> Bool
+prop_validTree_fromList xs = Tree.validTree (Tree.fromList xs)
+
+prop_foldableToList_fromList :: [(Int64, Int)] -> Bool
+prop_foldableToList_fromList xs =
+    F.toList (Tree.fromList xs) ==
+    F.toList (M.fromList xs)
 
 prop_insertRecMany :: [(Int64, Int)] -> Int -> Bool
 prop_insertRecMany xs i
@@ -141,7 +145,8 @@ tests =
         ]
     , testGroup "Tree"
         [ testProperty "foldable" prop_foldable
-        , testProperty "toList fromList" prop_toList_fromList
+        , testProperty "validTree fromList" prop_validTree_fromList
+        , testProperty "foldableToList fromList" prop_foldableToList_fromList
         , testProperty "insertRecMany" prop_insertRecMany
         ]
     ]

@@ -13,6 +13,7 @@ import           Data.BTree.TwoThree
 
 import qualified Data.Foldable as F
 import           Data.Int
+import qualified Data.List as L
 import           Data.Map (Map)
 import           Data.Maybe (isJust, isNothing, fromMaybe)
 import           Data.Monoid
@@ -191,8 +192,13 @@ fixUp (Tree (Just (Idx idx)))
         Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
 
 
+{-| /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
+
+    If the list contains duplicate keys, the last pair for a duplicate key is
+    kept.
+-}
 fromList :: Key k => [(k,v)] -> Tree k v
-fromList = foldr (uncurry insert) empty
+fromList = L.foldl' (flip $ uncurry insert) empty
 
 --------------------------------------------------------------------------------
 

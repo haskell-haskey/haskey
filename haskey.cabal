@@ -66,6 +66,10 @@ library
 test-suite haskey-properties
   main-is:             Properties.hs
   type:                exitcode-stdio-1.0
+  other-modules:
+    Properties.Primitives.Index
+    Properties.Primitives.Leaf
+    Properties.Pure
 
   build-depends:
     base          >=4.7  && <5,

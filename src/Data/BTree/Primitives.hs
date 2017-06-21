@@ -26,6 +26,8 @@ import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep)
 import Unsafe.Coerce
 
+import qualified Data.Foldable as F
+
 --------------------------------------------------------------------------------
 
 {-| A node in a B+-tree.

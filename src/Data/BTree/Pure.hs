@@ -6,9 +6,10 @@
 module Data.BTree.Pure where
 
 import           Data.BTree.Primitives.Height
-import           Data.BTree.Primitives.Key
 import           Data.BTree.Primitives.Index
+import           Data.BTree.Primitives.Key
 import           Data.BTree.Primitives.Leaf
+import           Data.BTree.TwoThree
 
 import qualified Data.Foldable as F
 import           Data.Int
@@ -18,27 +19,6 @@ import           Data.Monoid
 import           Prelude hiding (lookup, null)
 import qualified Data.Map as M
 import qualified Data.Vector as V
-
---------------------------------------------------------------------------------
-
--- Setup of a 2-3 tree.
-minFanout :: Int
-minFanout = 2
-
-maxFanout :: Int
-maxFanout = 2*minFanout-1
-
-minIdxKeys :: Int
-minIdxKeys = minFanout - 1
-
-maxIdxKeys :: Int
-maxIdxKeys = maxFanout - 1
-
-minLeafItems :: Int
-minLeafItems = minFanout
-
-maxLeafItems :: Int
-maxLeafItems = 2*minFanout-1
 
 --------------------------------------------------------------------------------
 

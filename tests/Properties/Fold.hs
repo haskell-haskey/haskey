@@ -14,8 +14,6 @@ import Control.Monad ((>=>))
 import Control.Monad.Identity
 
 import Data.Int
-import Data.Function (on)
-import Data.List (nubBy)
 import qualified Data.Foldable as F
 import qualified Data.Map as M
 
@@ -27,12 +25,10 @@ tests = testGroup "Fold"
 prop_foldable_toList_fromList :: [(Int64, Integer)] -> Bool
 prop_foldable_toList_fromList kvs
     | Just l <- runInMemory (createAppendDb "Main"
-                             >>= insertAll kvs'
+                             >>= insertAll kvs
                              >>= readTransact Tree.toList)
-    = l == F.toList (M.fromList kvs')
+    = l == F.toList (M.fromList kvs)
     | otherwise = False
-  where
-    kvs' = nubByFstEq kvs
 
 runInMemory :: StoreT String Identity a -> Maybe a
 runInMemory = fst . runIdentity . flip runStoreT initialStore
@@ -44,6 +40,3 @@ insertAll :: (AppendMetaStoreM hnd m, Key key, Value val)
          -> AppendDb hnd key val
          -> m (AppendDb hnd key val)
 insertAll kvs = transact (foldl (>=>) return (map (uncurry insertTree) kvs))
-
-nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
-nubByFstEq = nubBy ((==) `on` fst)

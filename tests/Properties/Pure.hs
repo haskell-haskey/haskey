@@ -8,6 +8,8 @@ import Test.QuickCheck
 import Data.BTree.Primitives
 import qualified Data.BTree.Pure as Tree
 
+import Control.Applicative ((<$>))
+
 import Data.Function (on)
 import Data.Int
 import Data.List (nubBy)

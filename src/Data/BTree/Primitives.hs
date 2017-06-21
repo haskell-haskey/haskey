@@ -63,6 +63,10 @@ data Tree key val where
 deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
 
+{-| Create an empty tree. -}
+empty :: Tree k v
+empty = Tree zeroHeight Nothing
+
 {-| Cast a node to a different type.
 
     Essentially this is just a drop-in replacement for 'Data.Typeable.cast'.

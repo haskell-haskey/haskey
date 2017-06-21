@@ -34,8 +34,8 @@ instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
 
 tests :: Test
 tests = testGroup "Index"
-    [ testProperty "valid arbitrary" prop_valid_arbitrary
-    , testProperty "valid singletonIndex" prop_valid_singletonIndex
+    [ testProperty "validIndex arbitrary" prop_validIndex_arbitrary
+    , testProperty "validIndex singletonIndex" prop_validIndex_singletonIndex
     , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
     , testProperty "fromSingletonIndex singletonIndex"
         prop_fromSingletonIndex_singletonIndex
@@ -43,11 +43,11 @@ tests = testGroup "Index"
     , testProperty "splitIndexMany" prop_splitIndexMany
     ]
 
-prop_valid_arbitrary :: Index Int64 Bool -> Bool
-prop_valid_arbitrary = validIndex
+prop_validIndex_arbitrary :: Index Int64 Bool -> Bool
+prop_validIndex_arbitrary = validIndex
 
-prop_valid_singletonIndex :: Int64 -> Bool
-prop_valid_singletonIndex i =
+prop_validIndex_singletonIndex :: Int64 -> Bool
+prop_validIndex_singletonIndex i =
     validIndex (singletonIndex i :: Index Int64 Int64)
 
 prop_mergeIndex_splitIndex :: Property

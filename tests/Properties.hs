@@ -11,6 +11,7 @@ import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf
 
+import Data.Function (on)
 import Data.Int
 import Data.Monoid
 import Data.List (nub, nubBy)
@@ -27,6 +28,8 @@ default (Int64)
 
 --------------------------------------------------------------------------------
 
+-- ** Index
+
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
   arbitrary = do
       keys <- V.fromList . nub <$> orderedList
@@ -41,11 +44,11 @@ instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
             newVals           = preVals <> V.drop 1 sufVals
       ]
 
-prop_valid_arbitrary :: Index Int64 Bool -> Bool
-prop_valid_arbitrary = validIndex
+prop_validIndex_arbitrary :: Index Int64 Bool -> Bool
+prop_validIndex_arbitrary = validIndex
 
-prop_valid_singletonIndex :: Int64 -> Bool
-prop_valid_singletonIndex i =
+prop_validIndex_singletonIndex :: Int64 -> Bool
+prop_validIndex_singletonIndex i =
     validIndex (singletonIndex i :: Index Int64 Int64)
 
 prop_mergeIndex_splitIndex :: Property
@@ -84,6 +87,10 @@ prop_splitIndexMany idx
   where
     maxIdxKeys = Tree.maxFanout - 1
 
+--------------------------------------------------------------------------------
+
+-- ** Leaves
+
 prop_splitLeafMany  :: M.Map Int64 Int -> Bool
 prop_splitLeafMany m
     | M.size m <= maxLeafItems = True
@@ -99,37 +106,56 @@ prop_splitLeafMany m
     minLeafItems = Tree.minLeafItems
     maxLeafItems = Tree.maxLeafItems
 
+--------------------------------------------------------------------------------
+
+-- ** Trees
+
+instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Tree.Tree k v) where
+  arbitrary = Tree.fromList <$> arbitrary
+  shrink    = map Tree.fromList . shrink . Tree.toList
+
 prop_foldable :: [(Int64, Int)] -> Bool
 prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
   where xs' = nubByFstEq . map (\x -> (fst x, Sum $ snd x)) $ xs
 
-prop_toList_fromList :: [(Int64, Int)] -> Bool
-prop_toList_fromList xs = F.toList (Tree.fromList xs') == F.toList (M.fromList xs')
-  where xs' = nubByFstEq xs
+prop_validTree_fromList :: [(Int64, Int)] -> Bool
+prop_validTree_fromList xs = Tree.validTree (Tree.fromList xs)
 
-prop_insertRecMany :: [(Int64, Int)] -> Int -> Bool
-prop_insertRecMany xs i
-    | isValid   <- Tree.validTree fromListSimul
-    , equiv     <- F.toList fromListSeparately == F.toList fromListSimul
+prop_foldableToList_fromList :: [(Int64, Int)] -> Bool
+prop_foldableToList_fromList xs =
+    F.toList (Tree.fromList xs) ==
+    F.toList (M.fromList xs)
+
+prop_toList_fromList :: [(Int64, Int)] -> Bool
+prop_toList_fromList xs =
+    Tree.toList (Tree.fromList xs) ==
+    M.toList    (M.fromList xs)
+
+prop_insertMany :: [(Int64, Int)] -> [(Int64, Int)] -> Bool
+prop_insertMany xs ys
+    | isValid   <- Tree.validTree txy
+    , equiv     <- Tree.toList txy == M.toList mxy
     = isValid && equiv
   where
-    foldrInsert = foldr (uncurry Tree.insert)
+    mx  = M.fromList xs
+    my  = M.fromList ys
+    mxy = M.union mx my
+    ty  = Tree.fromList ys
+    txy = Tree.insertMany mx ty
 
-    fromListSeparately = foldrInsert (foldrInsert Tree.empty a) b
-    fromListSimul      = Tree.insertMany (M.fromList b) $ foldrInsert Tree.empty a
-
-    xs' = nubByFstEq xs
-    (a, b) | null xs'  = ([], [])
-           | otherwise = splitAt (i `mod` length xs') xs'
+prop_insert_insertMany :: Int64 -> Int -> Tree.Tree Int64 Int -> Bool
+prop_insert_insertMany k v t =
+    Tree.toList (Tree.insertMany (M.singleton k v) t) ==
+    Tree.toList (Tree.insert k v t)
 
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
-nubByFstEq = nubBy (\x y -> fst x == fst y)
+nubByFstEq = nubBy ((==) `on` fst)
 
 tests :: [Test]
 tests =
     [ testGroup "Index"
-        [ testProperty "valid arbitrary" prop_valid_arbitrary
-        , testProperty "valid singletonIndex" prop_valid_singletonIndex
+        [ testProperty "validIndex arbitrary" prop_validIndex_arbitrary
+        , testProperty "validIndex singletonIndex" prop_validIndex_singletonIndex
         , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
         , testProperty "fromSingletonIndex singletonIndex"
             prop_fromSingletonIndex_singletonIndex
@@ -141,8 +167,11 @@ tests =
         ]
     , testGroup "Tree"
         [ testProperty "foldable" prop_foldable
+        , testProperty "validTree fromList" prop_validTree_fromList
+        , testProperty "foldableToList fromList" prop_foldableToList_fromList
         , testProperty "toList fromList" prop_toList_fromList
-        , testProperty "insertRecMany" prop_insertRecMany
+        , testProperty "insertMany" prop_insertMany
+        , testProperty "insert insertMany" prop_insert_insertMany
         ]
     ]
 

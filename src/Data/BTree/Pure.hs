@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Data.BTree.Pure where
 
@@ -13,6 +14,7 @@ import           Data.BTree.TwoThree
 
 import qualified Data.Foldable as F
 import           Data.Int
+import qualified Data.List as L
 import           Data.Map (Map)
 import           Data.Maybe (isJust, isNothing, fromMaybe)
 import           Data.Monoid
@@ -35,10 +37,14 @@ data Node (height :: Nat) key val where
     Leaf :: { leafItems     :: Map key val
             } -> Node 'Z key val
 
+{-| A pure B+-tree.
+
+    This is a simple wrapper around a root 'Node'. An empty tree is represented
+    by 'Nothing'. Otherwise it's 'Just' the root. The height is existentially
+    quantified.
+-}
 data Tree key val where
-    Tree :: -- An empty tree is represented by 'Nothing'. Otherwise it's 'Just'
-            -- the root of the tree. The height is existentially quantified.
-            Maybe (Node height key val)
+    Tree :: Maybe (Node height key val)
          -> Tree key val
 
 
@@ -79,8 +85,8 @@ checkSplitLeaf :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeaf items
     | M.size items <= maxLeafItems
     = indexFromList [] [Leaf items]
-    | (leftLeaf, middleKey, rightLeaf) <- splitLeaf items
-    = indexFromList [middleKey] [Leaf leftLeaf, Leaf rightLeaf]
+    | (leftItems, middleKey, rightItems) <- splitLeaf items
+    = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
 
 checkSplitIdxMany :: Key key
                   => Index key (Node height key val)
@@ -152,7 +158,7 @@ insertRecMany kvs (Idx idx)
     = checkSplitIdxMany (dist `bindIndex` uncurry insertRecMany)
 
 insertRecMany kvs (Leaf items)
-    = checkSplitLeafMany (M.union items kvs)
+    = checkSplitLeafMany (M.union kvs items)
 
 {-| Insert a bunch of key-value pairs simultaneously. -}
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v
@@ -191,8 +197,29 @@ fixUp (Tree (Just (Idx idx)))
         Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
 
 
+{-| /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
+
+    If the list contains duplicate keys, the last pair for a duplicate key is
+    kept.
+-}
 fromList :: Key k => [(k,v)] -> Tree k v
-fromList = foldr (uncurry insert) empty
+fromList = L.foldl' (flip $ uncurry insert) empty
+
+{-| /O(n)/. Fold key\/value pairs in the B-tree.
+-}
+foldrWithKey :: forall k v w. (k -> v -> w -> w) -> w -> Tree k v -> w
+foldrWithKey f z0 (Tree mbRoot) = case mbRoot of
+    Nothing   -> z0
+    Just root -> go z0 root
+  where
+    go :: w -> Node h k v -> w
+    go z1 (Leaf items) = M.foldrWithKey f z1 items
+    go z1 (Idx index)  = F.foldr (flip go) z1 index
+
+{-| /O(n)/. Convert the B-tree to a sorted list of key\/value pairs.
+-}
+toList :: Tree k v -> [(k,v)]
+toList = foldrWithKey (\k v kvs -> (k,v):kvs) []
 
 --------------------------------------------------------------------------------
 

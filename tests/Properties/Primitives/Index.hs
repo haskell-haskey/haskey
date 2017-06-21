@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-module Properties.Primitives.Index where
+module Properties.Primitives.Index (tests) where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
@@ -33,7 +33,7 @@ instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
       ]
 
 tests :: Test
-tests = testGroup "Index"
+tests = testGroup "Primitives.Index"
     [ testProperty "validIndex arbitrary" prop_validIndex_arbitrary
     , testProperty "validIndex singletonIndex" prop_validIndex_singletonIndex
     , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex

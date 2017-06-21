@@ -1,4 +1,4 @@
-module Properties.Primitives.Leaf where
+module Properties.Primitives.Leaf (tests) where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
@@ -11,7 +11,7 @@ import Data.List.Ordered (isSortedBy)
 import qualified Data.Map as M
 
 tests :: Test
-tests = testGroup "Leaf"
+tests = testGroup "Primitives.Leaf"
     [ testProperty "splitLeafMany" prop_splitLeafMany
     ]
 

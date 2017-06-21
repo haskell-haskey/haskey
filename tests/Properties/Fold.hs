@@ -1,4 +1,4 @@
-module Properties.Fold where
+module Properties.Fold (tests) where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)

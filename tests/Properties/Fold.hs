@@ -9,7 +9,6 @@ import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Value
 import Data.BTree.Store.Debug
 import qualified Data.BTree.Fold as Tree
-import qualified Data.BTree.Primitives as Tree
 
 import Control.Monad ((>=>))
 import Control.Monad.Identity

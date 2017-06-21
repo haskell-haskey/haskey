@@ -21,6 +21,7 @@ library
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
     Data.BTree.Delete
+    Data.BTree.Fold
     Data.BTree.Insert
     Data.BTree.Lookup
     Data.BTree.Primitives

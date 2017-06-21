@@ -26,7 +26,7 @@ minFanout :: Int
 minFanout = 2
 
 maxFanout :: Int
-maxFanout = 2*minFanout
+maxFanout = 2*minFanout-1
 
 minIdxKeys :: Int
 minIdxKeys = minFanout - 1
@@ -35,10 +35,10 @@ maxIdxKeys :: Int
 maxIdxKeys = maxFanout - 1
 
 minLeafItems :: Int
-minLeafItems = maxFanout
+minLeafItems = minFanout
 
 maxLeafItems :: Int
-maxLeafItems = 2*maxFanout-1
+maxLeafItems = 2*minFanout-1
 
 --------------------------------------------------------------------------------
 
@@ -68,6 +68,20 @@ deriving instance (Show key, Show val) => Show (Tree key val)
 empty :: Tree key val
 empty = Tree Nothing
 
+{-| Check whether a given tree is valid. -}
+validTree :: Ord key => Tree key val -> Bool
+validTree (Tree Nothing) = True
+validTree (Tree (Just (Leaf items))) = M.size items <= maxLeafItems
+validTree (Tree (Just (Idx idx))) =
+    validIndexSize 1 maxIdxKeys idx && F.all validNode idx
+
+{-| Check whether a (non-root) node is valid. -}
+validNode :: Ord key => Node height key val -> Bool
+validNode (Leaf items) =
+    M.size items >= minLeafItems && M.size items <= maxLeafItems
+validNode (Idx idx) =
+    validIndexSize minIdxKeys maxIdxKeys idx && F.all validNode idx
+
 --------------------------------------------------------------------------------
 
 checkSplitIdx :: Key key =>
@@ -87,6 +101,22 @@ checkSplitLeaf items
     = indexFromList [] [Leaf items]
     | (leftLeaf, middleKey, rightLeaf) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftLeaf, Leaf rightLeaf]
+
+checkSplitIdxMany :: Key key
+                  => Index key (Node height key val)
+                  -> Index key (Node ('S height) key val)
+checkSplitIdxMany idx
+    | V.length (indexKeys idx) <= maxIdxKeys
+    = indexFromList [] [Idx idx]
+    | (keys, idxs) <- splitIndexMany maxIdxKeys idx
+    = indexFromList keys (map Idx idxs)
+
+checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
+checkSplitLeafMany items
+    | M.size items <= maxLeafItems
+    = indexFromList [] [Leaf items]
+    | (keys, leafs) <- splitLeafMany maxLeafItems items
+    = indexFromList keys (map Leaf leafs)
 
 --------------------------------------------------------------------------------
 
@@ -131,6 +161,55 @@ insert k d (Tree (Just rootNode))
 insert k d (Tree Nothing)
     = -- Inserting into an empty tree creates a new singleton tree.
       Tree (Just (Leaf (M.singleton k d)))
+
+insertRecMany ::
+       Key key
+    => Map key val
+    -> Node height key val
+    -> Index key (Node height key val)
+insertRecMany kvs (Idx idx)
+    | dist            <- distribute kvs idx
+    = checkSplitIdxMany (dist `bindIndex` uncurry insertRecMany)
+
+insertRecMany kvs (Leaf items)
+    = checkSplitLeafMany (M.union items kvs)
+
+{-| Insert a bunch of key-value pairs simultaneously. -}
+insertMany :: Key k => Map k v -> Tree k v -> Tree k v
+insertMany kvs (Tree (Just rootNode))
+    | newRootIdx <- insertRecMany kvs rootNode
+    = case fromSingletonIndex newRootIdx of
+          Just newRootNode ->
+              -- The result from the recursive insert is a single node. Use
+              -- this as a new root.
+              fixUp $ Tree (Just newRootNode)
+          Nothing          ->
+              -- The insert resulted in a index with multiple nodes, i.e.
+              -- the splitting propagated to the root. Create a new 'Idx'
+              -- node with the index. This increments the height.
+              fixUp $ Tree (Just (Idx newRootIdx))
+insertMany kvs (Tree Nothing)
+    = fixUp $ Tree (Just (Leaf kvs))
+
+{-| Fix up the root node of a tree.
+
+    Fix up the root node of a tree, where all other nodes are valid, but the
+    root node may contain more items than allowed. Do this by repeatedly
+    splitting up the root node.
+-}
+fixUp :: Key k => Tree k v -> Tree k v
+fixUp (Tree Nothing) = Tree Nothing
+fixUp (Tree (Just (Leaf items)))
+    | newRootIdx <- checkSplitLeafMany items
+    = case fromSingletonIndex newRootIdx of
+        Just newRootNode -> Tree (Just newRootNode)
+        Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
+fixUp (Tree (Just (Idx idx)))
+    | newRootIdx <- checkSplitIdxMany idx
+    = case fromSingletonIndex newRootIdx of
+        Just newRootNode -> Tree (Just newRootNode)
+        Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
+
 
 fromList :: Key k => [(k,v)] -> Tree k v
 fromList = foldr (uncurry insert) empty

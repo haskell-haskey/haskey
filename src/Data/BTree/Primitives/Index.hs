@@ -7,6 +7,7 @@ module Data.BTree.Primitives.Index where
 import           Data.BTree.Internal
 
 import           Data.Foldable (Foldable)
+import qualified Data.Map as M
 import           Data.Traversable (Traversable)
 import           Data.Monoid
 import           Data.Vector (Vector)
@@ -28,14 +29,16 @@ data Index key node = Index
     }
   deriving (Eq, Functor, Foldable, Show, Traversable)
 
-{-| Validate an index.
-
-    Checks the invariants on 'Index'.
--}
+{-| Validate the key/node count invariant of an index.  -}
 validIndex :: Ord key => Index key node -> Bool
 validIndex (Index keys nodes) =
     V.length keys + 1 == V.length nodes &&
     isStrictlyIncreasing keys
+
+{-| Validate the size of an index. -}
+validIndexSize :: Ord key => Int -> Int -> Index key node -> Bool
+validIndexSize minIdxKeys maxIdxKeys idx@(Index keys _) =
+    validIndex idx && V.length keys >= minIdxKeys && V.length keys <= maxIdxKeys
 
 {-| Split an index node.
 
@@ -64,6 +67,34 @@ splitIndex Index { indexKeys = keys, indexNodes = nodes }
       )
     | otherwise
     = error "splitIndex: empty Index"
+
+{-| Split an index node many times.
+
+    This function splits an index node into a list of valid nodes, such that
+    each returned node has less than maxIdxKeys nodes (but more than minIdxKeys).
+
+    This function raises an exception when the index should not be split, i.e.
+    when the the amount of keys in the index <= maxIdxKeys.
+-}
+splitIndexMany :: Int -> Index key node -> ([key], [Index key node])
+splitIndexMany maxIdxKeys idx = split' idx ([], [])
+  where
+    split' ::  Index key node -> ([key], [Index key node]) -> ([key], [Index key node])
+    split' Index {indexKeys = keysToSplit, indexNodes = nodesToSplit } (keys, children)
+        | V.length nodesToSplit > 2*maxIdxItems
+        , (leftKeys, middleAndRightKeys) <- V.splitAt maxIdxKeys keysToSplit
+        , Just (middleKey, rightKeys)    <- vecUncons middleAndRightKeys
+        , (leftNodes, rightNodes)        <- V.splitAt maxIdxItems nodesToSplit
+        = split' (Index rightKeys rightNodes)
+                 (middleKey:keys, Index leftKeys leftNodes : children)
+        | V.length nodesToSplit > maxIdxItems
+        , (left, key, right) <- splitIndex $ Index keysToSplit nodesToSplit
+        = (reverse (key:keys), reverse $ right:(left:children))
+        | otherwise
+        = error $ "splitIndexMany: constraint violation, got index with " ++
+                  " length indexNodes <= maxIdxItems"
+
+    maxIdxItems = maxIdxKeys + 1
 
 {-| Merge two indices.
 
@@ -111,15 +142,12 @@ fromSingletonIndex idx
 
 --------------------------------------------------------------------------------
 
--- Unused 'Monad' instance.
--- instance Applicative (Index key) where
---     pure  = return
---     (<*>) = ap
--- instance Monad (Index key) where
---     return            = singletonIndex
---     Index ks is >>= f
---       | Just (i,itail) <- vecUncons (V.map f is)
---       = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
+{-| Bind an index -}
+bindIndex :: Index k a -> (a -> Index k b) -> Index k b
+bindIndex (Index ks is) f
+    | Just (i, itail) <- vecUncons (V.map f is)
+    = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
+    | otherwise = Index ks V.empty
 
 --------------------------------------------------------------------------------
 
@@ -173,6 +201,22 @@ valView key Index { indexKeys = keys, indexNodes = vals }
       )
     | otherwise
     = error "valView: empty Index"
+
+{-| Distribute a map of key-value pairs over an index. -}
+distribute :: Ord k => M.Map k v -> Index k node -> Index k (M.Map k v, node)
+distribute kvs Index { indexKeys = keys, indexNodes = nodes }
+    | a <- V.imap rangeTail          (Nothing `V.cons` V.map Just keys)
+    , b <- V.map (uncurry rangeHead) (V.zip (V.map Just keys `V.snoc` Nothing) a)
+    = Index { indexKeys = keys
+            , indexNodes = b }
+  where
+    rangeTail idx Nothing    = (kvs, nodes V.! idx)
+    rangeTail idx (Just key) = (takeWhile' (>= key) kvs, nodes V.! idx)
+    rangeHead Nothing (tail', node)    = (tail', node)
+    rangeHead (Just key) (tail', node)  = (takeWhile' (< key) tail', node)
+
+    takeWhile' :: (k -> Bool) -> M.Map k v -> M.Map k v
+    takeWhile' p = fst . M.partitionWithKey (\k _ -> p k)
 
 leftView :: IndexCtx key val -> Maybe (IndexCtx key val, val, key)
 leftView ctx = do

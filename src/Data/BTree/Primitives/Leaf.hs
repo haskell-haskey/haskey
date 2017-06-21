@@ -26,4 +26,31 @@ splitLeaf items
     = error "splitLeaf: constraint violation, got a Map with with less than \
             \two elements"
 
+{-| Split a leaf many times.
+
+    This function ensures that the for each returned leaf, the amount of
+    items <= maxLeafItems (and >= minLeafItems, except when the original
+    leaf had less than minLeafItems items.
+-}
+splitLeafMany :: Key key => Int -> Map key val -> ([key], [Map key val])
+splitLeafMany maxLeafItems m'
+    | M.size m' > maxLeafItems = split' m' ([], [])
+    | otherwise = ([], [m'])
+  where
+    split' :: Key key => Map key val -> ([key], [Map key val]) -> ([key], [Map key val])
+    split' m (keys, leafs)
+        | M.size m > 2*maxLeafItems
+        , (leaf, rem') <- mapSplitAt maxLeafItems m
+        , (key, _)    <- M.findMin rem'
+        = split' rem' (key:keys, leaf:leafs)
+        | M.size m > maxLeafItems
+        , numLeft       <- div (M.size m) 2
+        , (left, right) <- mapSplitAt numLeft m
+        , (key, _)      <- M.findMin right
+        = split' M.empty (key:keys, right:(left:leafs))
+        | M.null m
+        = (reverse keys, reverse leafs)
+        | otherwise
+        = error "splitLeafMany: constraint violation, got a Map with <= maxLeafItems"
+
 --------------------------------------------------------------------------------

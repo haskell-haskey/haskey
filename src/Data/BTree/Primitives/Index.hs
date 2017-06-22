@@ -6,6 +6,7 @@ module Data.BTree.Primitives.Index where
 
 import           Data.BTree.Internal
 
+import           Control.Applicative ((<$>))
 import           Control.Monad.Identity (runIdentity)
 
 import           Data.Foldable (Foldable)

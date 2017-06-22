@@ -11,7 +11,6 @@ import Data.BTree.Store.Debug
 import qualified Data.BTree.Fold as Tree
 
 import Control.Monad ((>=>))
-import Control.Monad.Identity
 
 import Data.Int
 import qualified Data.Foldable as F
@@ -24,16 +23,11 @@ tests = testGroup "Fold"
 
 prop_foldable_toList_fromList :: [(Int64, Integer)] -> Bool
 prop_foldable_toList_fromList kvs
-    | Just l <- runInMemory (createAppendDb "Main"
-                             >>= insertAll kvs
-                             >>= readTransact Tree.toList)
+    | Just l <- evalStore (createAppendDb "Main"
+                           >>= insertAll kvs
+                           >>= readTransact Tree.toList)
     = l == F.toList (M.fromList kvs)
     | otherwise = False
-
-runInMemory :: StoreT String Identity a -> Maybe a
-runInMemory = fst . runIdentity . flip runStoreT initialStore
-  where
-    initialStore = M.fromList [ ("Main", M.empty) ]
 
 insertAll :: (AppendMetaStoreM hnd m, Key key, Value val)
          => [(key, val)]

@@ -13,6 +13,7 @@ import Data.BTree.Store.Class
 
 import Control.Applicative              (Applicative(..), (<$>))
 import Control.Monad
+import Control.Monad.Identity
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT
@@ -53,6 +54,13 @@ evalStoreT = evalStateT . runMaybeT . fromStoreT
 
 execStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Files fp)
 execStoreT = execStateT . runMaybeT . fromStoreT
+
+runStore :: StoreT String Identity a -> (Maybe a, Files String)
+runStore = runIdentity . flip runStoreT initialStore
+  where initialStore = M.fromList [("Main", M.empty)]
+
+evalStore :: StoreT String Identity a -> Maybe a
+evalStore = fst . runStore
 
 nodeIdToPageId :: NodeId height key val -> PageId
 nodeIdToPageId (NodeId n) = PageId n

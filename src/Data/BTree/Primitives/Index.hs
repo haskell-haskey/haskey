@@ -149,10 +149,11 @@ fromSingletonIndex idx
 bindIndex :: Index k a -> (a -> Index k b) -> Index k b
 bindIndex idx f = runIdentity $ bindIndexM idx (return . f)
 
-bindIndexM :: Monad m => Index k a -> (a -> m (Index k b)) -> m (Index k b)
-bindIndexM (Index ks is) f = do
-    Just (i, itail) <- vecUncons <$> V.mapM f is
-    return $ V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
+bindIndexM :: (Functor m, Monad m) => Index k a -> (a -> m (Index k b)) -> m (Index k b)
+bindIndexM (Index ks is) f = (merge' . vecUncons) <$> V.mapM f is
+ where
+    merge' Nothing = Index ks V.empty
+    merge' (Just (i, itail)) = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
 
 --------------------------------------------------------------------------------
 

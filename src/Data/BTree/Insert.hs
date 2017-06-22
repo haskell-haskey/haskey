@@ -95,7 +95,7 @@ insertRecMany kvs h nid = do
             idx' <- dist `bindIndexM` uncurry (`insertRecMany` decrHeight h)
             traverse (allocNode h) (checkSplitIdxMany idx')
         Leaf items ->
-            traverse (allocNode h) (checkSplitLeafMany items)
+            traverse (allocNode h) (checkSplitLeafMany (M.union kvs items))
 
 
 --------------------------------------------------------------------------------
@@ -152,7 +152,7 @@ insertTreeMany kvs tree
         newRootIdx <- insertRecMany kvs height rootId
         case fromSingletonIndex newRootIdx of
             Just newRootId ->
-                return $! Tree
+                fixUp $! Tree
                     { treeHeight = height
                     , treeRootId = Just newRootId
                     }
@@ -160,15 +160,60 @@ insertTreeMany kvs tree
                 let newHeight = incrHeight height
                 newRootId <- allocNode newHeight Idx
                     { idxChildren = newRootIdx }
-                return $! Tree
+                fixUp $! Tree
                     { treeHeight = newHeight
                     , treeRootId = Just newRootId
                     }
     | Tree { treeRootId = Nothing } <- tree
     = do
         newRootId <- allocNode zeroHeight Leaf { leafItems = kvs }
-        return $! Tree
+        fixUp $! Tree
             { treeHeight = zeroHeight
             , treeRootId = Just newRootId
             }
+
+{-| Fix up the root node of a tree.
+
+    Fix up the root node of a tree, where all other nodes are valid, but the
+    root node may contain more items than allowed. Do this by repeatedly
+    splitting up the root node.
+-}
+fixUp :: (AllocM m, Key k, Value v) => Tree k v -> m (Tree k v)
+fixUp (Tree h Nothing) = return $ Tree h Nothing
+fixUp (Tree h (Just nid)) = do
+    n <- readNode h nid
+    freeNode h nid
+    case n of
+        Idx idx -> do
+            let newRootIdx = checkSplitIdxMany idx
+            case fromSingletonIndex newRootIdx of
+                Just newRootNode -> do
+                    newRootNid <- allocNode h newRootNode
+                    return $! Tree { treeHeight = h
+                                   , treeRootId = Just newRootNid }
+                Nothing -> do
+                    let newHeight = incrHeight h
+                    childrenNids <- traverse (allocNode h) newRootIdx
+                    newRootNid <-
+                        allocNode newHeight Idx { idxChildren = childrenNids }
+
+                    fixUp $! Tree { treeHeight = newHeight
+                                   , treeRootId = Just newRootNid }
+
+        Leaf items -> do
+            let newRootIdx = checkSplitLeafMany items
+            case fromSingletonIndex newRootIdx of
+                Just newRootNode -> do
+                    newRootNid <- allocNode h newRootNode
+                    return $! Tree { treeHeight = h
+                                   , treeRootId = Just newRootNid }
+                Nothing -> do
+                    let newHeight = incrHeight h
+                    childrenNids <- traverse (allocNode h) newRootIdx
+                    newRootNid <-
+                        allocNode newHeight Idx { idxChildren = childrenNids }
+
+                    fixUp $! Tree { treeHeight = newHeight
+                                   , treeRootId = Just newRootNid }
+
 --------------------------------------------------------------------------------

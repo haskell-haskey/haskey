@@ -326,8 +326,8 @@ instance F.Foldable (Tree key) where
     foldMap f (Tree (Just n)) = F.foldMap f n
 
 instance F.Foldable (Node height key) where
-    foldMap f (Idx Index { indexNodes = nodes }) =
-        F.foldMap (F.foldMap f) nodes
+    foldMap f (Idx idx) =
+        F.foldMap (F.foldMap f) idx
 
     foldMap f (Leaf items) = F.foldMap f items
 

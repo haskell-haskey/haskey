@@ -95,6 +95,19 @@ createAppendDb hnd = do
 
 --------------------------------------------------------------------------------
 
+readTransact :: (AppendMetaStoreM hnd m, Key key, Value val)
+             => (forall n. AllocM n => Tree key val -> n a)
+             -> AppendDb hnd key val -> m a
+readTransact act db
+    | AppendDb
+      { appendDbMeta   = meta
+      , appendDbHandle = hnd
+      } <- db
+    , AppendMeta
+      { appendMetaTree = tree
+      } <- meta
+    = runAppendT (act tree) hnd
+
 transact :: (AppendMetaStoreM hnd m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Tree key val))
          -> AppendDb hnd key val -> m (AppendDb hnd key val)

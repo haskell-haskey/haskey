@@ -21,6 +21,7 @@ library
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
     Data.BTree.Delete
+    Data.BTree.Fold
     Data.BTree.Insert
     Data.BTree.Lookup
     Data.BTree.Primitives
@@ -65,6 +66,11 @@ library
 test-suite haskey-properties
   main-is:             Properties.hs
   type:                exitcode-stdio-1.0
+  other-modules:
+    Properties.Fold
+    Properties.Primitives.Index
+    Properties.Primitives.Leaf
+    Properties.Pure
 
   build-depends:
     base          >=4.7  && <5,

@@ -88,6 +88,7 @@ insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
     -> m (Index key (NodeId height key val))
 insertRecMany kvs h nid = do
     n <- readNode h nid
+    freeNode h nid
     case n of
         Idx idx -> do
             let dist = distribute kvs idx

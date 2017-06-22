@@ -6,30 +6,31 @@ import Prelude hiding (foldr, foldl)
 import Data.BTree.Alloc.Class
 import Data.BTree.Primitives
 
-import Control.Applicative ((<$>))
-import Control.Monad (liftM2)
-
 import Data.Monoid (Monoid, (<>), mempty)
 
 import qualified Data.Foldable as F
-import qualified Data.Map as M
 
 --------------------------------------------------------------------------------
 
 {-| Perform a right-associative fold over the tree. -}
 foldr :: (AllocM m, Key k, Value a)
       => (a -> b -> b) -> b -> Tree k a -> m b
-foldr _ x (Tree _ Nothing) = return x
-foldr f x (Tree h (Just nid)) = foldrId (liftM2 f) (return x) h nid
+foldr f = foldrM (\a b -> return (f a b))
 
-foldrId :: (AllocM m, Key k, Value a)
-        => (m a -> m b -> m b) -> m b -> Height h -> NodeId h k a -> m b
-foldrId f x h nid = readNode h nid >>= foldrNode f x h
+{-| Perform a monadic right-associative fold over the tree. -}
+foldrM :: (AllocM m, Key k, Value a)
+       => (a -> b -> m b) -> b -> Tree k a -> m b
+foldrM _ x (Tree _ Nothing) = return x
+foldrM f x (Tree h (Just nid)) = foldrIdM f x h nid
 
-foldrNode :: (AllocM m, Key k, Value a)
-          => (m a -> m b -> m b) -> m b -> Height h -> Node h k a -> m b
-foldrNode f x _ (Leaf items) = M.foldr f x (return <$> items)
-foldrNode f x h (Idx idx) = F.foldr (\nid x' -> foldrId f x' (decrHeight h) nid) x idx
+foldrIdM :: (AllocM m, Key k, Value a)
+         => (a -> b -> m b) -> b -> Height h -> NodeId h k a -> m b
+foldrIdM f x h nid = readNode h nid >>= foldrNodeM f x h
+
+foldrNodeM :: (AllocM m, Key k, Value a)
+           => (a -> b -> m b) -> b -> Height h -> Node h k a -> m b
+foldrNodeM f x _ (Leaf items) = F.foldrM f x items
+foldrNodeM f x h (Idx idx) = F.foldrM (\nid x' -> foldrIdM f x' (decrHeight h) nid) x idx
 
 --------------------------------------------------------------------------------
 

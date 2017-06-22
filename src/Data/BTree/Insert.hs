@@ -82,17 +82,17 @@ insertRec k v = fetch
         traverse (allocNode hgt) (checkSplitLeaf (M.insert k v items))
 
 insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
-    => Map key val
-    -> Height height
+    => Height height
+    -> Map key val
     -> NodeId height key val
     -> m (Index key (NodeId height key val))
-insertRecMany kvs h nid = do
+insertRecMany h kvs nid = do
     n <- readNode h nid
     freeNode h nid
     case n of
         Idx idx -> do
             let dist = distribute kvs idx
-            idx' <- dist `bindIndexM` uncurry (`insertRecMany` decrHeight h)
+            idx' <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
             traverse (allocNode h) (checkSplitIdxMany idx')
         Leaf items ->
             traverse (allocNode h) (checkSplitLeafMany (M.union kvs items))
@@ -149,7 +149,7 @@ insertTreeMany kvs tree
       , treeRootId = Just rootId
       } <- tree
     = do
-        newRootIdx <- insertRecMany kvs height rootId
+        newRootIdx <- insertRecMany height kvs rootId
         fixUp height newRootIdx
     | Tree { treeRootId = Nothing } <- tree
     = do

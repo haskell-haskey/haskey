@@ -68,6 +68,7 @@ test-suite haskey-properties
   type:                exitcode-stdio-1.0
   other-modules:
     Properties.Fold
+    Properties.Insert
     Properties.Primitives.Index
     Properties.Primitives.Leaf
     Properties.Pure

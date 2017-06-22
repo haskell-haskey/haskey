@@ -6,6 +6,9 @@ module Data.BTree.Primitives.Index where
 
 import           Data.BTree.Internal
 
+import           Control.Applicative ((<$>))
+import           Control.Monad.Identity (runIdentity)
+
 import           Data.Foldable (Foldable)
 import qualified Data.Map as M
 import           Data.Traversable (Traversable)
@@ -144,10 +147,13 @@ fromSingletonIndex idx
 
 {-| Bind an index -}
 bindIndex :: Index k a -> (a -> Index k b) -> Index k b
-bindIndex (Index ks is) f
-    | Just (i, itail) <- vecUncons (V.map f is)
-    = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
-    | otherwise = Index ks V.empty
+bindIndex idx f = runIdentity $ bindIndexM idx (return . f)
+
+bindIndexM :: (Functor m, Monad m) => Index k a -> (a -> m (Index k b)) -> m (Index k b)
+bindIndexM (Index ks is) f = (merge' . vecUncons) <$> V.mapM f is
+ where
+    merge' Nothing = Index ks V.empty
+    merge' (Just (i, itail)) = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
 
 --------------------------------------------------------------------------------
 

@@ -163,19 +163,9 @@ insertRecMany kvs (Leaf items)
 {-| Insert a bunch of key-value pairs simultaneously. -}
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v
 insertMany kvs (Tree (Just rootNode))
-    | newRootIdx <- insertRecMany kvs rootNode
-    = case fromSingletonIndex newRootIdx of
-          Just newRootNode ->
-              -- The result from the recursive insert is a single node. Use
-              -- this as a new root.
-              fixUp $ Tree (Just newRootNode)
-          Nothing          ->
-              -- The insert resulted in a index with multiple nodes, i.e.
-              -- the splitting propagated to the root. Create a new 'Idx'
-              -- node with the index. This increments the height.
-              fixUp $ Tree (Just (Idx newRootIdx))
+    = fixUp $ insertRecMany kvs rootNode
 insertMany kvs (Tree Nothing)
-    = fixUp $ Tree (Just (Leaf kvs))
+    = fixUp $ checkSplitLeafMany kvs
 
 {-| Fix up the root node of a tree.
 
@@ -183,19 +173,10 @@ insertMany kvs (Tree Nothing)
     root node may contain more items than allowed. Do this by repeatedly
     splitting up the root node.
 -}
-fixUp :: Key k => Tree k v -> Tree k v
-fixUp (Tree Nothing) = Tree Nothing
-fixUp (Tree (Just (Leaf items)))
-    | newRootIdx <- checkSplitLeafMany items
-    = case fromSingletonIndex newRootIdx of
-        Just newRootNode -> Tree (Just newRootNode)
-        Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
-fixUp (Tree (Just (Idx idx)))
-    | newRootIdx <- checkSplitIdxMany idx
-    = case fromSingletonIndex newRootIdx of
-        Just newRootNode -> Tree (Just newRootNode)
-        Nothing          -> fixUp $ Tree (Just (Idx newRootIdx))
-
+fixUp :: Key key => Index key (Node height key val) -> Tree key val
+fixUp idx = case fromSingletonIndex idx of
+    Just newRootNode -> Tree (Just newRootNode)
+    Nothing          -> fixUp (checkSplitIdxMany idx)
 
 {-| /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
 

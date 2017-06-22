@@ -59,10 +59,10 @@ prop_insertMany xs ys
     ty = Tree.fromList ys
     txy = Tree.insertMany mx ty
 
-prop_insert_insertMany :: Int64 -> Int -> Tree.Tree Int64 Int -> Bool
-prop_insert_insertMany k v t =
-    Tree.toList (Tree.insertMany (M.singleton k v) t) ==
-    Tree.toList (Tree.insert k v t)
+prop_insert_insertMany :: M.Map Int64 Int -> Tree.Tree Int64 Int -> Bool
+prop_insert_insertMany kvs t =
+    Tree.toList (Tree.insertMany kvs t) ==
+    Tree.toList (foldl (flip (uncurry Tree.insert)) t (M.toList kvs))
 
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
 nubByFstEq = nubBy ((==) `on` fst)

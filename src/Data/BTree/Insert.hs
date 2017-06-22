@@ -35,6 +35,24 @@ checkSplitLeaf items
     | (leftItems, middleKey, rightItems) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
 
+checkSplitIdxMany :: Key key
+                  => Index key (NodeId height key val)
+                  -> Index key (Node ('S height) key val)
+checkSplitIdxMany idx
+    | V.length (indexKeys idx) <= maxIdxKeys
+    = indexFromList [] [Idx idx]
+    | (keys, idxs) <- splitIndexMany maxIdxKeys idx
+    = indexFromList keys (map Idx idxs)
+
+checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
+checkSplitLeafMany items
+    | M.size items <= maxLeafItems
+    = indexFromList [] [Leaf items]
+    | (keys, leafs) <- splitLeafMany maxLeafItems items
+    = indexFromList keys (map Leaf leafs)
+
+--------------------------------------------------------------------------------
+
 insertRec :: forall m height key val. (AllocM m, Key key, Value val)
     => key
     -> val
@@ -62,6 +80,22 @@ insertRec k v = fetch
         traverse (allocNode hgt) (checkSplitIdx (putIdx ctx newChildIdx))
     recurse hgt (Leaf items) =
         traverse (allocNode hgt) (checkSplitLeaf (M.insert k v items))
+
+insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
+    => Map key val
+    -> Height height
+    -> NodeId height key val
+    -> m (Index key (NodeId height key val))
+insertRecMany kvs h nid = do
+    n <- readNode h nid
+    case n of
+        Idx idx -> do
+            let dist = distribute kvs idx
+            idx' <- dist `bindIndexM` uncurry (`insertRecMany` decrHeight h)
+            traverse (allocNode h) (checkSplitIdxMany idx')
+        Leaf items ->
+            traverse (allocNode h) (checkSplitLeafMany items)
+
 
 --------------------------------------------------------------------------------
 
@@ -104,4 +138,36 @@ insertTree key val tree
               , treeRootId = Just newRootId
               }
 
+insertTreeMany :: (AllocM m, Key key, Value val)
+    => Map key val
+    -> Tree key val
+    -> m (Tree key val)
+insertTreeMany kvs tree
+    | Tree
+      { treeHeight = height
+      , treeRootId = Just rootId
+      } <- tree
+    = do
+        newRootIdx <- insertRecMany kvs height rootId
+        case fromSingletonIndex newRootIdx of
+            Just newRootId ->
+                return $! Tree
+                    { treeHeight = height
+                    , treeRootId = Just newRootId
+                    }
+            Nothing -> do
+                let newHeight = incrHeight height
+                newRootId <- allocNode newHeight Idx
+                    { idxChildren = newRootIdx }
+                return $! Tree
+                    { treeHeight = newHeight
+                    , treeRootId = Just newRootId
+                    }
+    | Tree { treeRootId = Nothing } <- tree
+    = do
+        newRootId <- allocNode zeroHeight Leaf { leafItems = kvs }
+        return $! Tree
+            { treeHeight = zeroHeight
+            , treeRootId = Just newRootId
+            }
 --------------------------------------------------------------------------------

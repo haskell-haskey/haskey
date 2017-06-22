@@ -149,6 +149,9 @@ bindIndex (Index ks is) f
     = V.foldl' (uncurry . mergeIndex) i (V.zip ks itail)
     | otherwise = Index ks V.empty
 
+bindIndexM :: Monad m => Index k a -> (a -> m (Index k b)) -> m (Index k b)
+bindIndexM = undefined
+
 --------------------------------------------------------------------------------
 
 {-| Representation of one-hole contexts of 'Index'.

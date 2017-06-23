@@ -50,7 +50,13 @@ data Node height key val where
             } -> Node ('S height) key val
     Leaf :: { leafItems        ::  Map key val
             } -> Node 'Z key val
-    deriving Typeable
+    deriving (Typeable)
+
+instance (Eq key, Eq val) => Eq (Node 'Z key val) where
+    Leaf x == Leaf y = x == y
+
+instance (Eq key, Eq val) => Eq (Node ('S h) key val) where
+    Idx x == Idx y = x == y
 
 data BNode = BIdx | BLeaf deriving Generic
 instance Binary BNode where

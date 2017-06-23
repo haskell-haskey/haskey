@@ -9,11 +9,12 @@ import Test.QuickCheck
 
 import Data.BTree.Primitives.Ids
 
+import Data.Int
 import qualified Data.Binary as B
 
-deriving instance Arbitrary (NodeId height key val)
+deriving instance (Arbitrary key, Arbitrary val) => Arbitrary (NodeId height key val)
 
-prop_binary :: NodeId h k v -> Bool
+prop_binary :: NodeId h Int64 Bool -> Bool
 prop_binary x = B.decode (B.encode x) == x
 
 tests :: Test

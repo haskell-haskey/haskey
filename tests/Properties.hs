@@ -6,6 +6,7 @@ import Test.Framework (Test, defaultMain)
 
 import qualified Properties.Fold
 import qualified Properties.Insert
+import qualified Properties.Primitives
 import qualified Properties.Primitives.Ids
 import qualified Properties.Primitives.Index
 import qualified Properties.Primitives.Leaf
@@ -17,6 +18,7 @@ tests :: [Test]
 tests =
     [ Properties.Fold.tests
     , Properties.Insert.tests
+    , Properties.Primitives.tests
     , Properties.Primitives.Ids.tests
     , Properties.Primitives.Index.tests
     , Properties.Primitives.Leaf.tests

@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCases         #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 
@@ -26,6 +28,9 @@ import Data.Binary (Binary(..))
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep)
+
+import GHC.Generics (Generic)
+
 import Unsafe.Coerce
 
 --------------------------------------------------------------------------------
@@ -47,13 +52,18 @@ data Node height key val where
             } -> Node 'Z key val
     deriving Typeable
 
-data BNodeHeader = BIdx | BLeaf deriving Binary
+data BNode = BIdx | BLeaf deriving Generic
+instance Binary BNode where
 
-instance (Binary key, Binary val) => Binary (Node height key val) where
-    put (Idx idx)    = put BIdx >> put idx
+instance (Binary key, Binary val) => Binary (Node 'Z key val) where
     put (Leaf items) = put BLeaf >> put items
-    get = get >>= \case BIdx  -> Idx <$> get
-                        BLeaf -> Leaf <$> get
+    get = get >>= \case BLeaf -> Leaf <$> get
+                        BIdx  -> fail "expected a leaf node, but found an idx node"
+
+instance (Binary key, Binary val) => Binary (Node ('S height) key val) where
+    put (Idx idx) = put BIdx >> put idx
+    get = get >>= \case BIdx -> Idx <$> get
+                        BLeaf -> fail "expected an idx node, but found a leaf node"
 
 {-| A B+-tree.
 

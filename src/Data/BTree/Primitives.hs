@@ -17,6 +17,8 @@ module Data.BTree.Primitives
   , module Data.BTree.Primitives
   ) where
 
+import Control.Applicative ((<$>))
+
 import Data.BTree.Primitives.Height
 import Data.BTree.Primitives.Ids
 import Data.BTree.Primitives.Index

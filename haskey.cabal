@@ -70,6 +70,7 @@ test-suite haskey-properties
   other-modules:
     Properties.Fold
     Properties.Insert
+    Properties.Primitives.Ids
     Properties.Primitives.Index
     Properties.Primitives.Leaf
     Properties.Pure

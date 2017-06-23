@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCases         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 
@@ -21,6 +22,7 @@ import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf
 import Data.BTree.Primitives.Value
 
+import Data.Binary (Binary(..))
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep)
@@ -44,6 +46,14 @@ data Node height key val where
     Leaf :: { leafItems        ::  Map key val
             } -> Node 'Z key val
     deriving Typeable
+
+data BNodeHeader = BIdx | BLeaf deriving Binary
+
+instance (Binary key, Binary val) => Binary (Node height key val) where
+    put (Idx idx)    = put BIdx >> put idx
+    put (Leaf items) = put BLeaf >> put items
+    get = get >>= \case BIdx  -> Idx <$> get
+                        BLeaf -> Leaf <$> get
 
 {-| A B+-tree.
 

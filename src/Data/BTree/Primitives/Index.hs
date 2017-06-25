@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 
 module Data.BTree.Primitives.Index where
@@ -9,12 +10,16 @@ import           Data.BTree.Internal
 import           Control.Applicative ((<$>))
 import           Control.Monad.Identity (runIdentity)
 
+import           Data.Binary (Binary)
 import           Data.Foldable (Foldable)
 import qualified Data.Map as M
 import           Data.Traversable (Traversable)
 import           Data.Monoid
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
+import           Data.Vector.Binary ()
+
+import GHC.Generics (Generic)
 
 --------------------------------------------------------------------------------
 
@@ -30,7 +35,9 @@ data Index key node = Index
     { indexKeys  :: !(Vector key)
     , indexNodes :: !(Vector node)
     }
-  deriving (Eq, Functor, Foldable, Show, Traversable)
+  deriving (Eq, Functor, Foldable, Generic, Show, Traversable)
+
+instance (Binary k, Binary n) => Binary (Index k n) where
 
 {-| Validate the key/node count invariant of an index.  -}
 validIndex :: Ord key => Index key node -> Bool

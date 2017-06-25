@@ -33,6 +33,7 @@ library
     Data.BTree.Primitives.Value
     Data.BTree.Pure
     Data.BTree.Store.Class
+    Data.BTree.Store.Binary
     Data.BTree.Store.Debug
     Data.BTree.TwoThree
 

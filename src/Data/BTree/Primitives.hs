@@ -121,4 +121,14 @@ castNode height1 height2 n
     | otherwise
     = Nothing
 
+{-| Cast a node to one of the available types. -}
+castNode' :: forall n h k v.
+          (Typeable k, Typeable v)
+    => Height h         -- ^ Term-level witness for the source height
+    -> n h k v          -- ^ Node to cast.
+    -> Either (n 'Z k v) (n ('S h) k v)
+castNode' h n
+    | Just v <- castNode h zeroHeight n = Left v
+    | otherwise                         = Right (unsafeCoerce n)
+
 --------------------------------------------------------------------------------

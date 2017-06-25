@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable        #-}
+{-# LANGUAGE DeriveGeneric             #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE RankNTypes                #-}
@@ -16,7 +17,11 @@ import           Data.BTree.Store.Class
 import           Control.Applicative (Applicative(..), (<$>))
 import           Control.Monad.Reader.Class
 import           Control.Monad.Trans.Reader (ReaderT, runReaderT)
+
+import           Data.Binary (Binary)
 import           Data.Typeable
+
+import           GHC.Generics (Generic)
 
 --------------------------------------------------------------------------------
 
@@ -28,9 +33,11 @@ data AppendMeta k v = AppendMeta
     { appendMetaRevision :: TxId
     , appendMetaTree     :: Tree k v
     , appendMetaPrevious :: PageId
-    } deriving (Typeable)
+    } deriving (Eq, Generic, Typeable)
 
 deriving instance (Show k, Show v) => Show (AppendMeta k v)
+
+instance (Binary k, Binary v) => Binary (AppendMeta k v) where
 
 --------------------------------------------------------------------------------
 

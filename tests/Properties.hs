@@ -4,6 +4,7 @@ module Main (main) where
 
 import Test.Framework (Test, defaultMain)
 
+import qualified Properties.Alloc.Append
 import qualified Properties.Fold
 import qualified Properties.Insert
 import qualified Properties.Primitives
@@ -17,7 +18,8 @@ import qualified Properties.Pure
 
 tests :: [Test]
 tests =
-    [ Properties.Fold.tests
+    [ Properties.Alloc.Append.tests
+    , Properties.Fold.tests
     , Properties.Insert.tests
     , Properties.Primitives.Height.tests
     , Properties.Primitives.Ids.tests

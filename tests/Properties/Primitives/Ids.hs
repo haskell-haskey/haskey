@@ -10,14 +10,26 @@ import Test.QuickCheck
 import Data.BTree.Primitives.Ids
 
 import Data.Int
-import qualified Data.Binary as B
+
+import Properties.Utils (testBinary)
 
 deriving instance (Arbitrary key, Arbitrary val) => Arbitrary (NodeId height key val)
 
-prop_binary :: NodeId h Int64 Bool -> Bool
-prop_binary x = B.decode (B.encode x) == x
+deriving instance Arbitrary PageId
+deriving instance Arbitrary TxId
+
+prop_binary_nodeId :: NodeId h Int64 Bool -> Bool
+prop_binary_nodeId = testBinary
+
+prop_binary_pageId :: PageId -> Bool
+prop_binary_pageId = testBinary
+
+prop_binary_txId :: TxId -> Bool
+prop_binary_txId = testBinary
 
 tests :: Test
 tests = testGroup "Primitives.Ids"
-    [ testProperty "binary" prop_binary
+    [ testProperty "binary nodeId" prop_binary_nodeId
+    , testProperty "binary pageId" prop_binary_pageId
+    , testProperty "binary txId" prop_binary_txId
     ]

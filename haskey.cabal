@@ -71,10 +71,12 @@ test-suite haskey-properties
     Properties.Fold
     Properties.Insert
     Properties.Primitives
+    Properties.Primitives.Height
     Properties.Primitives.Ids
     Properties.Primitives.Index
     Properties.Primitives.Leaf
     Properties.Pure
+    Properties.Utils
 
   build-depends:
     base          >=4.7  && <5,

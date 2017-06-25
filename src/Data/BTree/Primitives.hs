@@ -17,7 +17,7 @@ module Data.BTree.Primitives
   , module Data.BTree.Primitives
   ) where
 
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>))
 
 import Data.BTree.Primitives.Height
 import Data.BTree.Primitives.Ids
@@ -88,6 +88,16 @@ data Tree key val where
 
 deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
+
+instance (Binary key, Binary val) => Binary (Tree key val) where
+    put (Tree height rootId) = put height >> put rootId
+    get = Tree <$> get <*> get
+
+instance (Typeable key, Typeable val, Eq key, Eq val) => Eq (Tree key val) where
+    Tree hx Nothing == Tree hy Nothing = fromHeight hx == fromHeight hy
+    Tree hx (Just rx) == Tree hy (Just ry) =
+        maybe False (== ry) $ castNode hx hy rx
+    Tree _ _ == Tree _ _ = False
 
 {-| Create an empty tree. -}
 empty :: Tree k v

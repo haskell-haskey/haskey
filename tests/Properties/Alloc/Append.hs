@@ -5,6 +5,8 @@ import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
+import Control.Applicative ((<$>), (<*>))
+
 import Data.BTree.Alloc.Append
 import Data.BTree.Primitives.Key
 

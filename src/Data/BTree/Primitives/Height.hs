@@ -5,12 +5,13 @@
 module Data.BTree.Primitives.Height where
 
 import Data.Binary (Binary)
+import Data.Int
 
 --------------------------------------------------------------------------------
 
 data Nat = Z | S Nat
 
-newtype Height (h :: Nat) = Height { fromHeight :: Int }
+newtype Height (h :: Nat) = Height { fromHeight :: Int64 }
     deriving (Binary, Eq, Ord)
 
 instance Show (Height h) where

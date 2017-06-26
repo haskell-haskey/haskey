@@ -11,10 +11,11 @@ import Data.BTree.Alloc.Append
 import Data.BTree.Primitives.Key
 
 import Data.Int
+import Data.Typeable
+import qualified Data.Binary as B
 
-import Properties.Primitives ()     -- Arbitrary instance of Tree
+import Properties.Primitives (treeEqShape)
 import Properties.Primitives.Ids () -- Arbitrary instance of TxId, PageId
-import Properties.Utils (testBinary)
 
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (AppendMeta k v) where
     arbitrary = AppendMeta <$> arbitrary <*> arbitrary <*> arbitrary
@@ -25,5 +26,16 @@ tests = testGroup "Alloc.Append"
     ]
 
 test_binary_appendMeta :: AppendMeta Int64 Bool -> Bool
-test_binary_appendMeta = testBinary
+test_binary_appendMeta x = B.decode (B.encode x) `appendMetaEq` x
 
+--------------------------------------------------------------------------------
+
+{-| Compare the the shape of the 'AppendMeta' structure -}
+appendMetaEq :: (Typeable k, Typeable v, Eq k, Eq v)
+             => AppendMeta k v
+             -> AppendMeta k v
+             -> Bool
+x `appendMetaEq` y =
+    appendMetaRevision x == appendMetaRevision y &&
+    appendMetaPrevious x == appendMetaPrevious y &&
+    appendMetaTree x `treeEqShape` appendMetaTree y

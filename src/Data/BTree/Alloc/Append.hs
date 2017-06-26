@@ -33,7 +33,7 @@ data AppendMeta k v = AppendMeta
     { appendMetaRevision :: TxId
     , appendMetaTree     :: Tree k v
     , appendMetaPrevious :: PageId
-    } deriving (Eq, Generic, Typeable)
+    } deriving (Generic, Typeable)
 
 deriving instance (Show k, Show v) => Show (AppendMeta k v)
 

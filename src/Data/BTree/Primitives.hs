@@ -93,12 +93,6 @@ instance (Binary key, Binary val) => Binary (Tree key val) where
     put (Tree height rootId) = put height >> put rootId
     get = Tree <$> get <*> get
 
-instance (Typeable key, Typeable val, Eq key, Eq val) => Eq (Tree key val) where
-    Tree hx Nothing == Tree hy Nothing = fromHeight hx == fromHeight hy
-    Tree hx (Just rx) == Tree hy (Just ry) =
-        maybe False (== ry) $ castNode hx hy rx
-    Tree _ _ == Tree _ _ = False
-
 {-| Create an empty tree. -}
 empty :: Tree k v
 empty = Tree zeroHeight Nothing

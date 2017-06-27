@@ -11,20 +11,13 @@ import           Data.BTree.TwoThree
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Traversable (traverse)
-import qualified Data.Vector as V
 
 --------------------------------------------------------------------------------
 
-checkSplitIdx :: Key key
-    => Index key (NodeId height key val)
-    -> Index key (Node ('S height) key val)
-checkSplitIdx idx
-    -- In case the branching fits in one index node we create it.
-    | V.length (indexKeys idx) <= maxIdxKeys
-    = indexFromList [] [Idx idx]
-    -- Otherwise we split the index node.
-    | (leftIdx, middleKey, rightIdx) <- splitIndex idx
-    = indexFromList [middleKey] [Idx leftIdx, Idx rightIdx]
+splitIndex :: Key key =>
+   Index key (NodeId height key val) ->
+   Index key (Node ('S height) key val)
+splitIndex = extendedIndex maxIdxKeys Idx
 
 checkSplitLeaf :: Key key
     => Map key val
@@ -34,15 +27,6 @@ checkSplitLeaf items
     = indexFromList [] [Leaf items]
     | (leftItems, middleKey, rightItems) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
-
-checkSplitIdxMany :: Key key
-                  => Index key (NodeId height key val)
-                  -> Index key (Node ('S height) key val)
-checkSplitIdxMany idx
-    | V.length (indexKeys idx) <= maxIdxKeys
-    = indexFromList [] [Idx idx]
-    | (keys, idxs) <- splitIndexMany maxIdxKeys idx
-    = indexFromList keys (map Idx idxs)
 
 checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeafMany items
@@ -77,7 +61,7 @@ insertRec k v = fetch
     recurse hgt (Idx children) = do
         let (ctx,childId) = valView k children
         newChildIdx <- fetch (decrHeight hgt) childId
-        traverse (allocNode hgt) (checkSplitIdx (putIdx ctx newChildIdx))
+        traverse (allocNode hgt) (splitIndex (putIdx ctx newChildIdx))
     recurse hgt (Leaf items) =
         traverse (allocNode hgt) (checkSplitLeaf (M.insert k v items))
 
@@ -93,7 +77,7 @@ insertRecMany h kvs nid = do
         Idx idx -> do
             let dist = distribute kvs idx
             idx' <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
-            traverse (allocNode h) (checkSplitIdxMany idx')
+            traverse (allocNode h) (splitIndex idx')
         Leaf items ->
             traverse (allocNode h) (checkSplitLeafMany (M.union kvs items))
 
@@ -172,7 +156,7 @@ fixUp h idx = case fromSingletonIndex idx of
                        , treeRootId = Just newRootNid }
     Nothing -> do
         let newHeight = incrHeight h
-        childrenNids <- traverse (allocNode newHeight) (checkSplitIdxMany idx)
+        childrenNids <- traverse (allocNode newHeight) (splitIndex idx)
         fixUp newHeight $! childrenNids
 
 --------------------------------------------------------------------------------

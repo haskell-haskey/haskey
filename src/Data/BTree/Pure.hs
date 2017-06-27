@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -20,7 +21,6 @@ import           Data.Maybe (isJust, isNothing, fromMaybe)
 import           Data.Monoid
 import           Prelude hiding (lookup, null)
 import qualified Data.Map as M
-import qualified Data.Vector as V
 
 --------------------------------------------------------------------------------
 
@@ -63,23 +63,18 @@ validTree (Tree (Just (Idx idx))) =
 
 {-| Check whether a (non-root) node is valid. -}
 validNode :: Ord key => Node height key val -> Bool
-validNode (Leaf items) =
-    M.size items >= minLeafItems && M.size items <= maxLeafItems
-validNode (Idx idx) =
-    validIndexSize minIdxKeys maxIdxKeys idx && F.all validNode idx
+validNode = \case
+    Leaf items -> M.size items >= minLeafItems &&
+                  M.size items <= maxLeafItems
+    Idx idx    -> validIndexSize minIdxKeys maxIdxKeys idx &&
+                  F.all validNode idx
 
 --------------------------------------------------------------------------------
 
-checkSplitIdx :: Key key =>
+splitIndex :: Key key =>
    Index key (Node height key val) ->
    Index key (Node ('S height) key val)
-checkSplitIdx idx
-    -- In case the branching fits in one index node we create it.
-    | V.length (indexKeys idx) <= maxIdxKeys
-    = indexFromList [] [Idx idx]
-    -- Otherwise we split the index node.
-    | (leftIdx, middleKey, rightIdx) <- splitIndex idx
-    = indexFromList [middleKey] [Idx leftIdx, Idx rightIdx]
+splitIndex = extendedIndex maxIdxKeys Idx
 
 checkSplitLeaf :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeaf items
@@ -87,15 +82,6 @@ checkSplitLeaf items
     = indexFromList [] [Leaf items]
     | (leftItems, middleKey, rightItems) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
-
-checkSplitIdxMany :: Key key
-                  => Index key (Node height key val)
-                  -> Index key (Node ('S height) key val)
-checkSplitIdxMany idx
-    | V.length (indexKeys idx) <= maxIdxKeys
-    = indexFromList [] [Idx idx]
-    | (keys, idxs) <- splitIndexMany maxIdxKeys idx
-    = indexFromList keys (map Idx idxs)
 
 checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeafMany items
@@ -127,7 +113,7 @@ insertRec key val (Idx children)
     , newChildIdx  <- insertRec key val child
     = -- Fill the hole with the resulting 'Index' from the recursive call
       -- and then check if the split needs to be propagated.
-      checkSplitIdx (putIdx ctx newChildIdx)
+      splitIndex (putIdx ctx newChildIdx)
 insertRec key val (Leaf items)
     = checkSplitLeaf (M.insert key val items)
 
@@ -155,7 +141,7 @@ insertRecMany ::
     -> Index key (Node height key val)
 insertRecMany kvs (Idx idx)
     | dist            <- distribute kvs idx
-    = checkSplitIdxMany (dist `bindIndex` uncurry insertRecMany)
+    = splitIndex (dist `bindIndex` uncurry insertRecMany)
 
 insertRecMany kvs (Leaf items)
     = checkSplitLeafMany (M.union kvs items)
@@ -176,7 +162,7 @@ insertMany kvs (Tree Nothing)
 fixUp :: Key key => Index key (Node height key val) -> Tree key val
 fixUp idx = case fromSingletonIndex idx of
     Just newRootNode -> Tree (Just newRootNode)
-    Nothing          -> fixUp (checkSplitIdxMany idx)
+    Nothing          -> fixUp (splitIndex idx)
 
 {-| /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
 
@@ -189,9 +175,7 @@ fromList = L.foldl' (flip $ uncurry insert) empty
 {-| /O(n)/. Fold key\/value pairs in the B-tree.
 -}
 foldrWithKey :: forall k v w. (k -> v -> w -> w) -> w -> Tree k v -> w
-foldrWithKey f z0 (Tree mbRoot) = case mbRoot of
-    Nothing   -> z0
-    Just root -> go z0 root
+foldrWithKey f z0 (Tree mbRoot) = maybe z0 (go z0) mbRoot
   where
     go :: w -> Node h k v -> w
     go z1 (Leaf items) = M.foldrWithKey f z1 items
@@ -205,10 +189,9 @@ toList = foldrWithKey (\k v kvs -> (k,v):kvs) []
 --------------------------------------------------------------------------------
 
 nodeNeedsMerge :: Node height key value -> Bool
-nodeNeedsMerge Idx  { idxChildren = children } =
-    V.length (indexKeys children) < minIdxKeys
-nodeNeedsMerge Leaf { leafItems   = items }    =
-    M.size items < minLeafItems
+nodeNeedsMerge = \case
+    Idx children -> indexNumKeys children < minIdxKeys
+    Leaf items   -> M.size items < minLeafItems
 
 mergeNodes :: Key key
     => Node height key val
@@ -218,7 +201,7 @@ mergeNodes :: Key key
 mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
     checkSplitLeaf (leftItems <> rightItems)
 mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
-    checkSplitIdx (mergeIndex leftIdx middleKey rightIdx)
+    splitIndex (mergeIndex leftIdx middleKey rightIdx)
 
 deleteRec ::
        Key k
@@ -235,7 +218,7 @@ deleteRec key (Idx children)
     -- before.
     | childNeedsMerge
     = error "deleteRec: constraint violation, found an index \
-             \node with a single child"
+            \node with a single child"
     | otherwise = Idx (putVal ctx newChild)
   where
     (ctx, child)    = valView key children
@@ -246,16 +229,12 @@ deleteRec key (Leaf items)
 
 delete :: Key k => k -> Tree k v -> Tree k v
 delete _key (Tree Nothing)  = Tree Nothing
-delete key  (Tree (Just rootNode))
-    | newRootNode <- deleteRec key rootNode
-    = case newRootNode of
-          Idx index
-              | Just childNode <- fromSingletonIndex index ->
-                Tree (Just childNode)
-          Leaf items
-              | M.null items ->
-                Tree Nothing
-          _ -> Tree (Just newRootNode)
+delete key  (Tree (Just rootNode)) = case deleteRec key rootNode of
+    Idx index
+      | Just childNode <- fromSingletonIndex index -> Tree (Just childNode)
+    Leaf items
+      | M.null items -> Tree Nothing
+    newRootNode -> Tree (Just newRootNode)
 
 --------------------------------------------------------------------------------
 
@@ -311,29 +290,5 @@ instance F.Foldable (Node height key) where
         F.foldMap (F.foldMap f) idx
 
     foldMap f (Leaf items) = F.foldMap f items
-
-
---------------------------------------------------------------------------------
-
-test3 :: Tree Int64 String
-test3 = insert 3 "bar" empty
-
-test32 :: Tree Int64 String
-test32 = insert 2 "foo" test3
-
-test325 :: Tree Int64 String
-test325 = insert 5 "baz" test32
-
-test3254 :: Tree Int64 String
-test3254 = insert 4 "oof" test325
-
-test3254d3 :: Tree Int64 String
-test3254d3 = delete 3 test3254
-
-test3254d4 :: Tree Int64 String
-test3254d4 = delete 4 test3254
-
-test3254d5 :: Tree Int64 String
-test3254d5 = delete 5 test3254
 
 --------------------------------------------------------------------------------

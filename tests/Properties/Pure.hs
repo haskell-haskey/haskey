@@ -25,6 +25,7 @@ tests = testGroup "Pure"
     , testProperty "toList fromList" prop_toList_fromList
     , testProperty "insertMany" prop_insertMany
     , testProperty "insert insertMany" prop_insert_insertMany
+    , testProperty "lookup insert" prop_lookup_insert
     ]
 
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Tree.Tree k v) where
@@ -63,6 +64,9 @@ prop_insert_insertMany :: M.Map Int64 Int -> Tree.Tree Int64 Int -> Bool
 prop_insert_insertMany kvs t =
     Tree.toList (Tree.insertMany kvs t) ==
     Tree.toList (foldl (flip $ uncurry Tree.insert) t (M.toList kvs))
+
+prop_lookup_insert :: Int64 -> Int -> Tree.Tree Int64 Int -> Bool
+prop_lookup_insert k v t = Tree.lookup k (Tree.insert k v t) == Just v
 
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
 nubByFstEq = nubBy ((==) `on` fst)

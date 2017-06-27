@@ -1,21 +1,23 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Properties.Primitives.Index (tests) where
 
-import Test.Framework (Test, testGroup)
+import Test.Framework                       (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
-import Data.BTree.Primitives.Index
-import Data.BTree.Primitives.Key
+import           Data.BTree.Primitives.Index
+import           Data.BTree.Primitives.Key
 import qualified Data.BTree.TwoThree as Tree
 
-import Control.Applicative ((<$>))
-
-import Data.Int
-import Data.List (nub)
-import Data.List.Ordered (isSortedBy)
-import Data.Monoid ((<>))
+import           Control.Applicative ((<$>))
 import qualified Data.Binary as B
+import qualified Data.Foldable as F
+import           Data.Int
+import           Data.Maybe          (isJust)
+import           Data.List           (nub)
+import           Data.List.Ordered   (isSortedBy)
+import           Data.Monoid         ((<>))
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
@@ -38,11 +40,12 @@ tests = testGroup "Primitives.Index"
     [ testProperty "binary" prop_binary
     , testProperty "validIndex arbitrary" prop_validIndex_arbitrary
     , testProperty "validIndex singletonIndex" prop_validIndex_singletonIndex
-    , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
+    , testProperty "mergeIndex splitIndexAt" prop_mergeIndex_splitIndexAt
     , testProperty "fromSingletonIndex singletonIndex"
         prop_fromSingletonIndex_singletonIndex
     , testProperty "distribute" prop_distribute
-    , testProperty "splitIndexMany" prop_splitIndexMany
+    , testProperty "extendedIndex" prop_extendedIndex
+    , testProperty "bindIndex_extendedIndex" prop_bindIndex_extendedIndex
     ]
 
 prop_binary :: Index Int64 Bool -> Bool
@@ -55,11 +58,13 @@ prop_validIndex_singletonIndex :: Int64 -> Bool
 prop_validIndex_singletonIndex i =
     validIndex (singletonIndex i :: Index Int64 Int64)
 
-prop_mergeIndex_splitIndex :: Property
-prop_mergeIndex_splitIndex =
-    forAll (arbitrary `suchThat` (not . V.null . indexKeys)) $ \ix ->
-      let (left, middle, right) = splitIndex (ix :: Index Int64 Bool)
-      in  mergeIndex left middle right == ix
+prop_mergeIndex_splitIndexAt :: Property
+prop_mergeIndex_splitIndexAt =
+    forAll (arbitrary `suchThat` (not . isJust . fromSingletonIndex)) $ \ix ->
+      and [ mergeIndex left middle right == (ix :: Index Int64 Bool)
+          | k <- [0..indexNumKeys ix - 1]
+          , let (left, middle, right) = splitIndexAt k ix
+          ]
 
 prop_fromSingletonIndex_singletonIndex :: Int64 -> Bool
 prop_fromSingletonIndex_singletonIndex i =
@@ -67,7 +72,7 @@ prop_fromSingletonIndex_singletonIndex i =
 
 prop_distribute :: M.Map Int64 Int -> Index Int64 Int -> Bool
 prop_distribute kvs idx
-    | idx'@Index { indexKeys = keys, indexNodes = vs } <- distribute kvs idx
+    | idx'@(Index keys vs) <- distribute kvs idx
     , x <- V.all pred1 $ V.zip keys (V.init $ V.map fst vs)
     , y <- V.all pred2 $ V.zip keys (V.tail $ V.map fst vs)
     , z <- M.unions (V.toList $ V.map fst vs) == kvs
@@ -77,16 +82,19 @@ prop_distribute kvs idx
     pred1 (key, sub) = M.null sub || fst (M.findMax sub) <  key
     pred2 (key, sub) = M.null sub || fst (M.findMin sub) >= key
 
-prop_splitIndexMany :: Index Int64 Int -> Bool
-prop_splitIndexMany idx
-    | V.length (indexKeys idx) <= maxIdxKeys = True
-    | (keys, idxs)  <- splitIndexMany maxIdxKeys idx
-    , numKeyIdxsOK  <- length idxs == 1 + length keys
-    , validIdxs     <- all validIndex idxs
-    , keysMaxOK     <- all (\(key, idx') -> V.last (indexKeys idx') < key) $ zip keys idxs
-    , keysMinOK     <- all (\(key, idx') -> V.head (indexKeys idx') > key) $ zip keys (tail idxs)
-    , keysOrderOK   <- isSortedBy (<) keys
-    , joinedNodesOK <- V.concat (map indexNodes idxs) == indexNodes idx
+prop_extendedIndex :: Index Int64 Int -> Bool
+prop_extendedIndex idx
+    | Index keys idxs <- extendedIndex maxIdxKeys id idx
+    , numKeyIdxsOK    <- V.length idxs == 1 + V.length keys
+    , validIdxs       <- all validIndex idxs
+    , keysMaxOK       <- V.all (\(key, Index keys' _) -> V.last keys' < key) $ V.zip keys idxs
+    , keysMinOK       <- V.all (\(key, Index keys' _) -> V.head keys' > key) $ V.zip keys (V.tail idxs)
+    , keysOrderOK     <- isSortedBy (<) (V.toList keys)
+    , joinedNodesOK   <- concatMap F.toList (V.toList idxs) == F.toList idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
   where
     maxIdxKeys = Tree.maxFanout - 1
+
+prop_bindIndex_extendedIndex :: Int -> Index Int64 Int -> Bool
+prop_bindIndex_extendedIndex n idx =
+    bindIndex (extendedIndex (abs n + 1) id idx) id == idx

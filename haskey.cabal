@@ -99,7 +99,7 @@ test-suite haskey-properties
   ghc-options:         -Wall
   hs-source-dirs:      tests
 
-test-suite haskey-integraltion
+test-suite haskey-integration
   main-is:             Integration.hs
   type:                exitcode-stdio-1.0
 

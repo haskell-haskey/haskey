@@ -71,9 +71,9 @@ validNode = \case
 
 --------------------------------------------------------------------------------
 
-splitIndex :: Key key =>
-   Index key (Node height key val) ->
-   Index key (Node ('S height) key val)
+splitIndex ::
+    Index key (Node height key val) ->
+    Index key (Node ('S height) key val)
 splitIndex = extendedIndex maxIdxKeys Idx
 
 splitLeaf :: Key key =>

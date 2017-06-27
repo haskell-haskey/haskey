@@ -5,9 +5,7 @@ import Data.BTree.Internal
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 
-import Data.Binary (Binary)
 import Data.Map (Map)
-import qualified Data.Binary as B
 import qualified Data.Map as M
 
 --------------------------------------------------------------------------------

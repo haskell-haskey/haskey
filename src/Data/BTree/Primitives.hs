@@ -54,11 +54,9 @@ data Node height key val where
             } -> Node 'Z key val
     deriving (Typeable)
 
-instance (Eq key, Eq val) => Eq (Node 'Z key val) where
+instance (Eq key, Eq val) => Eq (Node height key val) where
     Leaf x == Leaf y = x == y
-
-instance (Eq key, Eq val) => Eq (Node ('S h) key val) where
-    Idx x == Idx y = x == y
+    Idx x  == Idx y  = x == y
 
 data BNode = BIdx | BLeaf deriving Generic
 instance Binary BNode where
@@ -68,7 +66,7 @@ instance (Binary key, Binary val) => Binary (Node 'Z key val) where
     get = get >>= \case BLeaf -> Leaf <$> get
                         BIdx  -> fail "expected a leaf node, but found an idx node"
 
-instance (Binary key, Binary val) => Binary (Node ('S height) key val) where
+instance (Binary key) => Binary (Node ('S height) key val) where
     put (Idx idx) = put BIdx >> put idx
     get = get >>= \case BIdx -> Idx <$> get
                         BLeaf -> fail "expected an idx node, but found a leaf node"
@@ -89,7 +87,7 @@ data Tree key val where
 deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
 
-instance (Binary key, Binary val) => Binary (Tree key val) where
+instance Binary (Tree key val) where
     put (Tree height rootId) = put height >> put rootId
     get = Tree <$> get <*> get
 

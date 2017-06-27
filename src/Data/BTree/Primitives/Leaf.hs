@@ -5,11 +5,7 @@ import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 
 import Data.Map (Map)
-import qualified Data.Binary as B
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
-
-import Data.Int
 
 --------------------------------------------------------------------------------
 
@@ -41,13 +37,6 @@ splitLeafManyPred p f = go
 
     lstForWhich :: (a -> Bool) -> [a] -> Maybe a
     lstForWhich g xs = safeLast $ takeWhile g xs
-
-splitLeafManyBinary :: (B.Binary a, Key key)
-                    => Int
-                    -> (Map key val -> a)
-                    -> Map key val
-                    -> Maybe (Index key a)
-splitLeafManyBinary m = splitLeafManyPred (\x -> BL.length (B.encode x) <= fromIntegral m)
 
 splitLeafMany :: Key key => Int -> (Map key val -> a) -> Map key val -> Index key a
 splitLeafMany maxLeafItems f items

@@ -11,8 +11,7 @@ import           Data.BTree.Internal
 import           Control.Applicative ((<$>))
 import           Control.Monad.Identity (runIdentity)
 
-import qualified Data.ByteString.Lazy as BL
-import           Data.Binary (Binary, encode)
+import           Data.Binary (Binary)
 import           Data.Foldable (Foldable)
 import qualified Data.Map as M
 import           Data.Traversable (Traversable)
@@ -128,14 +127,6 @@ extendIndexPred p f = go
                 ]
             rightEnc <- go right
             return $! mergeIndex (singletonIndex leftEnc) middleKey rightEnc
-
-extendIndexBinary :: Binary a
-    => Int
-    -> (Index k b -> a)
-    -> Index k b
-    -> Maybe (Index k a)
-extendIndexBinary maxSize =
-    extendIndexPred (\n -> BL.length (encode n) <= fromIntegral maxSize)
 
 {-| Merge two indices.
 

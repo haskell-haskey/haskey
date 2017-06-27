@@ -9,7 +9,7 @@ import Control.Applicative (Applicative)
 
 class (Applicative m, Monad m) => AllocM m where
     nodeSize    ::   (Key key, Value val)
-                =>   Node height key val -> m Int
+                =>   m (Node height key val -> Int)
     maxNodeSize ::   m Int
     allocNode   ::   (Key key, Value val)
                 =>   Height height

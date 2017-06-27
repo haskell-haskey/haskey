@@ -61,7 +61,7 @@ runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
 instance AllocM (AppendT m) where
-    nodeSize n = return . fromIntegral . BL.length $ case n of
+    nodeSize = return $ \n -> fromIntegral . BL.length $ case n of
         Idx{}  -> encode n
         Leaf{} -> encode n
     maxNodeSize        = AppendT Store.maxNodeSize

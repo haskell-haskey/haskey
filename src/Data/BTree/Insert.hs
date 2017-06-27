@@ -19,7 +19,9 @@ splitIndex :: (AllocM m, Key key, Value val) =>
    m (Index key (Node ('S height) key val))
 splitIndex index = do
     m <- maxNodeSize
-    case extendIndexBinary m Idx index of
+    nodeSize' <- nodeSize
+    let binPred n = nodeSize' n <= m
+    case extendIndexPred binPred Idx index of
         Just extIndex -> return extIndex
         Nothing       -> error "Splitting failed!? Underflow"
 
@@ -28,7 +30,9 @@ splitLeaf :: (AllocM m, Key key, Value val) =>
     m (Index key (Node 'Z key val))
 splitLeaf items = do
     m <- maxNodeSize
-    case splitLeafManyBinary m Leaf items of
+    nodeSize' <- nodeSize
+    let binPred n = nodeSize' n <= m
+    case splitLeafManyPred binPred Leaf items of
         Just v  -> return v
         Nothing -> error "Split leaf: underflow"
 

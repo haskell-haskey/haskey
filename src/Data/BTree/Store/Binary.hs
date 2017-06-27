@@ -103,6 +103,7 @@ instance (Ord fp, Binary k, Binary v, Applicative m, Monad m) =>
     -- --     modify (M.insertWith (flip const) fp M.empty)
     -- --     return fp
     -- closeStore _ = return ()
+    maxNodeSize = return 64
     setSize fp (PageCount n) = StoreT $ do
         let emptyFile = M.fromList [ (PageId i, encode (PageEmpty :: Page k v)) | i <- [0..n-1] ]
             res file = M.intersection (M.union file emptyFile) emptyFile

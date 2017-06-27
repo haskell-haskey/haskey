@@ -14,6 +14,7 @@ import           Data.BTree.Insert
 import           Data.BTree.Alloc.Class
 import           Data.BTree.Primitives
 import           Data.BTree.Store.Class
+import qualified Data.BTree.Store.Class as Store
 
 import           Control.Applicative (Applicative(..), (<$>))
 import           Control.Monad.Reader.Class
@@ -63,7 +64,7 @@ instance AllocM (AppendT m) where
     nodeSize n = return . fromIntegral . BL.length $ case n of
         Idx{}  -> encode n
         Leaf{} -> encode n
-    maxNodeSize        = return 64
+    maxNodeSize        = AppendT Store.maxNodeSize
     allocNode height n = AppendT $ do
         hnd <- ask
         pc <- getSize hnd

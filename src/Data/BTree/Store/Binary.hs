@@ -35,34 +35,31 @@ import GHC.Generics (Generic)
 
 --------------------------------------------------------------------------------
 
-data Page key val = PageEmpty
-    | forall height . (Key key, Value val, Binary key, Binary val) =>
+data Page = PageEmpty
+    | forall height key val. (Key key, Value val) =>
       PageNode (Height height) (Node height key val)
-    | (Key key, Value val) =>
+    | forall key val.        (Key key, Value val) =>
       PageAppendMeta (AppendMeta key val)
     deriving (Typeable)
 
 pageNode :: Page key val -> Maybe (Node height key val)
 pageNode = undefined
 
-encode :: (Binary k, Binary v) => Page k v -> ByteString
+encode :: Binary a => a -> ByteString
 encode = toStrict . B.encode
 
-decode :: (Binary k, Binary v) => ByteString -> Page k v
+decode :: Binary a => ByteString -> a
 decode = B.decode  . fromStrict
 
-deriving instance Show (Page k v)
+deriving instance Show Page
 
 data BPage = BPageEmpty | BPageNode | BPageAppendMeta
            deriving (Eq, Generic)
 instance Binary BPage where
 
-instance (Binary k, Binary v) => Binary (Page k v) where
+instance Binary Page where
     put PageEmpty = B.put BPageEmpty
-    put (PageNode h n) =
-        case castNode' h n of
-            Left  n' -> B.put BPageNode >> B.put h >> B.put n'
-            Right n' -> B.put BPageNode >> B.put h >> B.put n'
+    put (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
     put (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
     get = B.get >>= \case
@@ -96,7 +93,7 @@ pageIdToNodeId (PageId n) = NodeId n
 
 --------------------------------------------------------------------------------
 
-instance (Ord fp, Binary k, Binary v, Applicative m, Monad m) =>
+instance (Ord fp, Applicative m, Monad m) =>
     StoreM fp (StoreT fp k v m)
   where
     -- -- openStore fp = StoreT $ do
@@ -105,13 +102,16 @@ instance (Ord fp, Binary k, Binary v, Applicative m, Monad m) =>
     -- closeStore _ = return ()
     maxNodeSize = return 64
     setSize fp (PageCount n) = StoreT $ do
-        let emptyFile = M.fromList [ (PageId i, encode (PageEmpty :: Page k v)) | i <- [0..n-1] ]
-            res file = M.intersection (M.union file emptyFile) emptyFile
+        let emptyFile = M.fromList
+                        [ (PageId i, encode PageEmpty)
+                        | i <- [0..n-1]
+                        ]
+            res file  = M.intersection (M.union file emptyFile) emptyFile
         modify (M.update (Just . res) fp)
     getNodePage hnd height nid = StoreT $ do
         Just bs <-
             gets (M.lookup hnd >=> M.lookup (nodeIdToPageId nid))
-        PageNode heightSrc tree <- return (decode bs :: Page k v)
+        PageNode heightSrc tree <- return (decode bs)
         MaybeT $ return (castNode heightSrc height tree)
 
     putNodePage hnd height nid node = StoreT $
@@ -122,12 +122,12 @@ instance (Ord fp, Binary k, Binary v, Applicative m, Monad m) =>
 
 --------------------------------------------------------------------------------
 
-instance (Ord fp, Binary k, Binary v, Applicative m, Monad m) =>
+instance (Ord fp, Applicative m, Monad m) =>
     AppendMetaStoreM fp (StoreT fp k v m)
   where
     getAppendMeta h i = StoreT $ do
         Just bs <- gets (M.lookup h >=> M.lookup i)
-        PageAppendMeta meta <- return (decode bs :: Page k v)
+        PageAppendMeta meta <- return (decode bs)
         return $! coerce meta
     putAppendMeta h i meta = StoreT $
         modify (M.update (Just. M.insert i (encode (PageAppendMeta meta))) h)

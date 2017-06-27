@@ -23,9 +23,10 @@ import Properties.Utils (testBinary)
 
 tests :: Test
 tests = testGroup "Primitives.Ids"
-    [ testProperty "binary leafNode" prop_binary_leafNode
-    , testProperty "binary indexNode" prop_binary_indexNode
-    , testProperty "binary tree" prop_binary_tree
+    [ -- testProperty "binary leafNode" prop_binary_leafNode
+    -- , testProperty "binary indexNode" prop_binary_indexNode
+    -- ,
+      testProperty "binary tree" prop_binary_tree
     ]
 
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Node 'Z k v) where
@@ -37,11 +38,11 @@ instance (Key k, Arbitrary k) => Arbitrary (Node ('S height) k v) where
 instance Arbitrary (Tree k v) where
     arbitrary = Tree <$> arbitrary <*> arbitrary
 
-prop_binary_leafNode :: Node 'Z Int64 Bool -> Bool
-prop_binary_leafNode = testBinary
+-- prop_binary_leafNode :: Node 'Z Int64 Bool -> Bool
+-- prop_binary_leafNode = testBinary
 
-prop_binary_indexNode :: Node ('S height) Int64 Bool -> Bool
-prop_binary_indexNode = testBinary
+-- prop_binary_indexNode :: Node ('S height) Int64 Bool -> Bool
+-- prop_binary_indexNode = testBinary
 
 prop_binary_tree :: Tree Int64 Bool -> Bool
 prop_binary_tree t = B.decode (B.encode t) `treeEqShape` t

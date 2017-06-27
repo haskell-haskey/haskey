@@ -26,7 +26,7 @@ import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf
 import Data.BTree.Primitives.Value
 
-import Data.Binary (Binary(..))
+import Data.Binary (Binary(..), Put, Get)
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep)
@@ -61,15 +61,19 @@ instance (Eq key, Eq val) => Eq (Node height key val) where
 data BNode = BIdx | BLeaf deriving Generic
 instance Binary BNode where
 
-instance (Binary key, Binary val) => Binary (Node 'Z key val) where
-    put (Leaf items) = put BLeaf >> put items
-    get = get >>= \case BLeaf -> Leaf <$> get
-                        BIdx  -> fail "expected a leaf node, but found an idx node"
+putNode :: (Binary key, Binary val) => Node height key val -> Put
+putNode = \case
+    Leaf items -> put BLeaf >> put items
+    Idx idx    -> put BIdx  >> put idx
 
-instance (Binary key) => Binary (Node ('S height) key val) where
-    put (Idx idx) = put BIdx >> put idx
-    get = get >>= \case BIdx -> Idx <$> get
-                        BLeaf -> fail "expected an idx node, but found a leaf node"
+getNode :: (Binary key, Binary val) => Height height -> Get (Node height key val)
+getNode height = case viewHeight height of
+    UZero   -> do
+                   BLeaf <- get
+                   Leaf <$> get
+    USucc _ -> do
+                   BIdx <- get
+                   Idx <$> get
 
 {-| A B+-tree.
 

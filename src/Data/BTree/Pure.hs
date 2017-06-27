@@ -70,16 +70,10 @@ validNode (Idx idx) =
 
 --------------------------------------------------------------------------------
 
-checkSplitIdx ::
+splitIndex :: Key key =>
    Index key (Node height key val) ->
    Index key (Node ('S height) key val)
-checkSplitIdx idx
-    -- In case the branching fits in one index node we create it.
-    | indexNumKeys idx <= maxIdxKeys
-    = indexFromList [] [Idx idx]
-    -- Otherwise we split the index node.
-    | (leftIdx, middleKey, rightIdx) <- splitIndex idx
-    = indexFromList [middleKey] [Idx leftIdx, Idx rightIdx]
+splitIndex = extendedIndex maxIdxKeys Idx
 
 checkSplitLeaf :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeaf items
@@ -87,14 +81,6 @@ checkSplitLeaf items
     = indexFromList [] [Leaf items]
     | (leftItems, middleKey, rightItems) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
-
-checkSplitIdxMany :: Index key (Node height key val)
-                  -> Index key (Node ('S height) key val)
-checkSplitIdxMany idx
-    | indexNumKeys idx <= maxIdxKeys
-    = indexFromList [] [Idx idx]
-    | (keys, idxs) <- splitIndexMany maxIdxKeys idx
-    = indexFromList keys (map Idx idxs)
 
 checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
 checkSplitLeafMany items
@@ -126,7 +112,7 @@ insertRec key val (Idx children)
     , newChildIdx  <- insertRec key val child
     = -- Fill the hole with the resulting 'Index' from the recursive call
       -- and then check if the split needs to be propagated.
-      checkSplitIdx (putIdx ctx newChildIdx)
+      splitIndex (putIdx ctx newChildIdx)
 insertRec key val (Leaf items)
     = checkSplitLeaf (M.insert key val items)
 
@@ -154,7 +140,7 @@ insertRecMany ::
     -> Index key (Node height key val)
 insertRecMany kvs (Idx idx)
     | dist            <- distribute kvs idx
-    = checkSplitIdxMany (dist `bindIndex` uncurry insertRecMany)
+    = splitIndex (dist `bindIndex` uncurry insertRecMany)
 
 insertRecMany kvs (Leaf items)
     = checkSplitLeafMany (M.union kvs items)
@@ -175,7 +161,7 @@ insertMany kvs (Tree Nothing)
 fixUp :: Key key => Index key (Node height key val) -> Tree key val
 fixUp idx = case fromSingletonIndex idx of
     Just newRootNode -> Tree (Just newRootNode)
-    Nothing          -> fixUp (checkSplitIdxMany idx)
+    Nothing          -> fixUp (splitIndex idx)
 
 {-| /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
 
@@ -216,7 +202,7 @@ mergeNodes :: Key key
 mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
     checkSplitLeaf (leftItems <> rightItems)
 mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
-    checkSplitIdx (mergeIndex leftIdx middleKey rightIdx)
+    splitIndex (mergeIndex leftIdx middleKey rightIdx)
 
 deleteRec ::
        Key k

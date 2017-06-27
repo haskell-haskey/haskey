@@ -40,11 +40,12 @@ tests = testGroup "Primitives.Index"
     [ testProperty "binary" prop_binary
     , testProperty "validIndex arbitrary" prop_validIndex_arbitrary
     , testProperty "validIndex singletonIndex" prop_validIndex_singletonIndex
-    , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
+    , testProperty "mergeIndex splitIndexAt" prop_mergeIndex_splitIndexAt
     , testProperty "fromSingletonIndex singletonIndex"
         prop_fromSingletonIndex_singletonIndex
     , testProperty "distribute" prop_distribute
-    , testProperty "splitIndexMany" prop_splitIndexMany
+    , testProperty "extendedIndex" prop_extendedIndex
+    , testProperty "bindIndex_extendedIndex" prop_bindIndex_extendedIndex
     ]
 
 prop_binary :: Index Int64 Bool -> Bool
@@ -57,11 +58,13 @@ prop_validIndex_singletonIndex :: Int64 -> Bool
 prop_validIndex_singletonIndex i =
     validIndex (singletonIndex i :: Index Int64 Int64)
 
-prop_mergeIndex_splitIndex :: Property
-prop_mergeIndex_splitIndex =
+prop_mergeIndex_splitIndexAt :: Property
+prop_mergeIndex_splitIndexAt =
     forAll (arbitrary `suchThat` (not . isJust . fromSingletonIndex)) $ \ix ->
-      let (left, middle, right) = splitIndex (ix :: Index Int64 Bool)
-      in  mergeIndex left middle right == ix
+      and [ mergeIndex left middle right == (ix :: Index Int64 Bool)
+          | k <- [0..indexNumKeys ix - 1]
+          , let (left, middle, right) = splitIndexAt k ix
+          ]
 
 prop_fromSingletonIndex_singletonIndex :: Int64 -> Bool
 prop_fromSingletonIndex_singletonIndex i =
@@ -79,16 +82,19 @@ prop_distribute kvs idx
     pred1 (key, sub) = M.null sub || fst (M.findMax sub) <  key
     pred2 (key, sub) = M.null sub || fst (M.findMin sub) >= key
 
-prop_splitIndexMany :: Index Int64 Int -> Bool
-prop_splitIndexMany idx
-    | indexNumKeys idx <= maxIdxKeys = True
-    | (keys, idxs)  <- splitIndexMany maxIdxKeys idx
-    , numKeyIdxsOK  <- length idxs == 1 + length keys
-    , validIdxs     <- all validIndex idxs
-    , keysMaxOK     <- all (\(key, Index keys' _) -> V.last keys' < key) $ zip keys idxs
-    , keysMinOK     <- all (\(key, Index keys' _) -> V.head keys' > key) $ zip keys (tail idxs)
-    , keysOrderOK   <- isSortedBy (<) keys
-    , joinedNodesOK <- concatMap F.toList (F.toList idxs) == F.toList idx
+prop_extendedIndex :: Index Int64 Int -> Bool
+prop_extendedIndex idx
+    | Index keys idxs <- extendedIndex maxIdxKeys id idx
+    , numKeyIdxsOK    <- V.length idxs == 1 + V.length keys
+    , validIdxs       <- all validIndex idxs
+    , keysMaxOK       <- V.all (\(key, Index keys' _) -> V.last keys' < key) $ V.zip keys idxs
+    , keysMinOK       <- V.all (\(key, Index keys' _) -> V.head keys' > key) $ V.zip keys (V.tail idxs)
+    , keysOrderOK     <- isSortedBy (<) (V.toList keys)
+    , joinedNodesOK   <- concatMap F.toList (V.toList idxs) == F.toList idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
   where
     maxIdxKeys = Tree.maxFanout - 1
+
+prop_bindIndex_extendedIndex :: Int -> Index Int64 Int -> Bool
+prop_bindIndex_extendedIndex n idx =
+    bindIndex (extendedIndex (abs n + 1) id idx) id == idx

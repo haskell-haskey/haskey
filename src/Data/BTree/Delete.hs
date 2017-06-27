@@ -30,7 +30,7 @@ mergeNodes :: Key key
 mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
     checkSplitLeaf (leftItems <> rightItems)
 mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
-    checkSplitIdx (mergeIndex leftIdx middleKey rightIdx)
+    splitIndex (mergeIndex leftIdx middleKey rightIdx)
 
 --------------------------------------------------------------------------------
 

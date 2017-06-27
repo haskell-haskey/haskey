@@ -2,29 +2,15 @@
 module Data.BTree.Primitives.Leaf where
 
 import Data.BTree.Internal
+import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
+
+import Data.Binary (Binary)
 import Data.Map (Map)
+import qualified Data.Binary as B
 import qualified Data.Map as M
 
 --------------------------------------------------------------------------------
-
-{-| Split the mapping of a leave at the middle element. Eventually this should
-    take the binary size of key value pairs into account than just the count.
-    This function should only be called on a 'Map' with at least two elements.
-    This in particular means it should not be called on the map of a root leaf
-    with only one element and care has to be taken when leaves overflow.
-
-    See also 'splitIndex' in "Data.BTree.Primitives.Index".
- -}
-splitLeaf :: Key key => Map key val -> (Map key val, key, Map key val)
-splitLeaf items
-    | numLeft               <- div (M.size items) 2
-    , (leftLeaf, rightLeaf) <- mapSplitAt numLeft items
-    , Just ((key,_), _)     <- M.minViewWithKey rightLeaf
-    = (leftLeaf, key, rightLeaf)
-    | otherwise
-    = error "splitLeaf: constraint violation, got a Map with with less than \
-            \two elements"
 
 {-| Split a leaf many times.
 
@@ -32,10 +18,17 @@ splitLeaf items
     items <= maxLeafItems (and >= minLeafItems, except when the original
     leaf had less than minLeafItems items.
 -}
-splitLeafMany :: Key key => Int -> Map key val -> ([key], [Map key val])
-splitLeafMany maxLeafItems m'
-    | M.size m' > maxLeafItems = split' m' ([], [])
-    | otherwise = ([], [m'])
+splitLeafMany :: Key key => Int -> (Map key val -> a) -> Map key val -> Index key a
+splitLeafMany maxLeafItems f items
+    | M.size items <= maxLeafItems
+    = singletonIndex (f items)
+    | M.size items <= 2*maxLeafItems
+    , numLeft               <- div (M.size items) 2
+    , (leftLeaf, rightLeaf) <- mapSplitAt numLeft items
+    , Just ((key,_), _)     <- M.minViewWithKey rightLeaf
+    = indexFromList [key] [f leftLeaf, f rightLeaf]
+    | (keys, maps) <- split' items ([], [])
+    = indexFromList keys (map f maps)
   where
     split' :: Key key => Map key val -> ([key], [Map key val]) -> ([key], [Map key val])
     split' m (keys, leafs)

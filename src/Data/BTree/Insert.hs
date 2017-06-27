@@ -28,7 +28,9 @@ splitLeaf :: (AllocM m, Key key, Value val) =>
     m (Index key (Node 'Z key val))
 splitLeaf items = do
     m <- maxNodeSize
-    return $ splitLeafManyBinary m Leaf items
+    case splitLeafManyBinary m Leaf items of
+        Just v  -> return v
+        Nothing -> error "Split leaf: underflow"
 
 --------------------------------------------------------------------------------
 

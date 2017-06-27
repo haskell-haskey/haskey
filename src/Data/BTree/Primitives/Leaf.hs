@@ -1,4 +1,3 @@
-
 module Data.BTree.Primitives.Leaf where
 
 import Data.BTree.Internal
@@ -7,7 +6,7 @@ import Data.BTree.Primitives.Key
 
 import Data.Map (Map)
 import qualified Data.Binary as B
-import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
 import Data.Int
@@ -19,31 +18,39 @@ import Data.Int
     items <= maxLeafItems (and >= minLeafItems, except when the original
     leaf had less than minLeafItems items.
 -}
-splitLeafManyBinary :: (Binary a, Key key)
+splitLeafManyPred :: (Key key)
+                    => (a -> Bool)
+                    -> (Map key val -> a)
+                    -> Map key val
+                    -> Maybe (Index key a)
+splitLeafManyPred p f = go
+  where
+    go items
+        | M.size items <= 1
+        = Just $ singletonIndex (f items)
+        | indexEnc <- f items
+        , p indexEnc
+        = Just (singletonIndex indexEnc)
+        | otherwise
+        =  do
+            left <- lstForWhich (p . f) inits'
+            let right = items `M.difference` left
+            mergeIndex (singletonIndex (f left))
+                       (fst $ M.findMin right)
+                       <$> go right
+      where
+        inits' = mapInits items
+
+    lstForWhich :: (a -> Bool) -> [a] -> Maybe a
+    lstForWhich g xs = case takeWhile g xs of [] -> Nothing
+                                              xs -> Just $ last xs
+
+splitLeafManyBinary :: (B.Binary a, Key key)
                     => Int
                     -> (Map key val -> a)
                     -> Map key val
-                    -> Index key a
-splitLeafManyBinary maxPageSize f = go
-  where
-    go items
-        | itemsSize <= fromIntegral maxPageSize || M.size items <= 1
-        = singletonIndex (f items)
-        | (right, left) <-
-            maybe (head inits', items `M.difference` head inits')
-                  (\left -> (left, items `M.difference` left))
-                  (lstForWhich (splitHalf itemsSize) inits')
-        = mergeIndex (go left) (fst $ M.findMin right) (go right)
-      where
-        itemsSize = encSize items
-        inits' = mapInits items
-
-        splitHalf origSize m = encSize m <= origSize `div` 2
-
-    encSize = BS.length . B.encode . f
-    lstForWhich :: (a -> Bool) -> [a] -> Maybe a
-    lstForWhich g xs = case span g xs of ([], _) -> Nothing
-                                         (x,  _) -> Just $ last x
+                    -> Maybe (Index key a)
+splitLeafManyBinary m = splitLeafManyPred (\x -> BL.length (B.encode x) <= fromIntegral m)
 
 splitLeafMany :: Key key => Int -> (Map key val -> a) -> Map key val -> Index key a
 splitLeafMany maxLeafItems f items

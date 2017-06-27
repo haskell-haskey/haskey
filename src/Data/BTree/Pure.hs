@@ -76,19 +76,10 @@ splitIndex :: Key key =>
    Index key (Node ('S height) key val)
 splitIndex = extendedIndex maxIdxKeys Idx
 
-checkSplitLeaf :: Key key => Map key val -> Index key (Node 'Z key val)
-checkSplitLeaf items
-    | M.size items <= maxLeafItems
-    = indexFromList [] [Leaf items]
-    | (leftItems, middleKey, rightItems) <- splitLeaf items
-    = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
-
-checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
-checkSplitLeafMany items
-    | M.size items <= maxLeafItems
-    = indexFromList [] [Leaf items]
-    | (keys, leafs) <- splitLeafMany maxLeafItems items
-    = indexFromList keys (map Leaf leafs)
+splitLeaf :: Key key =>
+    Map key val ->
+    Index key (Node 'Z key val)
+splitLeaf = splitLeafMany maxLeafItems Leaf
 
 --------------------------------------------------------------------------------
 
@@ -115,7 +106,7 @@ insertRec key val (Idx children)
       -- and then check if the split needs to be propagated.
       splitIndex (putIdx ctx newChildIdx)
 insertRec key val (Leaf items)
-    = checkSplitLeaf (M.insert key val items)
+    = splitLeaf (M.insert key val items)
 
 insert :: Key k => k -> v -> Tree k v -> Tree k v
 insert k d (Tree (Just rootNode))
@@ -144,14 +135,14 @@ insertRecMany kvs (Idx idx)
     = splitIndex (dist `bindIndex` uncurry insertRecMany)
 
 insertRecMany kvs (Leaf items)
-    = checkSplitLeafMany (M.union kvs items)
+    = splitLeaf (M.union kvs items)
 
 {-| Insert a bunch of key-value pairs simultaneously. -}
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v
 insertMany kvs (Tree (Just rootNode))
     = fixUp $ insertRecMany kvs rootNode
 insertMany kvs (Tree Nothing)
-    = fixUp $ checkSplitLeafMany kvs
+    = fixUp $ splitLeaf kvs
 
 {-| Fix up the root node of a tree.
 
@@ -199,7 +190,7 @@ mergeNodes :: Key key
     -> Node height key val
     -> Index key (Node height key val)
 mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
-    checkSplitLeaf (leftItems <> rightItems)
+    splitLeaf (leftItems <> rightItems)
 mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
     splitIndex (mergeIndex leftIdx middleKey rightIdx)
 

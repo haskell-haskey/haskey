@@ -19,21 +19,10 @@ splitIndex :: Key key =>
    Index key (Node ('S height) key val)
 splitIndex = extendedIndex maxIdxKeys Idx
 
-checkSplitLeaf :: Key key
-    => Map key val
-    -> Index key (Node 'Z key val)
-checkSplitLeaf items
-    | M.size items <= maxLeafItems
-    = indexFromList [] [Leaf items]
-    | (leftItems, middleKey, rightItems) <- splitLeaf items
-    = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
-
-checkSplitLeafMany :: Key key => Map key val -> Index key (Node 'Z key val)
-checkSplitLeafMany items
-    | M.size items <= maxLeafItems
-    = indexFromList [] [Leaf items]
-    | (keys, leafs) <- splitLeafMany maxLeafItems items
-    = indexFromList keys (map Leaf leafs)
+splitLeaf :: Key key =>
+    Map key val ->
+    Index key (Node 'Z key val)
+splitLeaf = splitLeafMany maxLeafItems Leaf
 
 --------------------------------------------------------------------------------
 
@@ -63,7 +52,7 @@ insertRec k v = fetch
         newChildIdx <- fetch (decrHeight hgt) childId
         traverse (allocNode hgt) (splitIndex (putIdx ctx newChildIdx))
     recurse hgt (Leaf items) =
-        traverse (allocNode hgt) (checkSplitLeaf (M.insert k v items))
+        traverse (allocNode hgt) (splitLeaf (M.insert k v items))
 
 insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
     => Height height
@@ -79,7 +68,7 @@ insertRecMany h kvs nid = do
             idx' <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
             traverse (allocNode h) (splitIndex idx')
         Leaf items ->
-            traverse (allocNode h) (checkSplitLeafMany (M.union kvs items))
+            traverse (allocNode h) (splitLeaf (M.union kvs items))
 
 
 --------------------------------------------------------------------------------
@@ -137,7 +126,7 @@ insertTreeMany kvs tree
         fixUp height newRootIdx
     | Tree { treeRootId = Nothing } <- tree
     = do
-        idx <- traverse (allocNode zeroHeight) (checkSplitLeafMany kvs)
+        idx <- traverse (allocNode zeroHeight) (splitLeaf kvs)
         fixUp zeroHeight $! idx
 
 {-| Fix up the root node of a tree.

@@ -19,7 +19,7 @@ splitIndex :: (AllocM m, Key key, Value val) =>
    m (Index key (Node ('S height) key val))
 splitIndex index = do
     m <- maxNodeSize
-    case extendIndex m Idx index of
+    case extendIndexBinary m Idx index of
         Just extIndex -> return extIndex
         Nothing       -> error "Splitting failed!? Underflow"
 

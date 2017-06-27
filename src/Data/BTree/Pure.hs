@@ -63,10 +63,11 @@ validTree (Tree (Just (Idx idx))) =
 
 {-| Check whether a (non-root) node is valid. -}
 validNode :: Ord key => Node height key val -> Bool
-validNode (Leaf items) =
-    M.size items >= minLeafItems && M.size items <= maxLeafItems
-validNode (Idx idx) =
-    validIndexSize minIdxKeys maxIdxKeys idx && F.all validNode idx
+validNode = \case
+    Leaf items -> M.size items >= minLeafItems &&
+                  M.size items <= maxLeafItems
+    Idx idx    -> validIndexSize minIdxKeys maxIdxKeys idx &&
+                  F.all validNode idx
 
 --------------------------------------------------------------------------------
 
@@ -174,9 +175,7 @@ fromList = L.foldl' (flip $ uncurry insert) empty
 {-| /O(n)/. Fold key\/value pairs in the B-tree.
 -}
 foldrWithKey :: forall k v w. (k -> v -> w -> w) -> w -> Tree k v -> w
-foldrWithKey f z0 (Tree mbRoot) = case mbRoot of
-    Nothing   -> z0
-    Just root -> go z0 root
+foldrWithKey f z0 (Tree mbRoot) = maybe z0 (go z0) mbRoot
   where
     go :: w -> Node h k v -> w
     go z1 (Leaf items) = M.foldrWithKey f z1 items
@@ -219,7 +218,7 @@ deleteRec key (Idx children)
     -- before.
     | childNeedsMerge
     = error "deleteRec: constraint violation, found an index \
-             \node with a single child"
+            \node with a single child"
     | otherwise = Idx (putVal ctx newChild)
   where
     (ctx, child)    = valView key children
@@ -230,16 +229,12 @@ deleteRec key (Leaf items)
 
 delete :: Key k => k -> Tree k v -> Tree k v
 delete _key (Tree Nothing)  = Tree Nothing
-delete key  (Tree (Just rootNode))
-    | newRootNode <- deleteRec key rootNode
-    = case newRootNode of
-          Idx index
-              | Just childNode <- fromSingletonIndex index ->
-                Tree (Just childNode)
-          Leaf items
-              | M.null items ->
-                Tree Nothing
-          _ -> Tree (Just newRootNode)
+delete key  (Tree (Just rootNode)) = case deleteRec key rootNode of
+    Idx index
+      | Just childNode <- fromSingletonIndex index -> Tree (Just childNode)
+    Leaf items
+      | M.null items -> Tree Nothing
+    newRootNode -> Tree (Just newRootNode)
 
 --------------------------------------------------------------------------------
 
@@ -295,29 +290,5 @@ instance F.Foldable (Node height key) where
         F.foldMap (F.foldMap f) idx
 
     foldMap f (Leaf items) = F.foldMap f items
-
-
---------------------------------------------------------------------------------
-
-test3 :: Tree Int64 String
-test3 = insert 3 "bar" empty
-
-test32 :: Tree Int64 String
-test32 = insert 2 "foo" test3
-
-test325 :: Tree Int64 String
-test325 = insert 5 "baz" test32
-
-test3254 :: Tree Int64 String
-test3254 = insert 4 "oof" test325
-
-test3254d3 :: Tree Int64 String
-test3254d3 = delete 3 test3254
-
-test3254d4 :: Tree Int64 String
-test3254d4 = delete 4 test3254
-
-test3254d5 :: Tree Int64 String
-test3254d5 = delete 5 test3254
 
 --------------------------------------------------------------------------------

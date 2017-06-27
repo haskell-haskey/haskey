@@ -1,6 +1,7 @@
 
 module Data.BTree.Internal where
 
+import           Data.List (inits)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (listToMaybe)
@@ -17,6 +18,9 @@ mapSplitAt i m
 safeLast :: [a] -> Maybe a
 safeLast = listToMaybe . reverse
 
+mapInits :: Ord k => Map k v -> [Map k v]
+mapInits = map M.fromList . inits . M.toList
+
 --------------------------------------------------------------------------------
 
 vecUncons :: Vector a -> Maybe (a, Vector a)
@@ -28,6 +32,9 @@ vecUnsnoc :: Vector a -> Maybe (Vector a, a)
 vecUnsnoc v
     | V.null v  = Nothing
     | otherwise = Just (V.unsafeInit v, V.unsafeLast v)
+
+vecInits :: Vector a -> Vector (Vector a)
+vecInits = V.map V.fromList . V.fromList . inits . V.toList
 
 isStrictlyIncreasing :: Ord key => Vector key -> Bool
 isStrictlyIncreasing ks = case vecUncons ks of

@@ -8,16 +8,45 @@ import Data.BTree.Primitives.Key
 import Data.Binary (Binary)
 import Data.Map (Map)
 import qualified Data.Binary as B
+import qualified Data.ByteString.Lazy as BS
 import qualified Data.Map as M
+
+import Data.Int
 
 --------------------------------------------------------------------------------
 
 {-| Split a leaf many times.
-
+gt
     This function ensures that the for each returned leaf, the amount of
     items <= maxLeafItems (and >= minLeafItems, except when the original
     leaf had less than minLeafItems items.
 -}
+splitLeafManyBinary :: (Binary a, Key key)
+                    => Int
+                    -> (Map key val -> a)
+                    -> Map key val
+                    -> Index key a
+splitLeafManyBinary maxPageSize f = go
+  where
+    go items
+        | itemsSize <= fromIntegral maxPageSize || M.size items <= 1
+        = singletonIndex (f items)
+        | (right, left) <-
+            maybe (head inits', items `M.difference` head inits')
+                  (\left -> (left, items `M.difference` left))
+                  (lstForWhich (splitHalf itemsSize) inits')
+        = mergeIndex (go left) (fst $ M.findMin right) (go right)
+      where
+        itemsSize = encSize items
+        inits' = mapInits items
+
+        splitHalf origSize m = encSize m <= origSize `div` 2
+
+    encSize = BS.length . B.encode . f
+    lstForWhich :: (a -> Bool) -> [a] -> Maybe a
+    lstForWhich g xs = case span g xs of ([], _) -> Nothing
+                                         (x,  _) -> Just $ last x
+
 splitLeafMany :: Key key => Int -> (Map key val -> a) -> Map key val -> Index key a
 splitLeafMany maxLeafItems f items
     | M.size items <= maxLeafItems
@@ -45,5 +74,4 @@ splitLeafMany maxLeafItems f items
         = (reverse keys, reverse leafs)
         | otherwise
         = error "splitLeafMany: constraint violation, got a Map with <= maxLeafItems"
-
 --------------------------------------------------------------------------------

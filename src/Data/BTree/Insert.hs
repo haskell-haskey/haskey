@@ -23,10 +23,12 @@ splitIndex index = do
         Just extIndex -> return extIndex
         Nothing       -> error "Splitting failed!? Underflow"
 
-splitLeaf :: Key key =>
+splitLeaf :: (AllocM m, Key key, Value val) =>
     Map key val ->
-    Index key (Node 'Z key val)
-splitLeaf = splitLeafMany maxLeafItems Leaf
+    m (Index key (Node 'Z key val))
+splitLeaf items = do
+    m <- maxNodeSize
+    return $ splitLeafManyBinary m Leaf items
 
 --------------------------------------------------------------------------------
 
@@ -57,7 +59,7 @@ insertRec k v = fetch
         newChildren <- splitIndex (putIdx ctx newChildIdx)
         traverse (allocNode hgt) newChildren
     recurse hgt (Leaf items) =
-        traverse (allocNode hgt) (splitLeaf (M.insert k v items))
+        traverse (allocNode hgt) =<< splitLeaf (M.insert k v items)
 
 insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
     => Height height
@@ -74,7 +76,7 @@ insertRecMany h kvs nid = do
             newChildren <- splitIndex newIndex
             traverse (allocNode h) newChildren
         Leaf items ->
-            traverse (allocNode h) (splitLeaf (M.union kvs items))
+            traverse (allocNode h) =<< splitLeaf (M.union kvs items)
 
 
 --------------------------------------------------------------------------------
@@ -132,7 +134,7 @@ insertTreeMany kvs tree
         fixUp height newRootIdx
     | Tree { treeRootId = Nothing } <- tree
     = do
-        idx <- traverse (allocNode zeroHeight) (splitLeaf kvs)
+        idx <- traverse (allocNode zeroHeight) =<< splitLeaf kvs
         fixUp zeroHeight $! idx
 
 {-| Fix up the root node of a tree.

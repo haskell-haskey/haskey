@@ -28,7 +28,7 @@ mergeNodes :: (AllocM m, Key key, Value val)
     -> Node height key val
     -> m (Index key (Node height key val))
 mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
-    return $! splitLeaf (leftItems <> rightItems)
+    splitLeaf (leftItems <> rightItems)
 mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
     splitIndex (mergeIndex leftIdx middleKey rightIdx)
 

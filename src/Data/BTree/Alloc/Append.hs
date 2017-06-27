@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable        #-}
 {-# LANGUAGE DeriveGeneric             #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
@@ -17,8 +18,8 @@ import           Data.BTree.Store.Class
 import           Control.Applicative (Applicative(..), (<$>))
 import           Control.Monad.Reader.Class
 import           Control.Monad.Trans.Reader (ReaderT, runReaderT)
-
-import           Data.Binary (Binary)
+import qualified Data.ByteString.Lazy as BL
+import           Data.Binary (Binary, encode)
 import           Data.Typeable
 
 import           GHC.Generics (Generic)
@@ -59,6 +60,10 @@ runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
 instance AllocM (AppendT m) where
+    nodeSize n = return . fromIntegral . BL.length $ case n of
+        Idx{}  -> encode n
+        Leaf{} -> encode n
+    maxNodeSize        = return 64
     allocNode height n = AppendT $ do
         hnd <- ask
         pc <- getSize hnd

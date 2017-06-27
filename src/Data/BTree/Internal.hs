@@ -3,6 +3,7 @@ module Data.BTree.Internal where
 
 import           Data.Map (Map)
 import qualified Data.Map as M
+import           Data.Maybe (listToMaybe)
 import           Data.Vector (Vector)
 import qualified Data.Vector as V
 
@@ -12,6 +13,9 @@ mapSplitAt :: Eq k => Int -> Map k v -> (Map k v, Map k v)
 mapSplitAt i m
     | (l,r) <- splitAt i (M.toList m)
     = (M.fromAscList l, M.fromAscList r)
+
+safeLast :: [a] -> Maybe a
+safeLast = listToMaybe . reverse
 
 --------------------------------------------------------------------------------
 

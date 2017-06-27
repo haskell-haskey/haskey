@@ -11,7 +11,8 @@ import           Data.BTree.Internal
 import           Control.Applicative ((<$>))
 import           Control.Monad.Identity (runIdentity)
 
-import           Data.Binary (Binary)
+import qualified Data.ByteString.Lazy as BL
+import           Data.Binary (Binary, encode)
 import           Data.Foldable (Foldable)
 import qualified Data.Map as M
 import           Data.Traversable (Traversable)
@@ -106,6 +107,35 @@ extendedIndex maxIdxKeys f = go
                 middleKey (go rightIndex)
       where
         numVals = indexNumVals index
+
+extendIndexPred :: (a -> Bool) ->
+  (Index k b -> a) -> Index k b -> Maybe (Index k a)
+extendIndexPred p f = go
+  where
+    go index
+        | let indexEnc = f index
+        , p indexEnc
+        = Just (singletonIndex indexEnc)
+        | otherwise
+        = do
+            let numKeys = indexNumKeys index
+            (leftEnc, (middleKey, right)) <- safeLast $
+                takeWhile (p . fst)
+                [ (leftEnc, (middleKey, right))
+                | i <- [1..numKeys-1]
+                , let (left,middleKey,right) = splitIndexAt i index
+                      leftEnc                = f left
+                ]
+            rightEnc <- go right
+            return $! mergeIndex (singletonIndex leftEnc) middleKey rightEnc
+
+extendIndexBinary :: Binary a
+    => Int
+    -> (Index k b -> a)
+    -> Index k b
+    -> Maybe (Index k a)
+extendIndexBinary maxSize =
+    extendIndexPred (\n -> BL.length (encode n) <= fromIntegral maxSize)
 
 {-| Merge two indices.
 

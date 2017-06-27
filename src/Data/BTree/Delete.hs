@@ -22,13 +22,13 @@ nodeNeedsMerge (Idx children) =
 nodeNeedsMerge (Leaf items) =
     M.size items < minLeafItems
 
-mergeNodes :: Key key
+mergeNodes :: (AllocM m, Key key, Value val)
     => Node height key val
     -> key
     -> Node height key val
-    -> Index key (Node height key val)
+    -> m (Index key (Node height key val))
 mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
-    splitLeaf (leftItems <> rightItems)
+    return $! splitLeaf (leftItems <> rightItems)
 mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
     splitIndex (mergeIndex leftIdx middleKey rightIdx)
 
@@ -60,15 +60,15 @@ deleteRec key = fetchAndGo
         if | childNeedsMerge, Just (rKey, rChildId, rCtx) <- rightView ctx -> do
                  rChild <- readNode subHeight rChildId
                  freeNode subHeight rChildId
-                 newChildren <- traverse (allocNode subHeight)
-                                  (mergeNodes newChild rKey rChild)
-                 return (Idx (putIdx rCtx newChildren))
+                 newChildren    <- mergeNodes newChild rKey rChild
+                 newChildrenIds <- traverse (allocNode subHeight) newChildren
+                 return (Idx (putIdx rCtx newChildrenIds))
            | childNeedsMerge, Just (lCtx, lChildId, lKey) <- leftView ctx -> do
                  lChild <- readNode subHeight lChildId
                  freeNode subHeight lChildId
-                 newChildIds <- traverse (allocNode subHeight)
-                                  (mergeNodes lChild lKey newChild)
-                 return (Idx (putIdx lCtx newChildIds))
+                 newChildren    <- mergeNodes lChild lKey newChild
+                 newChildrenIds <- traverse (allocNode subHeight) newChildren
+                 return (Idx (putIdx lCtx newChildrenIds))
            -- No left or right sibling? This is a constraint violation. Also
            -- this couldn't be the root because it would've been shrunk
            -- before.

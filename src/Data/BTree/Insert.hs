@@ -14,10 +14,14 @@ import           Data.Traversable (traverse)
 
 --------------------------------------------------------------------------------
 
-splitIndex :: Key key =>
+splitIndex :: (AllocM m, Key key, Value val) =>
    Index key (NodeId height key val) ->
-   Index key (Node ('S height) key val)
-splitIndex = extendedIndex maxIdxKeys Idx
+   m (Index key (Node ('S height) key val))
+splitIndex index = do
+    m <- maxNodeSize
+    case extendIndex m Idx index of
+        Just extIndex -> return extIndex
+        Nothing       -> error "Splitting failed!? Underflow"
 
 splitLeaf :: Key key =>
     Map key val ->
@@ -50,7 +54,8 @@ insertRec k v = fetch
     recurse hgt (Idx children) = do
         let (ctx,childId) = valView k children
         newChildIdx <- fetch (decrHeight hgt) childId
-        traverse (allocNode hgt) (splitIndex (putIdx ctx newChildIdx))
+        newChildren <- splitIndex (putIdx ctx newChildIdx)
+        traverse (allocNode hgt) newChildren
     recurse hgt (Leaf items) =
         traverse (allocNode hgt) (splitLeaf (M.insert k v items))
 
@@ -65,8 +70,9 @@ insertRecMany h kvs nid = do
     case n of
         Idx idx -> do
             let dist = distribute kvs idx
-            idx' <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
-            traverse (allocNode h) (splitIndex idx')
+            newIndex    <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
+            newChildren <- splitIndex newIndex
+            traverse (allocNode h) newChildren
         Leaf items ->
             traverse (allocNode h) (splitLeaf (M.union kvs items))
 
@@ -145,7 +151,8 @@ fixUp h idx = case fromSingletonIndex idx of
                        , treeRootId = Just newRootNid }
     Nothing -> do
         let newHeight = incrHeight h
-        childrenNids <- traverse (allocNode newHeight) (splitIndex idx)
+        children     <- splitIndex idx
+        childrenNids <- traverse (allocNode newHeight) children
         fixUp newHeight $! childrenNids
 
 --------------------------------------------------------------------------------

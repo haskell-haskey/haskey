@@ -13,8 +13,7 @@ import Data.Int
 
 import Properties.Utils (testBinary)
 
-deriving instance (Arbitrary key, Arbitrary val) => Arbitrary (NodeId height key val)
-
+deriving instance Arbitrary (NodeId height key val)
 deriving instance Arbitrary PageId
 deriving instance Arbitrary TxId
 

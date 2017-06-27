@@ -107,7 +107,7 @@ createAppendDb hnd = do
 
 --------------------------------------------------------------------------------
 
-readTransact :: (AppendMetaStoreM hnd m, Key key, Value val)
+readTransact :: (AppendMetaStoreM hnd m)
              => (forall n. AllocM n => Tree key val -> n a)
              -> AppendDb hnd key val -> m a
 readTransact act db

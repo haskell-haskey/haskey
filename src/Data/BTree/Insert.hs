@@ -78,7 +78,6 @@ insertRecMany h kvs nid = do
         Leaf items ->
             traverse (allocNode h) =<< splitLeaf (M.union kvs items)
 
-
 --------------------------------------------------------------------------------
 
 insertTree :: (AllocM m, Key key, Value val)

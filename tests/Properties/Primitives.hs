@@ -31,10 +31,10 @@ tests = testGroup "Primitives.Ids"
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Node 'Z k v) where
     arbitrary = Leaf <$> arbitrary
 
-instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Node ('S height) k v) where
+instance (Key k, Arbitrary k) => Arbitrary (Node ('S height) k v) where
     arbitrary = Idx <$> arbitrary
 
-instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Tree k v) where
+instance Arbitrary (Tree k v) where
     arbitrary = Tree <$> arbitrary <*> arbitrary
 
 prop_binary_leafNode :: Node 'Z Int64 Bool -> Bool
@@ -49,11 +49,11 @@ prop_binary_tree t = B.decode (B.encode t) `treeEqShape` t
 --------------------------------------------------------------------------------
 --
 {-| Compare the shape of a 'Tree' structure -}
-treeEqShape :: (Typeable key, Typeable val, Eq key, Eq val)
+treeEqShape :: (Typeable key, Typeable val)
             => Tree key val
             -> Tree key val
             -> Bool
-Tree hx Nothing `treeEqShape` Tree hy Nothing = fromHeight hx == fromHeight hy
+Tree hx Nothing   `treeEqShape` Tree hy Nothing   = fromHeight hx == fromHeight hy
 Tree hx (Just rx) `treeEqShape` Tree hy (Just ry) =
     maybe False (== ry) $ castNode hx hy rx
-Tree _ _ `treeEqShape` Tree _ _ = False
+Tree _ _          `treeEqShape` Tree _ _          = False

@@ -8,7 +8,6 @@ import Test.QuickCheck
 import Control.Applicative ((<$>), (<*>))
 
 import Data.BTree.Alloc.Append
-import Data.BTree.Primitives.Key
 
 import Data.Int
 import Data.Typeable
@@ -17,7 +16,7 @@ import qualified Data.Binary as B
 import Properties.Primitives (treeEqShape)
 import Properties.Primitives.Ids () -- Arbitrary instance of TxId, PageId
 
-instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (AppendMeta k v) where
+instance Arbitrary (AppendMeta k v) where
     arbitrary = AppendMeta <$> arbitrary <*> arbitrary <*> arbitrary
 
 tests :: Test
@@ -31,7 +30,7 @@ test_binary_appendMeta x = B.decode (B.encode x) `appendMetaEq` x
 --------------------------------------------------------------------------------
 
 {-| Compare the the shape of the 'AppendMeta' structure -}
-appendMetaEq :: (Typeable k, Typeable v, Eq k, Eq v)
+appendMetaEq :: (Typeable k, Typeable v)
              => AppendMeta k v
              -> AppendMeta k v
              -> Bool

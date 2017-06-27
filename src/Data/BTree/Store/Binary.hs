@@ -72,20 +72,20 @@ instance (Binary k, Binary v) => Binary (Page k v) where
 
 --------------------------------------------------------------------------------
 
-type File k v     = Map PageId ByteString
-type Files fp k v = Map fp (File k v)
+type File     = Map PageId ByteString
+type Files fp = Map fp File
 
 newtype StoreT fp k v m a = StoreT
-    { fromStoreT :: MaybeT (StateT (Files fp k v) m) a
+    { fromStoreT :: MaybeT (StateT (Files fp) m) a
     } deriving (Applicative, Functor, Monad)
 
-runStoreT :: StoreT fp k v m a -> Files fp k v -> m (Maybe a, Files fp k v)
+runStoreT :: StoreT fp k v m a -> Files fp -> m (Maybe a, Files fp)
 runStoreT = runStateT . runMaybeT . fromStoreT
 
-evalStoreT :: Monad m => StoreT fp k v m a -> Files fp k v -> m (Maybe a)
+evalStoreT :: Monad m => StoreT fp k v m a -> Files fp -> m (Maybe a)
 evalStoreT = evalStateT . runMaybeT . fromStoreT
 
-execStoreT :: Monad m => StoreT fp k v m a -> Files fp k v-> m (Files fp k v)
+execStoreT :: Monad m => StoreT fp k v m a -> Files fp-> m (Files fp)
 execStoreT = execStateT . runMaybeT . fromStoreT
 
 nodeIdToPageId :: NodeId height key val -> PageId

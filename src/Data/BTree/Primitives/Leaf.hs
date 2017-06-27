@@ -5,7 +5,6 @@ import Data.BTree.Internal
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 
-import Data.Binary (Binary)
 import Data.Map (Map)
 import qualified Data.Binary as B
 import qualified Data.ByteString.Lazy as BS
@@ -16,7 +15,6 @@ import Data.Int
 --------------------------------------------------------------------------------
 
 {-| Split a leaf many times.
-gt
     This function ensures that the for each returned leaf, the amount of
     items <= maxLeafItems (and >= minLeafItems, except when the original
     leaf had less than minLeafItems items.

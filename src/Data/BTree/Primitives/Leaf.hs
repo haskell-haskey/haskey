@@ -26,8 +26,6 @@ splitLeafManyPred :: (Key key)
 splitLeafManyPred p f = go
   where
     go items
-        | M.size items <= 1
-        = Just $ singletonIndex (f items)
         | indexEnc <- f items
         , p indexEnc
         = Just (singletonIndex indexEnc)

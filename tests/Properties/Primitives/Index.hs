@@ -15,6 +15,7 @@ import Data.Int
 import Data.List (nub)
 import Data.List.Ordered (isSortedBy)
 import Data.Monoid ((<>))
+import qualified Data.Binary as B
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
@@ -34,7 +35,8 @@ instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
 
 tests :: Test
 tests = testGroup "Primitives.Index"
-    [ testProperty "validIndex arbitrary" prop_validIndex_arbitrary
+    [ testProperty "binary" prop_binary
+    , testProperty "validIndex arbitrary" prop_validIndex_arbitrary
     , testProperty "validIndex singletonIndex" prop_validIndex_singletonIndex
     , testProperty "mergeIndex splitIndex" prop_mergeIndex_splitIndex
     , testProperty "fromSingletonIndex singletonIndex"
@@ -42,6 +44,9 @@ tests = testGroup "Primitives.Index"
     , testProperty "distribute" prop_distribute
     , testProperty "splitIndexMany" prop_splitIndexMany
     ]
+
+prop_binary :: Index Int64 Bool -> Bool
+prop_binary x = x == B.decode (B.encode x)
 
 prop_validIndex_arbitrary :: Index Int64 Bool -> Bool
 prop_validIndex_arbitrary = validIndex

@@ -1,6 +1,9 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 
@@ -14,6 +17,8 @@ module Data.BTree.Primitives
   , module Data.BTree.Primitives
   ) where
 
+import Control.Applicative ((<$>), (<*>))
+
 import Data.BTree.Primitives.Height
 import Data.BTree.Primitives.Ids
 import Data.BTree.Primitives.Index
@@ -21,9 +26,13 @@ import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf
 import Data.BTree.Primitives.Value
 
+import Data.Binary (Binary(..))
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep)
+
+import GHC.Generics (Generic)
+
 import Unsafe.Coerce
 
 --------------------------------------------------------------------------------
@@ -43,7 +52,26 @@ data Node height key val where
             } -> Node ('S height) key val
     Leaf :: { leafItems        ::  Map key val
             } -> Node 'Z key val
-    deriving Typeable
+    deriving (Typeable)
+
+instance (Eq key, Eq val) => Eq (Node 'Z key val) where
+    Leaf x == Leaf y = x == y
+
+instance (Eq key, Eq val) => Eq (Node ('S h) key val) where
+    Idx x == Idx y = x == y
+
+data BNode = BIdx | BLeaf deriving Generic
+instance Binary BNode where
+
+instance (Binary key, Binary val) => Binary (Node 'Z key val) where
+    put (Leaf items) = put BLeaf >> put items
+    get = get >>= \case BLeaf -> Leaf <$> get
+                        BIdx  -> fail "expected a leaf node, but found an idx node"
+
+instance (Binary key, Binary val) => Binary (Node ('S height) key val) where
+    put (Idx idx) = put BIdx >> put idx
+    get = get >>= \case BIdx -> Idx <$> get
+                        BLeaf -> fail "expected an idx node, but found a leaf node"
 
 {-| A B+-tree.
 
@@ -60,6 +88,10 @@ data Tree key val where
 
 deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
+
+instance (Binary key, Binary val) => Binary (Tree key val) where
+    put (Tree height rootId) = put height >> put rootId
+    get = Tree <$> get <*> get
 
 {-| Create an empty tree. -}
 empty :: Tree k v

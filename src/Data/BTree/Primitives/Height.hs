@@ -1,14 +1,18 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
 
 module Data.BTree.Primitives.Height where
+
+import Data.Binary (Binary)
+import Data.Int
 
 --------------------------------------------------------------------------------
 
 data Nat = Z | S Nat
 
-newtype Height (h :: Nat) = Height { fromHeight :: Int }
-    deriving (Eq, Ord)
+newtype Height (h :: Nat) = Height { fromHeight :: Int64 }
+    deriving (Binary, Eq, Ord)
 
 instance Show (Height h) where
     showsPrec p = showsPrec p . fromHeight

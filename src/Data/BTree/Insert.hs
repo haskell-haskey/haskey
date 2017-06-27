@@ -11,16 +11,15 @@ import           Data.BTree.TwoThree
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Traversable (traverse)
-import qualified Data.Vector as V
 
 --------------------------------------------------------------------------------
 
-checkSplitIdx :: Key key
-    => Index key (NodeId height key val)
+checkSplitIdx ::
+       Index key (NodeId height key val)
     -> Index key (Node ('S height) key val)
 checkSplitIdx idx
     -- In case the branching fits in one index node we create it.
-    | V.length (indexKeys idx) <= maxIdxKeys
+    | indexNumKeys idx <= maxIdxKeys
     = indexFromList [] [Idx idx]
     -- Otherwise we split the index node.
     | (leftIdx, middleKey, rightIdx) <- splitIndex idx
@@ -35,11 +34,10 @@ checkSplitLeaf items
     | (leftItems, middleKey, rightItems) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
 
-checkSplitIdxMany :: Key key
-                  => Index key (NodeId height key val)
+checkSplitIdxMany :: Index key (NodeId height key val)
                   -> Index key (Node ('S height) key val)
 checkSplitIdxMany idx
-    | V.length (indexKeys idx) <= maxIdxKeys
+    | indexNumKeys idx <= maxIdxKeys
     = indexFromList [] [Idx idx]
     | (keys, idxs) <- splitIndexMany maxIdxKeys idx
     = indexFromList keys (map Idx idxs)

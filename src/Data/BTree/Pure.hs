@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -20,7 +21,6 @@ import           Data.Maybe (isJust, isNothing, fromMaybe)
 import           Data.Monoid
 import           Prelude hiding (lookup, null)
 import qualified Data.Map as M
-import qualified Data.Vector as V
 
 --------------------------------------------------------------------------------
 
@@ -70,12 +70,12 @@ validNode (Idx idx) =
 
 --------------------------------------------------------------------------------
 
-checkSplitIdx :: Key key =>
+checkSplitIdx ::
    Index key (Node height key val) ->
    Index key (Node ('S height) key val)
 checkSplitIdx idx
     -- In case the branching fits in one index node we create it.
-    | V.length (indexKeys idx) <= maxIdxKeys
+    | indexNumKeys idx <= maxIdxKeys
     = indexFromList [] [Idx idx]
     -- Otherwise we split the index node.
     | (leftIdx, middleKey, rightIdx) <- splitIndex idx
@@ -88,11 +88,10 @@ checkSplitLeaf items
     | (leftItems, middleKey, rightItems) <- splitLeaf items
     = indexFromList [middleKey] [Leaf leftItems, Leaf rightItems]
 
-checkSplitIdxMany :: Key key
-                  => Index key (Node height key val)
+checkSplitIdxMany :: Index key (Node height key val)
                   -> Index key (Node ('S height) key val)
 checkSplitIdxMany idx
-    | V.length (indexKeys idx) <= maxIdxKeys
+    | indexNumKeys idx <= maxIdxKeys
     = indexFromList [] [Idx idx]
     | (keys, idxs) <- splitIndexMany maxIdxKeys idx
     = indexFromList keys (map Idx idxs)
@@ -205,10 +204,9 @@ toList = foldrWithKey (\k v kvs -> (k,v):kvs) []
 --------------------------------------------------------------------------------
 
 nodeNeedsMerge :: Node height key value -> Bool
-nodeNeedsMerge Idx  { idxChildren = children } =
-    V.length (indexKeys children) < minIdxKeys
-nodeNeedsMerge Leaf { leafItems   = items }    =
-    M.size items < minLeafItems
+nodeNeedsMerge = \case
+    Idx children -> indexNumKeys children < minIdxKeys
+    Leaf items   -> M.size items < minLeafItems
 
 mergeNodes :: Key key
     => Node height key val

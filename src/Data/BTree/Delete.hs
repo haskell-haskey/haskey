@@ -13,14 +13,13 @@ import           Data.BTree.TwoThree
 import qualified Data.Map as M
 import           Data.Monoid
 import           Data.Traversable (traverse)
-import qualified Data.Vector as V
 
 --------------------------------------------------------------------------------
 
 nodeNeedsMerge :: Node height key val -> Bool
-nodeNeedsMerge Idx  { idxChildren = children } =
-    V.length (indexKeys children) < minIdxKeys
-nodeNeedsMerge Leaf { leafItems   = items }    =
+nodeNeedsMerge (Idx children) =
+    indexNumKeys children < minIdxKeys
+nodeNeedsMerge (Leaf items) =
     M.size items < minLeafItems
 
 mergeNodes :: Key key

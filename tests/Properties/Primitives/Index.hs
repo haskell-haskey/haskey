@@ -1,21 +1,23 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Properties.Primitives.Index (tests) where
 
-import Test.Framework (Test, testGroup)
+import Test.Framework                       (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
-import Data.BTree.Primitives.Index
-import Data.BTree.Primitives.Key
+import           Data.BTree.Primitives.Index
+import           Data.BTree.Primitives.Key
 import qualified Data.BTree.TwoThree as Tree
 
-import Control.Applicative ((<$>))
-
-import Data.Int
-import Data.List (nub)
-import Data.List.Ordered (isSortedBy)
-import Data.Monoid ((<>))
+import           Control.Applicative ((<$>))
 import qualified Data.Binary as B
+import qualified Data.Foldable as F
+import           Data.Int
+import           Data.Maybe          (isJust)
+import           Data.List           (nub)
+import           Data.List.Ordered   (isSortedBy)
+import           Data.Monoid         ((<>))
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
@@ -57,7 +59,7 @@ prop_validIndex_singletonIndex i =
 
 prop_mergeIndex_splitIndex :: Property
 prop_mergeIndex_splitIndex =
-    forAll (arbitrary `suchThat` (not . V.null . indexKeys)) $ \ix ->
+    forAll (arbitrary `suchThat` (not . isJust . fromSingletonIndex)) $ \ix ->
       let (left, middle, right) = splitIndex (ix :: Index Int64 Bool)
       in  mergeIndex left middle right == ix
 
@@ -67,7 +69,7 @@ prop_fromSingletonIndex_singletonIndex i =
 
 prop_distribute :: M.Map Int64 Int -> Index Int64 Int -> Bool
 prop_distribute kvs idx
-    | idx'@Index { indexKeys = keys, indexNodes = vs } <- distribute kvs idx
+    | idx'@(Index keys vs) <- distribute kvs idx
     , x <- V.all pred1 $ V.zip keys (V.init $ V.map fst vs)
     , y <- V.all pred2 $ V.zip keys (V.tail $ V.map fst vs)
     , z <- M.unions (V.toList $ V.map fst vs) == kvs
@@ -79,14 +81,14 @@ prop_distribute kvs idx
 
 prop_splitIndexMany :: Index Int64 Int -> Bool
 prop_splitIndexMany idx
-    | V.length (indexKeys idx) <= maxIdxKeys = True
+    | indexNumKeys idx <= maxIdxKeys = True
     | (keys, idxs)  <- splitIndexMany maxIdxKeys idx
     , numKeyIdxsOK  <- length idxs == 1 + length keys
     , validIdxs     <- all validIndex idxs
-    , keysMaxOK     <- all (\(key, idx') -> V.last (indexKeys idx') < key) $ zip keys idxs
-    , keysMinOK     <- all (\(key, idx') -> V.head (indexKeys idx') > key) $ zip keys (tail idxs)
+    , keysMaxOK     <- all (\(key, Index keys' _) -> V.last keys' < key) $ zip keys idxs
+    , keysMinOK     <- all (\(key, Index keys' _) -> V.head keys' > key) $ zip keys (tail idxs)
     , keysOrderOK   <- isSortedBy (<) keys
-    , joinedNodesOK <- V.concat (map indexNodes idxs) == indexNodes idx
+    , joinedNodesOK <- concatMap F.toList (F.toList idxs) == F.toList idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
   where
     maxIdxKeys = Tree.maxFanout - 1

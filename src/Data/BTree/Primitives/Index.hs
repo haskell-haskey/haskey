@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Data.BTree.Primitives.Index where
 
@@ -31,13 +32,20 @@ import GHC.Generics (Generic)
     keys. Hence structurally the smallest 'Index' has one sub-tree and no keys,
     but a valid B+-tree index node will have at least two sub-trees and one key.
  -}
-data Index key node = Index
-    { indexKeys  :: !(Vector key)
-    , indexNodes :: !(Vector node)
-    }
+data Index key node = Index !(Vector key) !(Vector node)
   deriving (Eq, Functor, Foldable, Generic, Show, Traversable)
 
 instance (Binary k, Binary n) => Binary (Index k n) where
+
+{-| Return the number of keys in this 'Index.
+-}
+indexNumKeys :: Index key val -> Int
+indexNumKeys (Index keys _vals) = V.length keys
+
+{-| Return the number of values stored in this 'Index.
+-}
+indexNumVals :: Index key val -> Int
+indexNumVals (Index _keys vals) = V.length vals
 
 {-| Validate the key/node count invariant of an index.  -}
 validIndex :: Ord key => Index key node -> Bool
@@ -59,22 +67,13 @@ validIndexSize minIdxKeys maxIdxKeys idx@(Index keys _) =
     "Data.BTree.Primitives.Leaf".
 -}
 splitIndex :: Index key node -> (Index key node, key, Index key node)
-splitIndex Index { indexKeys = keys, indexNodes = nodes }
+splitIndex (Index keys nodes)
     | numLeftKeys                       <- div (V.length keys) 2
     , numLeftNodes                      <- numLeftKeys + 1
     , (leftKeys, middleKeyAndRightKeys) <- V.splitAt numLeftKeys keys
     , Just (middleKey,rightKeys)        <- vecUncons middleKeyAndRightKeys
     , (leftNodes, rightNodes)           <- V.splitAt numLeftNodes nodes
-    = ( Index
-        { indexKeys  = leftKeys
-        , indexNodes = leftNodes
-        }
-      , middleKey
-      , Index
-        { indexKeys  = rightKeys
-        , indexNodes = rightNodes
-        }
-      )
+    = (Index leftKeys leftNodes, middleKey, Index rightKeys rightNodes)
     | otherwise
     = error "splitIndex: empty Index"
 
@@ -90,7 +89,7 @@ splitIndexMany :: Int -> Index key node -> ([key], [Index key node])
 splitIndexMany maxIdxKeys idx = split' idx ([], [])
   where
     split' ::  Index key node -> ([key], [Index key node]) -> ([key], [Index key node])
-    split' Index {indexKeys = keysToSplit, indexNodes = nodesToSplit } (keys, children)
+    split' (Index keysToSplit nodesToSplit) (keys, children)
         | V.length nodesToSplit > 2*maxIdxItems
         , (leftKeys, middleAndRightKeys) <- V.splitAt maxIdxKeys keysToSplit
         , Just (middleKey, rightKeys)    <- vecUncons middleAndRightKeys
@@ -116,13 +115,10 @@ splitIndexMany maxIdxKeys idx = split' idx ([], [])
     prop> splitIndex is == (left,mid,right) => mergeIndex left mid right == is
 -}
 mergeIndex :: Index key val -> key -> Index key val -> Index key val
-mergeIndex leftIndex middleKey rightIndex = Index
-    { indexKeys = indexKeys leftIndex <>
-                  V.singleton middleKey <>
-                  indexKeys rightIndex
-    , indexNodes = indexNodes leftIndex <>
-                  indexNodes rightIndex
-    }
+mergeIndex (Index leftKeys leftVals) middleKey (Index rightKeys rightVals) =
+    Index
+      (leftKeys <> V.singleton middleKey <> rightKeys)
+      (leftVals <> rightVals)
 
 {-| Create an index from key-value lists.
 
@@ -141,14 +137,12 @@ singletonIndex = Index V.empty . V.singleton
 {-| Test if the index consists of a single value.
 
     Returns the element if the index is a singleton. Otherwise fails.
+
+    prop> fromSingletonIndex (singletonIndex val) == Just val
 -}
 fromSingletonIndex :: Index key val -> Maybe val
-fromSingletonIndex idx
-    | vals <- indexNodes idx
-    , V.length vals == 1
-    = Just $! V.unsafeHead vals
-    | otherwise
-    = Nothing
+fromSingletonIndex (Index _keys vals) =
+    if V.length vals == 1 then Just $! V.unsafeHead vals else Nothing
 
 --------------------------------------------------------------------------------
 
@@ -180,26 +174,19 @@ data IndexCtx key val = IndexCtx
   deriving (Functor, Foldable, Show, Traversable)
 
 putVal :: IndexCtx key val -> val -> Index key val
-putVal ctx val = Index
-    { indexKeys  = indexCtxLeftKeys ctx <>
-                   indexCtxRightKeys ctx
-    , indexNodes = indexCtxLeftVals ctx <>
-                   V.singleton val <>
-                   indexCtxRightVals ctx
-    }
+putVal ctx val =
+    Index
+      (indexCtxLeftKeys ctx <> indexCtxRightKeys ctx)
+      (indexCtxLeftVals ctx <> V.singleton val <> indexCtxRightVals ctx)
 
 putIdx :: IndexCtx key val -> Index key val -> Index key val
-putIdx ctx idx = Index
-    { indexKeys  = indexCtxLeftKeys ctx <>
-                   indexKeys idx <>
-                   indexCtxRightKeys ctx
-    , indexNodes = indexCtxLeftVals ctx <>
-                   indexNodes idx <>
-                   indexCtxRightVals ctx
-    }
+putIdx ctx (Index keys vals) =
+    Index
+      (indexCtxLeftKeys ctx <> keys <> indexCtxRightKeys ctx)
+      (indexCtxLeftVals ctx <> vals <> indexCtxRightVals ctx)
 
 valView :: Ord key => key -> Index key val -> (IndexCtx key val, val)
-valView key Index { indexKeys = keys, indexNodes = vals }
+valView key (Index keys vals)
     | (leftKeys,rightKeys)       <- V.span (<=key) keys
     , n                          <- V.length leftKeys
     , (leftVals,valAndRightVals) <- V.splitAt n vals
@@ -217,11 +204,10 @@ valView key Index { indexKeys = keys, indexNodes = vals }
 
 {-| Distribute a map of key-value pairs over an index. -}
 distribute :: Ord k => M.Map k v -> Index k node -> Index k (M.Map k v, node)
-distribute kvs Index { indexKeys = keys, indexNodes = nodes }
+distribute kvs (Index keys nodes)
     | a <- V.imap rangeTail          (Nothing `V.cons` V.map Just keys)
     , b <- V.map (uncurry rangeHead) (V.zip (V.map Just keys `V.snoc` Nothing) a)
-    = Index { indexKeys = keys
-            , indexNodes = b }
+    = Index keys b
   where
     rangeTail idx Nothing    = (kvs, nodes V.! idx)
     rangeTail idx (Just key) = (takeWhile' (>= key) kvs, nodes V.! idx)

@@ -40,8 +40,7 @@ splitLeafManyPred p f = go
         inits' = mapInits items
 
     lstForWhich :: (a -> Bool) -> [a] -> Maybe a
-    lstForWhich g xs = case takeWhile g xs of [] -> Nothing
-                                              xs -> Just $ last xs
+    lstForWhich g xs = safeLast $ takeWhile g xs
 
 splitLeafManyBinary :: (B.Binary a, Key key)
                     => Int

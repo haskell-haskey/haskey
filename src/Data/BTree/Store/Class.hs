@@ -15,6 +15,7 @@ import Control.Monad.Trans.State (StateT)
 --------------------------------------------------------------------------------
 
 class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
+    maxNodeSize ::  m Int
     setSize     ::  hnd -> PageCount -> m ()
     getSize     ::  hnd -> m PageCount
     getNodePage ::  (Key key, Value val)
@@ -30,15 +31,17 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
                 ->  m ()
 
 instance StoreM hnd m => StoreM hnd (StateT s m) where
-    setSize     = (lift.)       . setSize
-    getSize     = lift          . getSize
-    getNodePage = ((lift.).)    . getNodePage
-    putNodePage = (((lift.).).) . putNodePage
+    maxNodeSize = lift            maxNodeSize
+    setSize     = (lift.).        setSize
+    getSize     = lift.           getSize
+    getNodePage = ((lift.).).     getNodePage
+    putNodePage = (((lift.).).).  putNodePage
 
 instance StoreM hnd m => StoreM hnd (ReaderT s m) where
-    setSize     = (lift.)       . setSize
-    getSize     = lift          . getSize
-    getNodePage = ((lift.).)    . getNodePage
-    putNodePage = (((lift.).).) . putNodePage
+    maxNodeSize = lift            maxNodeSize
+    setSize     = (lift.).        setSize
+    getSize     = lift.           getSize
+    getNodePage = ((lift.).).     getNodePage
+    putNodePage = (((lift.).).).  putNodePage
 
 --------------------------------------------------------------------------------

@@ -19,9 +19,7 @@ import qualified Data.BTree.Store.Class as Store
 import           Control.Applicative (Applicative(..), (<$>))
 import           Control.Monad.Reader.Class
 import           Control.Monad.Trans.Reader (ReaderT, runReaderT)
-import qualified Data.ByteString.Lazy as BL
 import           Data.Binary (Binary)
-import           Data.Binary.Put (runPut)
 import           Data.Typeable
 
 import           GHC.Generics (Generic)
@@ -62,8 +60,8 @@ runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
 instance AllocM (AppendT m) where
-    nodeSize = return (fromIntegral . BL.length . runPut . putNode)
-    maxNodeSize        = AppendT Store.maxNodeSize
+    nodePageSize = AppendT Store.nodePageSize
+    maxPageSize = AppendT Store.maxPageSize
     allocNode height n = AppendT $ do
         hnd <- ask
         pc <- getSize hnd

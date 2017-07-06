@@ -26,6 +26,7 @@ import           Data.Binary (Binary(..))
 import qualified Data.Binary as B
 import           Data.ByteString (ByteString)
 import           Data.ByteString.Lazy (fromStrict, toStrict)
+import qualified Data.ByteString.Lazy as BL
 import           Data.Coerce
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -97,7 +98,9 @@ instance (Ord fp, Applicative m, Monad m) =>
     -- --     modify (M.insertWith (flip const) fp M.empty)
     -- --     return fp
     -- closeStore _ = return ()
-    maxNodeSize = return 64
+    nodePageSize = return $ \h ->
+        fromIntegral . BL.length . B.encode . PageNode h
+    maxPageSize = return 64
     setSize fp (PageCount n) = StoreT $ do
         let emptyFile = M.fromList
                         [ (PageId i, encode PageEmpty)

@@ -15,33 +15,37 @@ import Control.Monad.Trans.State (StateT)
 --------------------------------------------------------------------------------
 
 class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
-    maxNodeSize ::  m Int
-    setSize     ::  hnd -> PageCount -> m ()
-    getSize     ::  hnd -> m PageCount
-    getNodePage ::  (Key key, Value val)
-                =>  hnd
-                ->  Height height
-                ->  NodeId height key val
-                ->  m (Node height key val)
-    putNodePage ::  (Key key, Value val)
-                =>  hnd
-                ->  Height height
-                ->  NodeId height key val
-                ->  Node height key val
-                ->  m ()
+    nodePageSize :: (Key key, Value val)
+                 => m (Height height -> Node height key val -> Int)
+    maxPageSize  ::  m Int
+    setSize      ::  hnd -> PageCount -> m ()
+    getSize      ::  hnd -> m PageCount
+    getNodePage  ::  (Key key, Value val)
+                 =>  hnd
+                 ->  Height height
+                 ->  NodeId height key val
+                 ->  m (Node height key val)
+    putNodePage  ::  (Key key, Value val)
+                 =>  hnd
+                 ->  Height height
+                 ->  NodeId height key val
+                 ->  Node height key val
+                 ->  m ()
 
 instance StoreM hnd m => StoreM hnd (StateT s m) where
-    maxNodeSize = lift            maxNodeSize
-    setSize     = (lift.).        setSize
-    getSize     = lift.           getSize
-    getNodePage = ((lift.).).     getNodePage
-    putNodePage = (((lift.).).).  putNodePage
+    nodePageSize = lift            nodePageSize
+    maxPageSize  = lift            maxPageSize
+    setSize      = (lift.).        setSize
+    getSize      = lift.           getSize
+    getNodePage  = ((lift.).).     getNodePage
+    putNodePage  = (((lift.).).).  putNodePage
 
 instance StoreM hnd m => StoreM hnd (ReaderT s m) where
-    maxNodeSize = lift            maxNodeSize
-    setSize     = (lift.).        setSize
-    getSize     = lift.           getSize
-    getNodePage = ((lift.).).     getNodePage
-    putNodePage = (((lift.).).).  putNodePage
+    nodePageSize = lift            nodePageSize
+    maxPageSize  = lift            maxPageSize
+    setSize      = (lift.).        setSize
+    getSize      = lift.           getSize
+    getNodePage  = ((lift.).).     getNodePage
+    putNodePage  = (((lift.).).).  putNodePage
 
 --------------------------------------------------------------------------------

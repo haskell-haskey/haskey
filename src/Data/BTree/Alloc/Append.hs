@@ -20,6 +20,7 @@ import           Control.Applicative (Applicative(..), (<$>))
 import           Control.Monad.Reader.Class
 import           Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import           Data.Binary (Binary)
+import           Data.Proxy
 import           Data.Typeable
 
 import           GHC.Generics (Generic)
@@ -27,7 +28,12 @@ import           GHC.Generics (Generic)
 --------------------------------------------------------------------------------
 
 class StoreM hnd m => AppendMetaStoreM hnd m where
-    getAppendMeta :: (Key k, Value v) => hnd -> PageId -> m (AppendMeta k v)
+    getAppendMeta :: (Key k, Value v)
+                  => hnd
+                  -> Proxy k
+                  -> Proxy v
+                  -> PageId
+                  -> m (AppendMeta k v)
     putAppendMeta :: (Key k, Value v) => hnd -> PageId -> AppendMeta k v -> m ()
 
 data AppendMeta k v = AppendMeta
@@ -71,7 +77,7 @@ instance AllocM (AppendT m) where
         return nid
     readNode height nid = AppendT $ do
         hnd <- ask
-        getNodePage hnd height nid
+        getNodePage hnd height Proxy Proxy nid
     freeNode _height _nid = return ()
 
 --------------------------------------------------------------------------------

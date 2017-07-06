@@ -3,7 +3,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -23,14 +23,17 @@ import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT
                                         , runStateT
                                         )
 
-import           Data.Binary (Binary(..))
+import           Data.Binary (Binary(..), Put, Get)
 import qualified Data.Binary as B
+import qualified Data.Binary.Get as B
+import qualified Data.Binary.Put as B
 import           Data.ByteString (ByteString)
 import           Data.ByteString.Lazy (fromStrict, toStrict)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Coerce
 import           Data.Map (Map)
 import qualified Data.Map as M
+import           Data.Proxy
 import           Data.Typeable
 
 import GHC.Generics (Generic)
@@ -44,11 +47,11 @@ data Page = PageEmpty
       PageAppendMeta (AppendMeta key val)
     deriving (Typeable)
 
-encode :: Binary a => a -> ByteString
-encode = toStrict . B.encode
+encode :: Page -> ByteString
+encode = toStrict . B.runPut . putPage
 
-decode :: Binary a => ByteString -> a
-decode = B.decode  . fromStrict
+decode :: Get a -> ByteString -> a
+decode g = B.runGet g . fromStrict
 
 deriving instance Show Page
 
@@ -56,15 +59,41 @@ data BPage = BPageEmpty | BPageNode | BPageAppendMeta
            deriving (Eq, Generic)
 instance Binary BPage where
 
-instance Binary Page where
-    put PageEmpty = B.put BPageEmpty
-    put (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
-    put (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
+putPage :: Page -> Put
+putPage PageEmpty = B.put BPageEmpty
+putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
+putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
-    get = B.get >>= \case
-        BPageEmpty      -> pure PageEmpty
-        BPageNode       -> undefined -- PageNode <$> B.get <*> B.get
-        BPageAppendMeta -> undefined -- PageAppendMeta <$> B.get
+getEmptyPage :: Get Page
+getEmptyPage = B.get >>= \BPageEmpty -> return PageEmpty
+
+getPageNode :: (Key key, Value val)
+            => Height height
+            -> Proxy key
+            -> Proxy val
+            -> Get Page
+getPageNode h key val = B.get >>= \BPageNode ->
+    PageNode h <$> getNode' h key val
+  where
+    getNode' :: (Key key, Value val)
+             => Height h
+             -> Proxy key
+             -> Proxy val
+             -> Get (Node h key val)
+    getNode' h' _ _ = getNode h'
+
+getPageAppendMeta :: (Key key, Value val)
+                  => Proxy key
+                  -> Proxy val
+                  -> Get Page
+getPageAppendMeta k v = B.get >>= \BPageAppendMeta ->
+    PageAppendMeta <$> getAppendMeta' k v
+  where
+    getAppendMeta' :: (Key key, Value val)
+                   => Proxy key
+                   -> Proxy val
+                   -> Get (AppendMeta key val)
+    getAppendMeta' _ _ = B.get
 
 --------------------------------------------------------------------------------
 
@@ -107,7 +136,7 @@ instance (Ord fp, Applicative m, Monad m) =>
     -- --     return fp
     -- closeStore _ = return ()
     nodePageSize = return $ \h ->
-        fromIntegral . BL.length . B.encode . PageNode h
+        fromIntegral . BL.length . B.runPut . putPage . PageNode h
     maxPageSize = return 64
     setSize fp (PageCount n) = StoreT $ do
         let emptyFile = M.fromList
@@ -116,10 +145,10 @@ instance (Ord fp, Applicative m, Monad m) =>
                         ]
             res file  = M.intersection (M.union file emptyFile) emptyFile
         modify (M.update (Just . res) fp)
-    getNodePage hnd height nid = StoreT $ do
+    getNodePage hnd height key val nid = StoreT $ do
         Just bs <-
             gets (M.lookup hnd >=> M.lookup (nodeIdToPageId nid))
-        PageNode heightSrc tree <- return (decode bs)
+        PageNode heightSrc tree <- return (decode (getPageNode height key val) bs)
         MaybeT $ return (castNode heightSrc height tree)
 
     putNodePage hnd height nid node = StoreT $
@@ -133,9 +162,9 @@ instance (Ord fp, Applicative m, Monad m) =>
 instance (Ord fp, Applicative m, Monad m) =>
     AppendMetaStoreM fp (StoreT fp k v m)
   where
-    getAppendMeta h i = StoreT $ do
+    getAppendMeta h key val i = StoreT $ do
         Just bs <- gets (M.lookup h >=> M.lookup i)
-        PageAppendMeta meta <- return (decode bs)
+        PageAppendMeta meta <- return (decode (getPageAppendMeta key val) bs)
         return $! coerce meta
     putAppendMeta h i meta = StoreT $
         modify (M.update (Just. M.insert i (encode (PageAppendMeta meta))) h)

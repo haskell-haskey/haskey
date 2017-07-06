@@ -42,9 +42,6 @@ data Page = PageEmpty
       PageAppendMeta (AppendMeta key val)
     deriving (Typeable)
 
-pageNode :: Page key val -> Maybe (Node height key val)
-pageNode = undefined
-
 encode :: Binary a => a -> ByteString
 encode = toStrict . B.encode
 

@@ -2,6 +2,8 @@ module Properties.Utils where
 
 import Test.QuickCheck
 
+import Control.Applicative ((<$>))
+
 import Data.Int
 import qualified Data.Binary as B
 

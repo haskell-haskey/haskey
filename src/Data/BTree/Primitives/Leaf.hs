@@ -1,5 +1,7 @@
 module Data.BTree.Primitives.Leaf where
 
+import Control.Applicative ((<$>))
+
 import Data.BTree.Internal
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key

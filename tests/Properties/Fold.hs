@@ -7,7 +7,7 @@ import Data.BTree.Alloc.Append
 import Data.BTree.Insert
 import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Value
-import Data.BTree.Store.Debug
+import Data.BTree.Store.Binary
 import qualified Data.BTree.Fold as Tree
 
 import Control.Monad ((>=>))

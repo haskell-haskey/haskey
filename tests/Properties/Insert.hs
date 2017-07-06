@@ -5,7 +5,7 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import Data.BTree.Alloc.Append
 import Data.BTree.Insert
-import Data.BTree.Store.Debug
+import Data.BTree.Store.Binary
 import qualified Data.BTree.Fold as Tree
 
 import Control.Monad ((>=>))

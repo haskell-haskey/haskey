@@ -1,6 +1,6 @@
 
 import           Data.BTree.Alloc.Append
-import           Data.BTree.Store.Debug
+import           Data.BTree.Store.Binary
 import           Data.BTree.Insert
 import           Data.BTree.Delete
 

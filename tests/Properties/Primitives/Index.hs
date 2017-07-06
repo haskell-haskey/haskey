@@ -11,6 +11,7 @@ import           Data.BTree.Primitives.Key
 import qualified Data.BTree.TwoThree as Tree
 
 import           Control.Applicative ((<$>))
+
 import qualified Data.Binary as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Foldable as F
@@ -90,7 +91,7 @@ prop_extendedIndex :: Index Int64 Int -> Bool
 prop_extendedIndex idx
     | Index keys idxs <- extendedIndex maxIdxKeys id idx
     , numKeyIdxsOK    <- V.length idxs == 1 + V.length keys
-    , validIdxs       <- all validIndex idxs
+    , validIdxs       <- V.all validIndex idxs
     , keysMaxOK       <- V.all (\(key, Index keys' _) -> V.last keys' < key) $ V.zip keys idxs
     , keysMinOK       <- V.all (\(key, Index keys' _) -> V.head keys' > key) $ V.zip keys (V.tail idxs)
     , keysOrderOK     <- isSortedBy (<) (V.toList keys)
@@ -105,7 +106,7 @@ prop_extendIndexPred (PageSize pageSize) idx
     = True
     | Just (Index keys idxs) <- extendIndexPred pred' id idx
     , numKeyIdxsOK    <- V.length idxs == 1 + V.length keys
-    , validIdxs       <- all validIndex idxs
+    , validIdxs       <- V.all validIndex idxs
     , keysMaxOK       <- V.all (\(key, Index keys' _) -> V.last keys' < key) $ V.zip keys idxs
     , keysOrderOK     <- isSortedBy (<) (V.toList keys)
     , joinedNodesOK   <- concatMap F.toList (V.toList idxs) == F.toList idx

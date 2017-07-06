@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Data.BTree.Primitives.Index where
 

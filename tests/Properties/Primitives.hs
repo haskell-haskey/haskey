@@ -10,7 +10,6 @@ import Test.QuickCheck
 import Control.Applicative ((<$>), (<*>))
 
 import Data.BTree.Primitives
-import Data.BTree.Primitives.Height
 
 import Data.Binary.Get (runGet)
 import Data.Binary.Put (runPut)
@@ -21,8 +20,6 @@ import qualified Data.Binary as B
 import Properties.Primitives.Height (genNonZeroHeight)
 import Properties.Primitives.Index ()  -- Arbitrary instance of Index
 import Properties.Primitives.Ids ()    -- Arbitrary instance of NodeId
-
-import Properties.Utils (testBinary)
 
 tests :: Test
 tests = testGroup "Primitives"

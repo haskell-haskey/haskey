@@ -8,7 +8,6 @@ import Data.Int
 import Data.Proxy
 
 import Data.BTree.Primitives
-import Data.BTree.Primitives.Height
 import Data.BTree.Store.Binary
 
 import Properties.Primitives (genLeafNode, genIndexNode)

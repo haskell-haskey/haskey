@@ -72,8 +72,11 @@ getPageNode :: (Key key, Value val)
             -> Proxy key
             -> Proxy val
             -> Get Page
-getPageNode h key val = B.get >>= \BPageNode ->
-    PageNode h <$> getNode' h key val
+getPageNode h key val = B.get >>= \BPageNode -> do
+    h' <- B.get
+    if fromHeight h == fromHeight h'
+        then PageNode h <$> getNode' h' key val
+        else fail $ "expected height " ++ show h ++ " but got " ++ show h'
   where
     getNode' :: (Key key, Value val)
              => Height h

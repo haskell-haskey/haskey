@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Properties.Primitives (tests, treeEqShape) where
+module Properties.Primitives (tests, genLeafNode, genIndexNode, treeEqShape) where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
@@ -41,20 +41,21 @@ instance Arbitrary (Tree k v) where
     arbitrary = Tree <$> arbitrary <*> arbitrary
 
 prop_binary_leafNode :: Property
-prop_binary_leafNode = forAll gen $ \leaf ->
+prop_binary_leafNode = forAll genLeafNode $ \leaf ->
     runGet (getNode zeroHeight) (runPut (putNode leaf)) == leaf
-  where
-    gen :: Gen (Node 'Z Int64 Bool)
-    gen = Leaf <$> arbitrary
+
+genLeafNode :: Gen (Node 'Z Int64 Bool)
+genLeafNode = Leaf <$> arbitrary
 
 prop_binary_indexNode :: Property
-prop_binary_indexNode = forAll gen $ \(h, idx) ->
+prop_binary_indexNode = forAll genIndexNode $ \(h, idx) ->
     runGet (getNode h) (runPut (putNode idx)) == idx
-  where
-    gen :: Gen (Height ('S h), Node ('S h) Int64 Bool)
-    gen = do h <- genNonZeroHeight
-             n <- Idx <$> arbitrary
-             return (h, n)
+
+genIndexNode :: Gen (Height ('S h), Node ('S h) Int64 Bool)
+genIndexNode = do
+    h <- genNonZeroHeight
+    n <- Idx <$> arbitrary
+    return (h, n)
 
 prop_binary_tree :: Tree Int64 Bool -> Bool
 prop_binary_tree t = B.decode (B.encode t) `treeEqShape` t

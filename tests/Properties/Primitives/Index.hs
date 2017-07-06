@@ -12,6 +12,7 @@ import qualified Data.BTree.TwoThree as Tree
 
 import           Control.Applicative ((<$>))
 import qualified Data.Binary as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Foldable as F
 import           Data.Int
 import           Data.Maybe          (isJust)
@@ -20,6 +21,8 @@ import           Data.List.Ordered   (isSortedBy)
 import           Data.Monoid         ((<>))
 import qualified Data.Map as M
 import qualified Data.Vector as V
+
+import Properties.Utils (PageSize(..))
 
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
   arbitrary = do
@@ -45,6 +48,7 @@ tests = testGroup "Primitives.Index"
         prop_fromSingletonIndex_singletonIndex
     , testProperty "distribute" prop_distribute
     , testProperty "extendedIndex" prop_extendedIndex
+    , testProperty "extendIndexPred" prop_extendIndexPred
     , testProperty "bindIndex_extendedIndex" prop_bindIndex_extendedIndex
     ]
 
@@ -94,6 +98,22 @@ prop_extendedIndex idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
   where
     maxIdxKeys = Tree.maxFanout - 1
+
+prop_extendIndexPred :: PageSize -> Index Int64 Int -> Bool
+prop_extendIndexPred (PageSize pageSize) idx
+    | indexNumVals idx <= 2
+    = True
+    | Just (Index keys idxs) <- extendIndexPred pred' id idx
+    , numKeyIdxsOK    <- V.length idxs == 1 + V.length keys
+    , validIdxs       <- all validIndex idxs
+    , keysMaxOK       <- V.all (\(key, Index keys' _) -> V.last keys' < key) $ V.zip keys idxs
+    , keysOrderOK     <- isSortedBy (<) (V.toList keys)
+    , joinedNodesOK   <- concatMap F.toList (V.toList idxs) == F.toList idx
+    = numKeyIdxsOK && validIdxs && keysMaxOK && keysOrderOK && joinedNodesOK
+    | otherwise
+    = False
+  where
+    pred' m' = BL.length (B.encode m') <= pageSize
 
 prop_bindIndex_extendedIndex :: Int -> Index Int64 Int -> Bool
 prop_bindIndex_extendedIndex n idx =

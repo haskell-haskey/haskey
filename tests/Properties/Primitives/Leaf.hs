@@ -2,7 +2,6 @@ module Properties.Primitives.Leaf (tests) where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck
 
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Leaf
@@ -15,18 +14,13 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
+import Properties.Utils (PageSize(..))
+
 tests :: Test
 tests = testGroup "Primitives.Leaf"
     [ testProperty "splitLeafManyPred" prop_splitLeafManyPred
     , testProperty "splitLeafMany" prop_splitLeafMany
     ]
-
-newtype PageSize = PageSize Int64 deriving (Show)
-
-instance Arbitrary PageSize where
-    arbitrary = PageSize . fromIntegral <$> elements pows
-      where pows = ((2 :: Int) ^) <$> ([5..12] :: [Int])
-
 
 prop_splitLeafManyPred :: PageSize -> M.Map Int64 Int -> Bool
 prop_splitLeafManyPred (PageSize pageSize) m

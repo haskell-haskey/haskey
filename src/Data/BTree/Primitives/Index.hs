@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Data.BTree.Primitives.Index where
 
@@ -106,6 +105,27 @@ extendedIndex maxIdxKeys f = go
                 middleKey (go rightIndex)
       where
         numVals = indexNumVals index
+
+extendIndexPred :: (a -> Bool) ->
+  (Index k b -> a) -> Index k b -> Maybe (Index k a)
+extendIndexPred p f = go
+  where
+    go index
+        | let indexEnc = f index
+        , p indexEnc
+        = Just (singletonIndex indexEnc)
+        | otherwise
+        = do
+            let numKeys = indexNumKeys index
+            (leftEnc, (middleKey, right)) <- safeLast $
+                takeWhile (p . fst)
+                [ (leftEnc, (middleKey, right))
+                | i <- [1..numKeys-1]
+                , let (left,middleKey,right) = splitIndexAt i index
+                      leftEnc                = f left
+                ]
+            rightEnc <- go right
+            return $! mergeIndex (singletonIndex leftEnc) middleKey rightEnc
 
 {-| Merge two indices.
 

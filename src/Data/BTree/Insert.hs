@@ -6,7 +6,6 @@ module Data.BTree.Insert where
 
 import           Data.BTree.Alloc.Class
 import           Data.BTree.Primitives
-import           Data.BTree.TwoThree
 
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -14,15 +13,28 @@ import           Data.Traversable (traverse)
 
 --------------------------------------------------------------------------------
 
-splitIndex :: Key key =>
+splitIndex :: (AllocM m, Key key, Value val) =>
+   Height ('S height) ->
    Index key (NodeId height key val) ->
-   Index key (Node ('S height) key val)
-splitIndex = extendedIndex maxIdxKeys Idx
+   m (Index key (Node ('S height) key val))
+splitIndex h index = do
+    m <- maxPageSize
+    nodePageSize' <- nodePageSize
+    let binPred n = nodePageSize' h n <= m
+    case extendIndexPred binPred Idx index of
+        Just extIndex -> return extIndex
+        Nothing       -> error "Splitting failed!? Underflow"
 
-splitLeaf :: Key key =>
+splitLeaf :: (AllocM m, Key key, Value val) =>
     Map key val ->
-    Index key (Node 'Z key val)
-splitLeaf = splitLeafMany maxLeafItems Leaf
+    m (Index key (Node 'Z key val))
+splitLeaf items = do
+    m <- maxPageSize
+    nodePageSize' <- nodePageSize
+    let binPred n = nodePageSize' zeroHeight n <= m
+    case splitLeafManyPred binPred Leaf items of
+        Just v  -> return v
+        Nothing -> error "Split leaf: underflow"
 
 --------------------------------------------------------------------------------
 
@@ -50,9 +62,10 @@ insertRec k v = fetch
     recurse hgt (Idx children) = do
         let (ctx,childId) = valView k children
         newChildIdx <- fetch (decrHeight hgt) childId
-        traverse (allocNode hgt) (splitIndex (putIdx ctx newChildIdx))
+        newChildren <- splitIndex hgt (putIdx ctx newChildIdx)
+        traverse (allocNode hgt) newChildren
     recurse hgt (Leaf items) =
-        traverse (allocNode hgt) (splitLeaf (M.insert k v items))
+        traverse (allocNode hgt) =<< splitLeaf (M.insert k v items)
 
 insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
     => Height height
@@ -65,11 +78,11 @@ insertRecMany h kvs nid = do
     case n of
         Idx idx -> do
             let dist = distribute kvs idx
-            idx' <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
-            traverse (allocNode h) (splitIndex idx')
+            newIndex    <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
+            newChildren <- splitIndex h newIndex
+            traverse (allocNode h) newChildren
         Leaf items ->
-            traverse (allocNode h) (splitLeaf (M.union kvs items))
-
+            traverse (allocNode h) =<< splitLeaf (M.union kvs items)
 
 --------------------------------------------------------------------------------
 
@@ -126,7 +139,7 @@ insertTreeMany kvs tree
         fixUp height newRootIdx
     | Tree { treeRootId = Nothing } <- tree
     = do
-        idx <- traverse (allocNode zeroHeight) (splitLeaf kvs)
+        idx <- traverse (allocNode zeroHeight) =<< splitLeaf kvs
         fixUp zeroHeight $! idx
 
 {-| Fix up the root node of a tree.
@@ -145,7 +158,8 @@ fixUp h idx = case fromSingletonIndex idx of
                        , treeRootId = Just newRootNid }
     Nothing -> do
         let newHeight = incrHeight h
-        childrenNids <- traverse (allocNode newHeight) (splitIndex idx)
+        children     <- splitIndex newHeight idx
+        childrenNids <- traverse (allocNode newHeight) children
         fixUp newHeight $! childrenNids
 
 --------------------------------------------------------------------------------

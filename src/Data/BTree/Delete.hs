@@ -22,15 +22,16 @@ nodeNeedsMerge (Idx children) =
 nodeNeedsMerge (Leaf items) =
     M.size items < minLeafItems
 
-mergeNodes :: Key key
-    => Node height key val
+mergeNodes :: (AllocM m, Key key, Value val)
+    => Height height
+    -> Node height key val
     -> key
     -> Node height key val
-    -> Index key (Node height key val)
-mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
+    -> m (Index key (Node height key val))
+mergeNodes _ (Leaf leftItems) _middleKey (Leaf rightItems) =
     splitLeaf (leftItems <> rightItems)
-mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
-    splitIndex (mergeIndex leftIdx middleKey rightIdx)
+mergeNodes h (Idx leftIdx) middleKey (Idx rightIdx) =
+    splitIndex h (mergeIndex leftIdx middleKey rightIdx)
 
 --------------------------------------------------------------------------------
 
@@ -60,15 +61,15 @@ deleteRec key = fetchAndGo
         if | childNeedsMerge, Just (rKey, rChildId, rCtx) <- rightView ctx -> do
                  rChild <- readNode subHeight rChildId
                  freeNode subHeight rChildId
-                 newChildren <- traverse (allocNode subHeight)
-                                  (mergeNodes newChild rKey rChild)
-                 return (Idx (putIdx rCtx newChildren))
+                 newChildren    <- mergeNodes subHeight newChild rKey rChild
+                 newChildrenIds <- traverse (allocNode subHeight) newChildren
+                 return (Idx (putIdx rCtx newChildrenIds))
            | childNeedsMerge, Just (lCtx, lChildId, lKey) <- leftView ctx -> do
                  lChild <- readNode subHeight lChildId
                  freeNode subHeight lChildId
-                 newChildIds <- traverse (allocNode subHeight)
-                                  (mergeNodes lChild lKey newChild)
-                 return (Idx (putIdx lCtx newChildIds))
+                 newChildren    <- mergeNodes subHeight lChild lKey newChild
+                 newChildrenIds <- traverse (allocNode subHeight) newChildren
+                 return (Idx (putIdx lCtx newChildrenIds))
            -- No left or right sibling? This is a constraint violation. Also
            -- this couldn't be the root because it would've been shrunk
            -- before.

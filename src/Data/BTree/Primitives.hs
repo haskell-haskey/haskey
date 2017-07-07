@@ -26,7 +26,7 @@ import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf
 import Data.BTree.Primitives.Value
 
-import Data.Binary (Binary(..))
+import Data.Binary (Binary(..), Put, Get)
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep)
@@ -54,24 +54,26 @@ data Node height key val where
             } -> Node 'Z key val
     deriving (Typeable)
 
-instance (Eq key, Eq val) => Eq (Node 'Z key val) where
+instance (Eq key, Eq val) => Eq (Node height key val) where
     Leaf x == Leaf y = x == y
-
-instance (Eq key, Eq val) => Eq (Node ('S h) key val) where
-    Idx x == Idx y = x == y
+    Idx x  == Idx y  = x == y
 
 data BNode = BIdx | BLeaf deriving Generic
 instance Binary BNode where
 
-instance (Binary key, Binary val) => Binary (Node 'Z key val) where
-    put (Leaf items) = put BLeaf >> put items
-    get = get >>= \case BLeaf -> Leaf <$> get
-                        BIdx  -> fail "expected a leaf node, but found an idx node"
+putNode :: (Binary key, Binary val) => Node height key val -> Put
+putNode = \case
+    Leaf items -> put BLeaf >> put items
+    Idx idx    -> put BIdx  >> put idx
 
-instance (Binary key, Binary val) => Binary (Node ('S height) key val) where
-    put (Idx idx) = put BIdx >> put idx
-    get = get >>= \case BIdx -> Idx <$> get
-                        BLeaf -> fail "expected an idx node, but found a leaf node"
+getNode :: (Binary key, Binary val) => Height height -> Get (Node height key val)
+getNode height = case viewHeight height of
+    UZero   -> do
+                   BLeaf <- get
+                   Leaf <$> get
+    USucc _ -> do
+                   BIdx <- get
+                   Idx <$> get
 
 {-| A B+-tree.
 
@@ -89,7 +91,7 @@ data Tree key val where
 deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
 
-instance (Binary key, Binary val) => Binary (Tree key val) where
+instance Binary (Tree key val) where
     put (Tree height rootId) = put height >> put rootId
     get = Tree <$> get <*> get
 
@@ -114,5 +116,15 @@ castNode height1 height2 n
     = Just (unsafeCoerce n)
     | otherwise
     = Nothing
+
+{-| Cast a node to one of the available types. -}
+castNode' :: forall n h k v.
+          (Typeable k, Typeable v)
+    => Height h         -- ^ Term-level witness for the source height
+    -> n h k v          -- ^ Node to cast.
+    -> Either (n 'Z k v) (n ('S h) k v)
+castNode' h n
+    | Just v <- castNode h zeroHeight n = Left v
+    | otherwise                         = Right (unsafeCoerce n)
 
 --------------------------------------------------------------------------------

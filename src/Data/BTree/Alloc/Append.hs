@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable        #-}
 {-# LANGUAGE DeriveGeneric             #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
@@ -13,12 +14,13 @@ import           Data.BTree.Insert
 import           Data.BTree.Alloc.Class
 import           Data.BTree.Primitives
 import           Data.BTree.Store.Class
+import qualified Data.BTree.Store.Class as Store
 
 import           Control.Applicative (Applicative(..), (<$>))
 import           Control.Monad.Reader.Class
 import           Control.Monad.Trans.Reader (ReaderT, runReaderT)
-
 import           Data.Binary (Binary)
+import           Data.Proxy
 import           Data.Typeable
 
 import           GHC.Generics (Generic)
@@ -26,7 +28,12 @@ import           GHC.Generics (Generic)
 --------------------------------------------------------------------------------
 
 class StoreM hnd m => AppendMetaStoreM hnd m where
-    getAppendMeta :: (Key k, Value v) => hnd -> PageId -> m (AppendMeta k v)
+    getAppendMeta :: (Key k, Value v)
+                  => hnd
+                  -> Proxy k
+                  -> Proxy v
+                  -> PageId
+                  -> m (AppendMeta k v)
     putAppendMeta :: (Key k, Value v) => hnd -> PageId -> AppendMeta k v -> m ()
 
 data AppendMeta k v = AppendMeta
@@ -59,6 +66,8 @@ runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
 instance AllocM (AppendT m) where
+    nodePageSize = AppendT Store.nodePageSize
+    maxPageSize = AppendT Store.maxPageSize
     allocNode height n = AppendT $ do
         hnd <- ask
         pc <- getSize hnd
@@ -68,7 +77,7 @@ instance AllocM (AppendT m) where
         return nid
     readNode height nid = AppendT $ do
         hnd <- ask
-        getNodePage hnd height nid
+        getNodePage hnd height Proxy Proxy nid
     freeNode _height _nid = return ()
 
 --------------------------------------------------------------------------------
@@ -102,7 +111,7 @@ createAppendDb hnd = do
 
 --------------------------------------------------------------------------------
 
-readTransact :: (AppendMetaStoreM hnd m, Key key, Value val)
+readTransact :: (AppendMetaStoreM hnd m)
              => (forall n. AllocM n => Tree key val -> n a)
              -> AppendDb hnd key val -> m a
 readTransact act db

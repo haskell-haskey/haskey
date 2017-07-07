@@ -72,7 +72,9 @@ insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
     -> Map key val
     -> NodeId height key val
     -> m (Index key (NodeId height key val))
-insertRecMany h kvs nid = do
+insertRecMany h kvs nid
+    | M.null kvs = return (singletonIndex nid)
+    | otherwise = do
     n <- readNode h nid
     freeNode h nid
     case n of

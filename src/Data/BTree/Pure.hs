@@ -131,6 +131,8 @@ insertRecMany ::
     -> Node height key val
     -> Index key (Node height key val)
 insertRecMany kvs (Idx idx)
+    | M.null kvs
+    = singletonIndex (Idx idx)
     | dist            <- distribute kvs idx
     = splitIndex (dist `bindIndex` uncurry insertRecMany)
 

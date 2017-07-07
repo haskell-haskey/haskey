@@ -154,19 +154,19 @@ install:
 
 script:
 - |
-  set -e
-  echo "$COVERALLS_TOKEN" > .coveralls_token
-  set -x
+  set -ex
   case "$BUILD" in
     stack)
       stack --no-terminal $ARGS test --bench --no-run-benchmarks --haddock --no-haddock-deps
       ;;
     cabal)
-      cabal install --enable-tests --enable-coverage --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
-      if [ "$GHCVER" == "8.0.2" ]; then
+      if [ "$GHCVER" != "8.0.2" ]; then
+        cabal install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
+      else
+        cabal install --enable-tests --enable-coverage --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
         cabal test
         cabal install hpc-coveralls
-        hpc-coveralls -r "$(cat .coveralls_token)" haskey-integration haskey-properties
+        hpc-coveralls -r "$COVERALLS_TOKEN" haskey-integration haskey-properties
       fi
 
       ORIGDIR=$(pwd)

@@ -6,6 +6,7 @@ import Test.QuickCheck
 
 import Data.Int
 import Data.Proxy
+import Data.Word
 
 import Data.BTree.Primitives
 import Data.BTree.Store.File
@@ -15,10 +16,19 @@ import Properties.Utils (PageSize(..))
 
 tests :: Test
 tests = testGroup "Store.File"
-    [ testProperty "binary pageEmpty" prop_binary_pageEmpty
+    [ testProperty "binary pageMeta" prop_binary_pageMeta
+    , testProperty "binary pageEmpty" prop_binary_pageEmpty
     , testProperty "binary pageNode leaf" prop_binary_pageNode_leaf
     , testProperty "binary pageNode idx" prop_binary_pageNode_idx
     ]
+
+prop_binary_pageMeta :: Word64 -> PageSize -> Bool
+prop_binary_pageMeta pc (PageSize ps)
+    | Right bs <- encode ps (PageMeta (PageCount pc))
+    = case decode getMetaPage bs of
+        PageMeta pc' -> pc' == PageCount pc
+        _            -> False
+    | otherwise = False -- should always work
 
 prop_binary_pageEmpty :: PageSize -> Bool
 prop_binary_pageEmpty (PageSize ps)
@@ -26,12 +36,12 @@ prop_binary_pageEmpty (PageSize ps)
     = case decode getEmptyPage bs of
         PageEmpty -> True
         _         -> False
-    | otherwise = True
+    | otherwise = False -- should always work
 
 prop_binary_pageNode_leaf :: PageSize -> Property
 prop_binary_pageNode_leaf (PageSize ps) = forAll genLeafNode $ \leaf ->
     case encode ps (PageNode zeroHeight leaf) of
-        Left _ -> True
+        Left _ -> True -- too big, skip
         Right bs -> case decode (getPageNode zeroHeight key val) bs of
             PageNode h n -> maybe False (== leaf) $ castNode h zeroHeight n
             _            -> False
@@ -42,7 +52,7 @@ prop_binary_pageNode_leaf (PageSize ps) = forAll genLeafNode $ \leaf ->
 prop_binary_pageNode_idx :: PageSize -> Property
 prop_binary_pageNode_idx (PageSize ps) = forAll genIndexNode $ \(srcHgt, idx) ->
     case encode ps (PageNode srcHgt idx) of
-        Left _ -> True
+        Left _ -> True -- too big, skip
         Right bs -> case decode (getPageNode srcHgt key val) bs of
             PageNode h n -> maybe False (== idx) $ castNode h srcHgt n
             _            -> False

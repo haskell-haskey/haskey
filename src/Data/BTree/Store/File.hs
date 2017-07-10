@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Data.BTree.Store.File where
 
+import Control.Applicative
 import Control.Monad.IO.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe

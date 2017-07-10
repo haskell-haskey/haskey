@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Data.BTree.Store.File where
 
 import Control.Monad.IO.Class
@@ -16,6 +17,7 @@ import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT
 import Data.Binary (Binary(..), Put, Get)
 import Data.ByteString (ByteString, hGet, hPut)
 import Data.ByteString.Lazy (fromStrict, toStrict)
+import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Monoid ((<>))
 import Data.Typeable
@@ -47,19 +49,21 @@ data Page =
 
 {-| Encode a page padding it to the maxim page size.
  -
- - If the page is larger than the maximum page size, the encoeded byte string
- - will be returned using 'Left'.
+ - Return 'Nothing' of the page is too large to fit into one page size.
  -}
-encode :: PageSize -> Page -> Either ByteString ByteString
-encode size page
-    | Just n <- padding = Right . toStrict $
-        B.runPut (B.put enc) <> BL.replicate n 0
-    | otherwise = Left . toStrict $
-        B.runPut (B.put enc)
+encodeAndPad :: PageSize -> Page -> Maybe ByteString
+encodeAndPad size page
+    | Just n <- padding = Just . toStrict $
+        enc <> BL.replicate n 0
+    | otherwise = Nothing
   where
-    enc = B.runPut (putPage page)
+    enc = encode page
     padding | n <- fromIntegral size - BL.length enc, n >= 0 = Just n
             | otherwise = Nothing
+
+{-| Encode a page, including the length of the encoded byte string -}
+encode :: Page -> BL.ByteString
+encode = B.runPut . B.put . B.runPut . putPage
 
 decode :: Get a -> ByteString -> a
 decode g = B.runGet g . B.runGet B.get . fromStrict
@@ -68,7 +72,7 @@ decode g = B.runGet g . B.runGet B.get . fromStrict
 deriving instance Show Page
 
 data BPage = BPageMeta | BPageEmpty | BPageNode | BPageAppendMeta
-           deriving (Eq, Generic)
+           deriving (Eq, Generic, Show)
 instance Binary BPage where
 
 putPage :: Page -> Put
@@ -131,8 +135,10 @@ evalStoreT = evalStateT . runMaybeT . fromStoreT
 execStoreT :: Monad m => StoreT fp m a -> Files fp-> m (Files fp)
 execStoreT = execStateT . runMaybeT . fromStoreT
 
-runStore :: StoreT FilePath IO a -> (Maybe a, Files FilePath)
-runStore = undefined
+runStore :: FilePath -> StoreT FilePath IO a -> IO (Maybe a, Files FilePath)
+runStore fp action = withFile fp ReadWriteMode $ \handle -> do
+    let files = M.fromList [(fp, handle)]
+    runStateT (runMaybeT (fromStoreT action)) files
 
 nodeIdToPageId :: NodeId height key val -> PageId
 nodeIdToPageId (NodeId n) = PageId n
@@ -145,16 +151,16 @@ pageIdToNodeId (PageId n) = NodeId n
 instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
     StoreM fp (StoreT fp m)
   where
-    nodePageSize = do
-        pageSize <- maxPageSize
+    nodePageSize =
         return $ \h ->
-            fromIntegral . BS.length . either id id . encode pageSize . PageNode h
+            fromIntegral . BL.length . encode . PageNode h
 
-    maxPageSize = return 128
+    maxPageSize = return 256
 
     getSize fp = do
         handle     <- StoreT . MaybeT $ gets (M.lookup fp)
-        PageMeta c <- StoreT $ readPageMeta handle
+        pageSize   <- maxPageSize
+        PageMeta c <- StoreT $ readPageMeta handle pageSize
         return c
 
     setSize fp pc = do
@@ -185,13 +191,21 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
 
 --------------------------------------------------------------------------------
 
-readPageMeta :: MonadIO m => Handle -> m Page
-readPageMeta = undefined
+readPageMeta :: MonadIO m => Handle -> PageSize -> m Page
+readPageMeta h size = liftIO $ do
+    hSeek h AbsoluteSeek 0
+    bs <- hGet h (fromIntegral size)
+    if BS.length bs < fromIntegral size
+        then -- Write starting amount of pages:
+             -- this is 1, as the first one is the meta page!
+             writePage h 0 (PageMeta (PageCount 1)) size
+             >> readPageMeta h size
+        else return $ decode getMetaPage bs
 
 writePage :: MonadIO m => Handle -> PageId -> Page -> PageSize -> m ()
 writePage h (PageId pid) page size = liftIO $ do
     hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
-    hPut h $ either (fail "writePage: page too large") id (encode size page)
+    hPut h =<< maybe (fail "writePage: page too large") return (encodeAndPad size page)
 
 readPageNode :: (MonadIO m, Key key, Value val)
              => Handle
@@ -205,3 +219,40 @@ readPageNode h hgt k v (PageId pid) size = liftIO $ do
     hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
     bs <- hGet h (fromIntegral size)
     return $ decode (getPageNode hgt k v) bs
+
+--------------------------------------------------------------------------------
+
+instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
+    AppendMetaStoreM fp (StoreT fp m)
+  where
+    getAppendMeta fp key val i = do
+        handle   <- StoreT . MaybeT $ gets (M.lookup fp)
+        pageSize <- maxPageSize
+        PageAppendMeta meta <-
+            StoreT $ readAppendMetaNode handle
+                                        key val
+                                        i pageSize
+        return $! coerce meta
+
+    putAppendMeta fp i meta = do
+        handle   <- StoreT . MaybeT $ gets (M.lookup fp)
+        pageSize <- maxPageSize
+        StoreT $ writePage handle i
+                           (PageAppendMeta meta)
+                           pageSize
+
+--------------------------------------------------------------------------------
+
+readAppendMetaNode :: (MonadIO m, Key key, Value val)
+                   => Handle
+                   -> Proxy key
+                   -> Proxy val
+                   -> PageId
+                   -> PageSize
+                   -> m Page
+readAppendMetaNode h k v (PageId pid) size = liftIO $ do
+    hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
+    bs <- hGet h (fromIntegral size)
+    return $ decode (getPageAppendMeta k v) bs
+
+--------------------------------------------------------------------------------

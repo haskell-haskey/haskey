@@ -24,7 +24,7 @@ tests = testGroup "Store.File"
 
 prop_binary_pageMeta :: Word64 -> PageSize -> Bool
 prop_binary_pageMeta pc (PageSize ps)
-    | Right bs <- encode ps (PageMeta (PageCount pc))
+    | Just bs <- encodeAndPad ps (PageMeta (PageCount pc))
     = case decode getMetaPage bs of
         PageMeta pc' -> pc' == PageCount pc
         _            -> False
@@ -32,7 +32,7 @@ prop_binary_pageMeta pc (PageSize ps)
 
 prop_binary_pageEmpty :: PageSize -> Bool
 prop_binary_pageEmpty (PageSize ps)
-    | Right bs <- encode ps PageEmpty
+    | Just bs <- encodeAndPad ps PageEmpty
     = case decode getEmptyPage bs of
         PageEmpty -> True
         _         -> False
@@ -40,9 +40,9 @@ prop_binary_pageEmpty (PageSize ps)
 
 prop_binary_pageNode_leaf :: PageSize -> Property
 prop_binary_pageNode_leaf (PageSize ps) = forAll genLeafNode $ \leaf ->
-    case encode ps (PageNode zeroHeight leaf) of
-        Left _ -> True -- too big, skip
-        Right bs -> case decode (getPageNode zeroHeight key val) bs of
+    case encodeAndPad ps (PageNode zeroHeight leaf) of
+        Nothing -> True -- too big, skip
+        Just bs -> case decode (getPageNode zeroHeight key val) bs of
             PageNode h n -> maybe False (== leaf) $ castNode h zeroHeight n
             _            -> False
  where
@@ -51,9 +51,9 @@ prop_binary_pageNode_leaf (PageSize ps) = forAll genLeafNode $ \leaf ->
 
 prop_binary_pageNode_idx :: PageSize -> Property
 prop_binary_pageNode_idx (PageSize ps) = forAll genIndexNode $ \(srcHgt, idx) ->
-    case encode ps (PageNode srcHgt idx) of
-        Left _ -> True -- too big, skip
-        Right bs -> case decode (getPageNode srcHgt key val) bs of
+    case encodeAndPad ps (PageNode srcHgt idx) of
+        Nothing -> True -- too big, skip
+        Just bs -> case decode (getPageNode srcHgt key val) bs of
             PageNode h n -> maybe False (== idx) $ castNode h srcHgt n
             _            -> False
  where

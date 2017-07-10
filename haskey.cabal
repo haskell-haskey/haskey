@@ -34,6 +34,7 @@ library
     Data.BTree.Pure
     Data.BTree.Store.Class
     Data.BTree.Store.Binary
+    Data.BTree.Store.File
     Data.BTree.TwoThree
 
   other-modules:
@@ -78,6 +79,7 @@ test-suite haskey-properties
     Properties.Primitives.Leaf
     Properties.Pure
     Properties.Store.Binary
+    Properties.Store.File
     Properties.Utils
 
   build-depends:

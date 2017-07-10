@@ -14,6 +14,7 @@ import qualified Properties.Primitives.Index
 import qualified Properties.Primitives.Leaf
 import qualified Properties.Pure
 import qualified Properties.Store.Binary
+import qualified Properties.Store.File
 
 --------------------------------------------------------------------------------
 
@@ -29,6 +30,7 @@ tests =
     , Properties.Primitives.tests
     , Properties.Pure.tests
     , Properties.Store.Binary.tests
+    , Properties.Store.File.tests
     ]
 
 main :: IO ()

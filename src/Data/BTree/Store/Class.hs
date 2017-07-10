@@ -12,14 +12,17 @@ import Control.Monad.Trans
 import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Trans.State (StateT)
 
+import Data.Int
 import Data.Proxy
 
 --------------------------------------------------------------------------------
 
+type PageSize = Int32
+
 class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
     nodePageSize :: (Key key, Value val)
-                 => m (Height height -> Node height key val -> Int)
-    maxPageSize  ::  m Int
+                 => m (Height height -> Node height key val -> PageSize)
+    maxPageSize  ::  m PageSize
     setSize      ::  hnd -> PageCount -> m ()
     getSize      ::  hnd -> m PageCount
     getNodePage  ::  (Key key, Value val)

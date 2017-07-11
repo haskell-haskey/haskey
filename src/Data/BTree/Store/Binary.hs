@@ -180,20 +180,20 @@ instance (Ord fp, Applicative m, Monad m) =>
     putAppendMeta h i meta = StoreT $
         modify (M.update (Just. M.insert i (encode (PageAppendMeta meta))) h)
 
-    openAppendDb hnd k v = do
+    openAppendMeta hnd k v = do
         numPages <- getSize hnd
         page <- StoreT $ go $ PageId (fromPageCount (numPages - 1))
         case page of
             Nothing -> return Nothing
             Just x -> do
-                PageAppendMeta meta <- return x
-                return $ Just (coerce meta)
+                (PageAppendMeta meta, pid) <- return x
+                return $ Just (coerce meta, pid)
       where
         go pid = do
             Just bs <- gets (M.lookup hnd >=> M.lookup pid)
             case decodeMaybe (getPageAppendMeta k v) bs of
                 Nothing -> if pid == 0 then return Nothing else go (pid - 1)
-                Just x -> return $ Just x
+                Just x -> return $ Just (x, pid)
 
 
 --------------------------------------------------------------------------------

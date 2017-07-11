@@ -144,10 +144,13 @@ evalStoreT = evalStateT . runMaybeT . fromStoreT
 execStoreT :: Monad m => StoreT fp m a -> Files fp-> m (Files fp)
 execStoreT = execStateT . runMaybeT . fromStoreT
 
-runStore :: FilePath -> StoreT FilePath IO a -> IO (Maybe a, Files FilePath)
-runStore fp action = withFile fp ReadWriteMode $ \handle -> do
+runStore :: FilePath -> Handle -> StoreT FilePath IO a -> IO (Maybe a, Files FilePath)
+runStore fp handle action = do
     let files = M.fromList [(fp, handle)]
     runStateT (runMaybeT (fromStoreT action)) files
+
+evalStore :: FilePath -> Handle -> StoreT FilePath IO a -> IO (Maybe a)
+evalStore fp handle action = fst <$> runStore fp handle action
 
 nodeIdToPageId :: NodeId height key val -> PageId
 nodeIdToPageId (NodeId n) = PageId n
@@ -250,7 +253,7 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
                            (PageAppendMeta meta)
                            pageSize
 
-    openAppendDb fp k v = do
+    openAppendMeta fp k v = do
         handle   <- StoreT . MaybeT $ gets (M.lookup fp)
         numPages <- getSize fp
         pageSize <- maxPageSize
@@ -258,12 +261,12 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
         case page of
             Nothing -> return Nothing
             Just x -> do
-                PageAppendMeta meta <- return x
-                return $ Just (coerce meta)
+                (PageAppendMeta meta, pid) <- return x
+                return $ Just (coerce meta, pid)
       where
         go _ _ 0 = return Nothing
         go h ps pid = readAppendMetaNode h k v pid ps >>= \case
-            Just x -> return $ Just x
+            Just x -> return $ Just (x, pid)
             Nothing -> go h ps (pid - 1)
 
 --------------------------------------------------------------------------------

@@ -6,7 +6,10 @@ import Prelude hiding (foldr, foldl)
 import Data.BTree.Alloc.Class
 import Data.BTree.Primitives
 
+import Data.Function (on)
+import Data.List (sortBy)
 import Data.Monoid (Monoid, (<>), mempty)
+import qualified Data.Map as M
 
 import qualified Data.Foldable as F
 
@@ -17,20 +20,32 @@ foldr :: (AllocM m, Key k, Value a)
       => (a -> b -> b) -> b -> Tree k a -> m b
 foldr f = foldrM (\a b -> return (f a b))
 
+{-| Perform a right-associative fold over the tree key-value pairs. -}
+foldrWithKey :: (AllocM m, Key k, Value a)
+             => (k -> a -> b -> b) -> b -> Tree k a -> m b
+foldrWithKey f = foldrWithKeyM (\k a b -> return (f k a b))
+
 {-| Perform a monadic right-associative fold over the tree. -}
 foldrM :: (AllocM m, Key k, Value a)
        => (a -> b -> m b) -> b -> Tree k a -> m b
-foldrM _ x (Tree _ Nothing) = return x
-foldrM f x (Tree h (Just nid)) = foldrIdM f x h nid
+foldrM f = foldrWithKeyM (const f)
 
-foldrIdM :: (AllocM m, Key k, Value a)
-         => (a -> b -> m b) -> b -> Height h -> NodeId h k a -> m b
-foldrIdM f x h nid = readNode h nid >>= foldrNodeM f x h
+{-| Perform a monadic right-assiciative fold over the tree key-value pairs. -}
+foldrWithKeyM :: (AllocM m, Key k, Value a)
+              => (k -> a -> b -> m b) -> b -> Tree k a -> m b
+foldrWithKeyM _ x (Tree _ Nothing) = return x
+foldrWithKeyM f x (Tree h (Just nid)) = foldrIdWithKeyM f x h nid
 
-foldrNodeM :: (AllocM m, Key k, Value a)
-           => (a -> b -> m b) -> b -> Height h -> Node h k a -> m b
-foldrNodeM f x _ (Leaf items) = F.foldrM f x items
-foldrNodeM f x h (Idx idx) = F.foldrM (\nid x' -> foldrIdM f x' (decrHeight h) nid) x idx
+foldrIdWithKeyM :: (AllocM m, Key k, Value a)
+         => (k -> a -> b -> m b) -> b -> Height h -> NodeId h k a -> m b
+foldrIdWithKeyM f x h nid = readNode h nid >>= foldrNodeWithKeyM f x h
+
+foldrNodeWithKeyM :: (AllocM m, Key k, Value a)
+           => (k -> a -> b -> m b) -> b -> Height h -> Node h k a -> m b
+foldrNodeWithKeyM f x _ (Leaf items) = M.foldrWithKey f' return items x
+  where f' k a m z = f k a z >>= m
+foldrNodeWithKeyM f x h (Idx idx) =
+    F.foldrM (\nid x' -> foldrIdWithKeyM f x' (decrHeight h) nid) x idx
 
 --------------------------------------------------------------------------------
 
@@ -38,8 +53,10 @@ foldMap :: (AllocM m, Key k, Value a, Monoid c)
       => (a -> c) -> Tree k a -> m c
 foldMap f = foldr ((<>) . f) mempty
 
+{-| Todo: something is wrong with foldr, so sorting is necessary for now as a
+ - a work around. -}
 toList :: (AllocM m, Key k, Value a)
-      => Tree k a -> m [a]
-toList = foldr (:) []
+      => Tree k a -> m [(k, a)]
+toList t = sortBy (compare `on` fst) <$> foldrWithKey (\k v xs -> (k, v):xs) [] t
 
 --------------------------------------------------------------------------------

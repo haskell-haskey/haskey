@@ -3,6 +3,8 @@ module Data.BTree.Fold where
 
 import Prelude hiding (foldr, foldl)
 
+import Control.Applicative ((<$>))
+
 import Data.BTree.Alloc.Class
 import Data.BTree.Primitives
 

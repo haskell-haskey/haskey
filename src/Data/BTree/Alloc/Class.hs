@@ -5,12 +5,16 @@ import Data.BTree.Primitives
 
 import Control.Applicative (Applicative)
 
+import Data.Int
+
 --------------------------------------------------------------------------------
+
+type PageSize = Int32
 
 class (Applicative m, Monad m) => AllocM m where
     nodePageSize ::   (Key key, Value val)
-                 =>   m (Height height -> Node height key val -> Int)
-    maxPageSize  ::   m Int
+                 =>   m (Height height -> Node height key val -> PageSize)
+    maxPageSize  ::   m PageSize
     allocNode    ::   (Key key, Value val)
                  =>   Height height
                  ->   Node height key val

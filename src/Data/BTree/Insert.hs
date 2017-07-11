@@ -23,7 +23,7 @@ splitIndex h index = do
     let binPred n = nodePageSize' h n <= m
     case extendIndexPred binPred Idx index of
         Just extIndex -> return extIndex
-        Nothing       -> error "Splitting failed!? Underflow"
+        Nothing       -> error "Splitting failed!? Underflow "
 
 splitLeaf :: (AllocM m, Key key, Value val) =>
     Map key val ->
@@ -34,7 +34,7 @@ splitLeaf items = do
     let binPred n = nodePageSize' zeroHeight n <= m
     case splitLeafManyPred binPred Leaf items of
         Just v  -> return v
-        Nothing -> error "Split leaf: underflow"
+        Nothing -> error $ "Split leaf: underflow " ++ show items
 
 --------------------------------------------------------------------------------
 

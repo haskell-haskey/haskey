@@ -19,3 +19,4 @@ cabal.sandbox.config
 dist
 .stack-work
 .*.sw[a-z]
+*.tix

@@ -38,7 +38,7 @@ prop_splitLeafManyPred (PageSize pageSize) m
     | otherwise
     = False
   where
-    pred' m' = BL.length (B.encode m') <= pageSize
+    pred' m' = BL.length (B.encode m') <= fromIntegral pageSize
 
 prop_splitLeafMany  :: M.Map Int64 Int -> Bool
 prop_splitLeafMany m

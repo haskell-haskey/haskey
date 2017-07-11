@@ -114,7 +114,7 @@ prop_extendIndexPred (PageSize pageSize) idx
     | otherwise
     = False
   where
-    pred' m' = BL.length (B.encode m') <= pageSize
+    pred' m' = BL.length (B.encode m') <= fromIntegral pageSize
 
 prop_bindIndex_extendedIndex :: Int -> Index Int64 Int -> Bool
 prop_bindIndex_extendedIndex n idx =

@@ -103,24 +103,24 @@ getPageAppendMeta k v = B.get >>= \BPageAppendMeta ->
 type File     = Map PageId ByteString
 type Files fp = Map fp File
 
-newtype StoreT fp k v m a = StoreT
+newtype StoreT fp m a = StoreT
     { fromStoreT :: MaybeT (StateT (Files fp) m) a
     } deriving (Applicative, Functor, Monad)
 
-runStoreT :: StoreT fp k v m a -> Files fp -> m (Maybe a, Files fp)
+runStoreT :: StoreT fp m a -> Files fp -> m (Maybe a, Files fp)
 runStoreT = runStateT . runMaybeT . fromStoreT
 
-evalStoreT :: Monad m => StoreT fp k v m a -> Files fp -> m (Maybe a)
+evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Maybe a)
 evalStoreT = evalStateT . runMaybeT . fromStoreT
 
-execStoreT :: Monad m => StoreT fp k v m a -> Files fp-> m (Files fp)
+execStoreT :: Monad m => StoreT fp m a -> Files fp-> m (Files fp)
 execStoreT = execStateT . runMaybeT . fromStoreT
 
-runStore :: StoreT String k v Identity a -> (Maybe a, Files String)
+runStore :: StoreT String Identity a -> (Maybe a, Files String)
 runStore = runIdentity . flip runStoreT initialStore
   where initialStore = M.fromList [("Main", M.empty)]
 
-evalStore :: StoreT String k v Identity a -> Maybe a
+evalStore :: StoreT String Identity a -> Maybe a
 evalStore = fst . runStore
 
 nodeIdToPageId :: NodeId height key val -> PageId
@@ -132,7 +132,7 @@ pageIdToNodeId (PageId n) = NodeId n
 --------------------------------------------------------------------------------
 
 instance (Ord fp, Applicative m, Monad m) =>
-    StoreM fp (StoreT fp k v m)
+    StoreM fp (StoreT fp m)
   where
     -- -- openStore fp = StoreT $ do
     -- --     modify (M.insertWith (flip const) fp M.empty)
@@ -163,7 +163,7 @@ instance (Ord fp, Applicative m, Monad m) =>
 --------------------------------------------------------------------------------
 
 instance (Ord fp, Applicative m, Monad m) =>
-    AppendMetaStoreM fp (StoreT fp k v m)
+    AppendMetaStoreM fp (StoreT fp m)
   where
     getAppendMeta h key val i = StoreT $ do
         Just bs <- gets (M.lookup h >=> M.lookup i)

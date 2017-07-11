@@ -10,7 +10,7 @@ import qualified Data.Binary as B
 testBinary :: (Eq a, B.Binary a) => a -> Bool
 testBinary x = B.decode (B.encode x) == x
 
-newtype PageSize = PageSize Int64 deriving (Show)
+newtype PageSize = PageSize Int32 deriving (Show)
 
 instance Arbitrary PageSize where
     arbitrary = PageSize . fromIntegral <$> elements pows

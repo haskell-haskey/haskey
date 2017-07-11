@@ -92,16 +92,16 @@ createAppendDb :: forall k v hnd m. (Key k, Value v, AppendMetaStoreM hnd m)
     => hnd
     -> m (AppendDb hnd k v)
 createAppendDb hnd = do
-    let metaId :: PageId
-        metaId = 0
-        meta :: AppendMeta k v
+    let meta :: AppendMeta k v
         meta = AppendMeta
                { appendMetaRevision = TxId 0
                , appendMetaTree     = Tree zeroHeight Nothing
-               , appendMetaPrevious = metaId
+               , appendMetaPrevious = 0
                }
 
-    setSize hnd 1
+    size <- getSize hnd
+    setSize hnd (size + 1)
+    let metaId = PageId . fromPageCount $ size
     putAppendMeta hnd metaId meta
     return $! AppendDb
         { appendDbHandle = hnd

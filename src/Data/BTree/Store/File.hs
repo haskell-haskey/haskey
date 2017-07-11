@@ -92,21 +92,27 @@ putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
 getMetaPage :: Get Page
-getMetaPage = B.get >>= \BPageMeta -> PageMeta <$> B.get
+getMetaPage = B.get >>= \case
+    BPageMeta -> PageMeta <$> B.get
+    x         -> fail $ "unexpected " ++ show x
 
 getEmptyPage :: Get Page
-getEmptyPage = B.get >>= \BPageEmpty -> return PageEmpty
+getEmptyPage = B.get >>= \case
+    BPageEmpty -> return PageEmpty
+    x          -> fail $ "unexpected " ++ show x
 
 getPageNode :: (Key key, Value val)
             => Height height
             -> Proxy key
             -> Proxy val
             -> Get Page
-getPageNode h key val = B.get >>= \BPageNode -> do
-    h' <- B.get
-    if fromHeight h == fromHeight h'
-        then PageNode h <$> getNode' h' key val
-        else fail $ "expected height " ++ show h ++ " but got " ++ show h'
+getPageNode h key val = B.get >>= \case
+    BPageNode -> do
+        h' <- B.get
+        if fromHeight h == fromHeight h'
+            then PageNode h <$> getNode' h' key val
+            else fail $ "expected height " ++ show h ++ " but got " ++ show h'
+    x -> fail $ "unexpected " ++ show x
   where
     getNode' :: (Key key, Value val)
              => Height h
@@ -119,8 +125,9 @@ getPageAppendMeta :: (Key key, Value val)
                   => Proxy key
                   -> Proxy val
                   -> Get Page
-getPageAppendMeta k v = B.get >>= \BPageAppendMeta ->
-    PageAppendMeta <$> getAppendMeta' k v
+getPageAppendMeta k v = B.get >>= \case
+    BPageAppendMeta -> PageAppendMeta <$> getAppendMeta' k v
+    x               -> fail $ "unexpected " ++ show x
   where
     getAppendMeta' :: (Key key, Value val)
                    => Proxy key

@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs #-}
@@ -49,6 +50,12 @@ data Page = PageEmpty
 
 encode :: Page -> ByteString
 encode = toStrict . B.runPut . putPage
+
+decodeMaybe :: Get a -> ByteString -> Maybe a
+decodeMaybe g bs =
+    case B.runGetOrFail g . B.runGet B.get . fromStrict $ bs of
+        Left _ -> Nothing
+        Right (_, _, a) -> Just a
 
 decode :: Get a -> ByteString -> a
 decode g = B.runGet g . fromStrict
@@ -169,7 +176,24 @@ instance (Ord fp, Applicative m, Monad m) =>
         Just bs <- gets (M.lookup h >=> M.lookup i)
         PageAppendMeta meta <- return (decode (getPageAppendMeta key val) bs)
         return $! coerce meta
+
     putAppendMeta h i meta = StoreT $
         modify (M.update (Just. M.insert i (encode (PageAppendMeta meta))) h)
+
+    openAppendDb hnd k v = do
+        numPages <- getSize hnd
+        page <- StoreT $ go $ PageId (fromPageCount (numPages - 1))
+        case page of
+            Nothing -> return Nothing
+            Just x -> do
+                PageAppendMeta meta <- return x
+                return $ Just (coerce meta)
+      where
+        go pid = do
+            Just bs <- gets (M.lookup hnd >=> M.lookup pid)
+            case decodeMaybe (getPageAppendMeta k v) bs of
+                Nothing -> if pid == 0 then return Nothing else go (pid - 1)
+                Just x -> return $ Just x
+
 
 --------------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -66,6 +67,12 @@ encodeAndPad size page
 {-| Encode a page, including the length of the encoded byte string -}
 encode :: Page -> BL.ByteString
 encode = B.runPut . B.put . B.runPut . putPage
+
+decodeMaybe :: Get a -> ByteString -> Maybe a
+decodeMaybe g bs =
+    case B.runGetOrFail g . B.runGet B.get . fromStrict $ bs of
+        Left _ -> Nothing
+        Right (_, _, a) -> Just a
 
 decode :: Get a -> ByteString -> a
 decode g = B.runGet g . B.runGet B.get . fromStrict
@@ -230,7 +237,7 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
     getAppendMeta fp key val i = do
         handle   <- StoreT . MaybeT $ gets (M.lookup fp)
         pageSize <- maxPageSize
-        PageAppendMeta meta <-
+        Just (PageAppendMeta meta) <-
             StoreT $ readAppendMetaNode handle
                                         key val
                                         i pageSize
@@ -243,6 +250,22 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
                            (PageAppendMeta meta)
                            pageSize
 
+    openAppendDb fp k v = do
+        handle   <- StoreT . MaybeT $ gets (M.lookup fp)
+        numPages <- getSize fp
+        pageSize <- maxPageSize
+        page <- StoreT $ go handle pageSize $ PageId (fromPageCount (numPages - 1))
+        case page of
+            Nothing -> return Nothing
+            Just x -> do
+                PageAppendMeta meta <- return x
+                return $ Just (coerce meta)
+      where
+        go _ _ 0 = return Nothing
+        go h ps pid = readAppendMetaNode h k v pid ps >>= \case
+            Just x -> return $ Just x
+            Nothing -> go h ps (pid - 1)
+
 --------------------------------------------------------------------------------
 
 readAppendMetaNode :: (MonadIO m, Key key, Value val)
@@ -251,10 +274,10 @@ readAppendMetaNode :: (MonadIO m, Key key, Value val)
                    -> Proxy val
                    -> PageId
                    -> PageSize
-                   -> m Page
+                   -> m (Maybe Page)
 readAppendMetaNode h k v (PageId pid) size = liftIO $ do
     hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
     bs <- hGet h (fromIntegral size)
-    return $ decode (getPageAppendMeta k v) bs
+    return $ decodeMaybe (getPageAppendMeta k v) bs
 
 --------------------------------------------------------------------------------

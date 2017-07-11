@@ -34,7 +34,14 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
                   -> Proxy v
                   -> PageId
                   -> m (AppendMeta k v)
+
     putAppendMeta :: (Key k, Value v) => hnd -> PageId -> AppendMeta k v -> m ()
+
+    openAppendDb :: (Key k, Value v)
+                 => hnd
+                 -> Proxy k
+                 -> Proxy v
+                 -> m (Maybe (AppendMeta k v))
 
 data AppendMeta k v = AppendMeta
     { appendMetaRevision :: TxId

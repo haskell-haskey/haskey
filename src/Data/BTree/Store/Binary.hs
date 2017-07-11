@@ -53,7 +53,7 @@ encode = toStrict . B.runPut . putPage
 
 decodeMaybe :: Get a -> ByteString -> Maybe a
 decodeMaybe g bs =
-    case B.runGetOrFail g . B.runGet B.get . fromStrict $ bs of
+    case B.runGetOrFail g . fromStrict $ bs of
         Left _ -> Nothing
         Right (_, _, a) -> Just a
 

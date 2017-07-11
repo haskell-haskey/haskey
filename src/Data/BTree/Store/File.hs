@@ -22,6 +22,7 @@ import Data.ByteString (ByteString, hGet, hPut)
 import Data.ByteString.Lazy (fromStrict, toStrict)
 import Data.Coerce (coerce)
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
 import Data.Typeable
 import qualified Data.Binary as B
@@ -66,16 +67,16 @@ encodeAndPad size page
 
 {-| Encode a page, including the length of the encoded byte string -}
 encode :: Page -> BL.ByteString
-encode = B.runPut . B.put . B.runPut . putPage
+encode = B.runPut . putPage
 
 decodeMaybe :: Get a -> ByteString -> Maybe a
 decodeMaybe g bs =
-    case B.runGetOrFail g . B.runGet B.get . fromStrict $ bs of
+    case B.runGetOrFail g . fromStrict $ bs of
         Left _ -> Nothing
         Right (_, _, a) -> Just a
 
 decode :: Get a -> ByteString -> a
-decode g = B.runGet g . B.runGet B.get . fromStrict
+decode g = fromMaybe (error "decoding unexpectedly failed") . decodeMaybe g
 
 
 deriving instance Show Page

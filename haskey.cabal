@@ -18,6 +18,7 @@ extra-source-files:  README.md
 
 library
   exposed-modules:
+    Data.BTree.Alloc
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
     Data.BTree.Impure
@@ -35,6 +36,7 @@ library
     Data.BTree.Primitives.Value
     Data.BTree.Pure
     Data.BTree.Pure.TwoThree
+    Data.BTree.Store
     Data.BTree.Store.Binary
     Data.BTree.Store.Class
     Data.BTree.Store.File

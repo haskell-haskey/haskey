@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Main where
 
+import Control.Applicative ((<$>), (<*>))
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State

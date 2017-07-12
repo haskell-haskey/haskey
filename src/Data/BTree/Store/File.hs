@@ -7,15 +7,35 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
-module Data.BTree.Store.File where
+{-| On-disk storage back-end. Can be used as a storage back-end for the
+   append-only page allocator (see "Data.BTree.Alloc").
+ -}
+module Data.BTree.Store.File (
+  -- * Storage
+  Page(..)
+, Files
+, StoreT
+, runStoreT
+, evalStoreT
+, execStoreT
+, runStore
+, evalStore
 
+  -- * Binary encoding
+, encodeAndPad
+, encode
+, decodeMaybe
+, decode
+, getMetaPage
+, getEmptyPage
+, getPageNode
+, getPageAppendMeta
+) where
 import Control.Applicative (Applicative, (<$>))
 import Control.Monad.IO.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT
-                                        , runStateT
-                                        )
+import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
 import Data.Binary (Binary(..), Put, Get)
 import Data.ByteString (ByteString, hGet, hPut)
@@ -43,6 +63,7 @@ import Data.BTree.Store.Class
 
 --------------------------------------------------------------------------------
 
+{-| A decoded on-disk page. -}
 data Page =
       PageMeta PageCount
     | PageEmpty
@@ -70,12 +91,17 @@ encodeAndPad size page
 encode :: Page -> BL.ByteString
 encode = B.runPut . putPage
 
+{-| Decode a page with the specified decoder, or return 'Nothing'. -}
 decodeMaybe :: Get a -> ByteString -> Maybe a
 decodeMaybe g bs =
     case B.runGetOrFail g . fromStrict $ bs of
         Left _ -> Nothing
         Right (_, _, a) -> Just a
 
+{-| Decode a page with the specified decoder.
+
+   This function is partial, and will fail when the data cannot be decoded.
+ -}
 decode :: Get a -> ByteString -> a
 decode g = fromMaybe (error "decoding unexpectedly failed") . decodeMaybe g
 
@@ -86,22 +112,26 @@ data BPage = BPageMeta | BPageEmpty | BPageNode | BPageAppendMeta
            deriving (Eq, Generic, Show)
 instance Binary BPage where
 
+{-| The encoder of a page. -}
 putPage :: Page -> Put
 putPage (PageMeta c) = B.put BPageMeta >> B.put c
 putPage PageEmpty = B.put BPageEmpty
 putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
+{-| Decoder for meta pages. Will return a 'PageMeta'. -}
 getMetaPage :: Get Page
 getMetaPage = B.get >>= \case
     BPageMeta -> PageMeta <$> B.get
     x         -> fail $ "unexpected " ++ show x
 
+{-| Decoder for empty pages. Will return a 'PageEmpty'. -}
 getEmptyPage :: Get Page
 getEmptyPage = B.get >>= \case
     BPageEmpty -> return PageEmpty
     x          -> fail $ "unexpected " ++ show x
 
+{-| Decoder for a page containing a 'Node'. Will return a 'PageNode'. -}
 getPageNode :: (Key key, Value val)
             => Height height
             -> Proxy key
@@ -122,6 +152,7 @@ getPageNode h key val = B.get >>= \case
              -> Get (Node h key val)
     getNode' h' _ _ = getNode h'
 
+{-| Decoder for a page containg 'AppendMeta'. Will return a 'PageAppendMeta'. -}
 getPageAppendMeta :: (Key key, Value val)
                   => Proxy key
                   -> Proxy val
@@ -138,34 +169,61 @@ getPageAppendMeta k v = B.get >>= \case
 
 --------------------------------------------------------------------------------
 
+{-| A collection of files, each associated with a certain @fp@ handle.
+
+   Each file is a 'Handle' opened in 'System.IO.ReadWriteMode' and contains a
+   collection of physical pages.
+ -}
 type Files fp = Map fp Handle
 
+{-| Monad in which on-disk storage operations can take place.
+
+  Two important instances are 'StoreM' making it a storage back-end, and
+  'AppendMetaStoreM' making it a storage back-end compatible with the
+  append-only page allocator.
+ -}
 newtype StoreT fp m a = StoreT
     { fromStoreT :: MaybeT (StateT (Files fp) m) a
     } deriving (Applicative, Functor, Monad)
 
+{-| Run the storage operations in the 'StoreT' monad, given a collection of
+   open files.
+ -}
 runStoreT :: StoreT fp m a -> Files fp -> m (Maybe a, Files fp)
 runStoreT = runStateT . runMaybeT . fromStoreT
 
+{-| Evaluate the storage operations in the 'StoreT' monad, given a collection of
+   open files.
+ -}
 evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Maybe a)
 evalStoreT = evalStateT . runMaybeT . fromStoreT
 
+{-| Execute the storage operations in the 'StoreT' monad, given a collection of
+   open files.
+ -}
 execStoreT :: Monad m => StoreT fp m a -> Files fp-> m (Files fp)
 execStoreT = execStateT . runMaybeT . fromStoreT
 
+{-| Run the storage operations in the 'StoreT' monad, given a single open file
+   that can be used as store the physical pages.
+
+   The given 'Handle' should be opened in 'System.IO.ReadWriteMode'.
+ -}
 runStore :: FilePath -> Handle -> StoreT FilePath IO a -> IO (Maybe a, Files FilePath)
 runStore fp handle action = do
     let files = M.fromList [(fp, handle)]
     runStateT (runMaybeT (fromStoreT action)) files
 
+{-| Evaluate the storage operations in the 'StoreT' monad, given a single open
+   file that can be used as store the physical pages.
+
+   The given 'Handle' should be opened in 'System.IO.ReadWriteMode'.
+ -}
 evalStore :: FilePath -> Handle -> StoreT FilePath IO a -> IO (Maybe a)
 evalStore fp handle action = fst <$> runStore fp handle action
 
 nodeIdToPageId :: NodeId height key val -> PageId
 nodeIdToPageId (NodeId n) = PageId n
-
-pageIdToNodeId :: PageId -> NodeId height key val
-pageIdToNodeId (PageId n) = NodeId n
 
 --------------------------------------------------------------------------------
 

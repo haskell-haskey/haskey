@@ -9,8 +9,29 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-| Binary in-memory storage back-end. Can be used as a storage back-end for
+   the append-only page allocator (see "Data.BTree.Alloc").
+ -}
+module Data.BTree.Store.Binary (
+  -- * Storage
+  Page(..)
+, File
+, Files
+, StoreT
+, runStoreT
+, evalStoreT
+, execStoreT
+, runStore
+, evalStore
 
-module Data.BTree.Store.Binary where
+  -- * Binary encoding
+, encode
+, decodeMaybe
+, decode
+, getEmptyPage
+, getPageNode
+, getPageAppendMeta
+) where
 
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad
@@ -41,6 +62,7 @@ import Data.BTree.Store.Class
 
 --------------------------------------------------------------------------------
 
+{-| A decoded binary page. -}
 data Page = PageEmpty
     | forall height key val. (Key key, Value val) =>
       PageNode (Height height) (Node height key val)
@@ -48,15 +70,21 @@ data Page = PageEmpty
       PageAppendMeta (AppendMeta key val)
     deriving (Typeable)
 
+{-| Encode a page. -}
 encode :: Page -> ByteString
 encode = toStrict . B.runPut . putPage
 
+{-| Decode a page with the specified decoder, or return 'Nothing'. -}
 decodeMaybe :: Get a -> ByteString -> Maybe a
 decodeMaybe g bs =
     case B.runGetOrFail g . fromStrict $ bs of
         Left _ -> Nothing
         Right (_, _, a) -> Just a
 
+{-| Decode a page with the specified decoder.
+
+   This function is partial, and will fail when the data cannot be decoded.
+ -}
 decode :: Get a -> ByteString -> a
 decode g = B.runGet g . fromStrict
 
@@ -66,16 +94,19 @@ data BPage = BPageEmpty | BPageNode | BPageAppendMeta
            deriving (Eq, Generic, Show)
 instance Binary BPage where
 
+{-| The encoder of a page. -}
 putPage :: Page -> Put
 putPage PageEmpty = B.put BPageEmpty
 putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
+{-| Decoder for empty pages. Will return a 'PageEmpty'. -}
 getEmptyPage :: Get Page
 getEmptyPage = B.get >>= \case
     BPageEmpty -> return PageEmpty
     x          -> fail $ "unexpected " ++ show x
 
+{-| Decoder for a page containing a 'Node'. Will return a 'PageNode'. -}
 getPageNode :: (Key key, Value val)
             => Height height
             -> Proxy key
@@ -96,6 +127,7 @@ getPageNode h key val = B.get >>= \case
              -> Get (Node h key val)
     getNode' h' _ _ = getNode h'
 
+{-| Decoder for a page containg 'AppendMeta'. Will return a 'PageAppendMeta'. -}
 getPageAppendMeta :: (Key key, Value val)
                   => Proxy key
                   -> Proxy val
@@ -112,34 +144,53 @@ getPageAppendMeta k v = B.get >>= \case
 
 --------------------------------------------------------------------------------
 
+{-| A file containing a collection of pages. -}
 type File     = Map PageId ByteString
+
+{-| A collection of 'File's, each associated with a certain @fp@ handle. -}
 type Files fp = Map fp File
 
+{-| Monad in which binary storage operations can take place.
+
+   Two important instances are 'StoreM' making it a storage back-end, and
+   'AppendMetaStoreM' making it a storage back-end compatible with the
+   append-only page allocator.
+ -}
 newtype StoreT fp m a = StoreT
     { fromStoreT :: MaybeT (StateT (Files fp) m) a
     } deriving (Applicative, Functor, Monad)
 
+{-| Run the storage operations in the 'StoreT' monad, given a collection of
+   'File's.
+ -}
 runStoreT :: StoreT fp m a -> Files fp -> m (Maybe a, Files fp)
 runStoreT = runStateT . runMaybeT . fromStoreT
 
+{-| Evaluate the storage operations in the 'StoreT' monad, given a colletion of
+   'File's.
+ -}
 evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Maybe a)
 evalStoreT = evalStateT . runMaybeT . fromStoreT
 
+{-| Execute the storage operations in the 'StoreT' monad, given a colletion of
+   'File's.
+ -}
 execStoreT :: Monad m => StoreT fp m a -> Files fp-> m (Files fp)
 execStoreT = execStateT . runMaybeT . fromStoreT
 
+{-| Run the storage operations in the 'StoreT' monad, without any other
+   underlying monad, and with the empty store as the initial store. -}
 runStore :: StoreT String Identity a -> (Maybe a, Files String)
 runStore = runIdentity . flip runStoreT initialStore
   where initialStore = M.fromList [("Main", M.empty)]
 
+{-| Evaluate the storage operations in the 'StoreT' monad, without any other
+   underlying monad, and with the empty store as the initial store. -}
 evalStore :: StoreT String Identity a -> Maybe a
 evalStore = fst . runStore
 
 nodeIdToPageId :: NodeId height key val -> PageId
 nodeIdToPageId (NodeId n) = PageId n
-
-pageIdToNodeId :: PageId -> NodeId height key val
-pageIdToNodeId (PageId n) = NodeId n
 
 --------------------------------------------------------------------------------
 

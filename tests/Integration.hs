@@ -10,9 +10,9 @@ import Control.Monad.State
 import Data.Map (Map)
 import qualified Data.Map as M
 
-import System.Directory (removeFile)
+import System.Directory (removeFile, getTemporaryDirectory)
 import System.IO
-import System.IO.Temp (emptySystemTempFile)
+import System.IO.Temp (openTempFile)
 
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
@@ -69,8 +69,8 @@ openAndReadMemory files =
 
 testFile :: PropertyM IO Bool
 testFile = do
-    fp <- run $ emptySystemTempFile "db.haskey"
-    fh <- run $ openFile fp ReadWriteMode
+    tmpDir   <- run getTemporaryDirectory
+    (fp, fh) <- run $ openTempFile tmpDir "db.haskey"
 
     Just orig  <- createAndWriteFile fp fh
     Just read' <- openAndReadFile fp fh

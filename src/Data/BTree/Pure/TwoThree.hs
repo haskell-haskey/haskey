@@ -1,7 +1,6 @@
+{-| Setup of a 2-3 tree. -}
+module Data.BTree.Pure.TwoThree where
 
-module Data.BTree.TwoThree where
-
--- Setup of a 2-3 tree.
 minFanout :: Int
 minFanout = 2
 

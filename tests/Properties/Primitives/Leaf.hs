@@ -5,7 +5,7 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Leaf
-import qualified Data.BTree.TwoThree as Tree
+import qualified Data.BTree.Pure.TwoThree as Tree
 
 import Data.Int
 import Data.List.Ordered (isSortedBy)

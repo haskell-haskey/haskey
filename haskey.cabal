@@ -32,10 +32,10 @@ library
     Data.BTree.Primitives.Leaf
     Data.BTree.Primitives.Value
     Data.BTree.Pure
+    Data.BTree.Pure.TwoThree
     Data.BTree.Store.Class
     Data.BTree.Store.Binary
     Data.BTree.Store.File
-    Data.BTree.TwoThree
 
   other-modules:
     Data.BTree.Internal

@@ -8,7 +8,7 @@ module Data.BTree.Delete where
 import           Data.BTree.Alloc.Class
 import           Data.BTree.Insert
 import           Data.BTree.Primitives
-import           Data.BTree.TwoThree
+import           Data.BTree.Pure.TwoThree
 
 import qualified Data.Map as M
 import           Data.Monoid

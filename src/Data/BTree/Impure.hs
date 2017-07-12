@@ -1,8 +1,8 @@
 {-| An impure B+-tree implementation.
- -
- - This module contains the implementation of a B+-tree that is backed by a
- - page allocator (see "Data.BTree.Alloc") and a storage back-end (see
- - "Data.BTree.Store").
+
+   This module contains the implementation of a B+-tree that is backed by a
+   page allocator (see "Data.BTree.Alloc") and a storage back-end (see
+   "Data.BTree.Store").
  -}
 module Data.BTree.Impure (
   -- * Structures

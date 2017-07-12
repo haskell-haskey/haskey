@@ -222,9 +222,6 @@ runStore fp handle action = do
 evalStore :: FilePath -> Handle -> StoreT FilePath IO a -> IO (Maybe a)
 evalStore fp handle action = fst <$> runStore fp handle action
 
-nodeIdToPageId :: NodeId height key val -> PageId
-nodeIdToPageId (NodeId n) = PageId n
-
 --------------------------------------------------------------------------------
 
 instance (Ord fp, Applicative m, Monad m, MonadIO m) =>

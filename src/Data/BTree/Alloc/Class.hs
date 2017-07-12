@@ -3,15 +3,10 @@ module Data.BTree.Alloc.Class where
 
 import Control.Applicative (Applicative)
 
-import Data.Int
-
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
-
-{-| The physical size of a page, in bytes. -}
-type PageSize = Int32
 
 {-| A page allocator that manages physical pages. -}
 class (Applicative m, Monad m) => AllocM m where

@@ -3,10 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| A storage back-end manages physical storage of pages. -}
-module Data.BTree.Store.Class (
-  PageSize
-, StoreM(..)
-) where
+module Data.BTree.Store.Class where
 
 import Data.BTree.Impure
 import Data.BTree.Primitives
@@ -17,8 +14,6 @@ import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Trans.State (StateT)
 
 import Data.Proxy
-
-import Data.BTree.Alloc.Class (PageSize)
 
 --------------------------------------------------------------------------------
 

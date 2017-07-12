@@ -19,11 +19,12 @@ import qualified Data.Foldable as F
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
+import Data.BTree.Primitives.Ids
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 import qualified Data.BTree.Pure.TwoThree as Tree
 
-import Properties.Utils (PageSize(..))
+import Properties.Primitives.Ids () -- Arbitrary instance of PageSize
 
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
   arbitrary = do

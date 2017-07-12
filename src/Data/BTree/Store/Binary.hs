@@ -189,9 +189,6 @@ runStore = runIdentity . flip runStoreT initialStore
 evalStore :: StoreT String Identity a -> Maybe a
 evalStore = fst . runStore
 
-nodeIdToPageId :: NodeId height key val -> PageId
-nodeIdToPageId (NodeId n) = PageId n
-
 --------------------------------------------------------------------------------
 
 instance (Ord fp, Applicative m, Monad m) =>

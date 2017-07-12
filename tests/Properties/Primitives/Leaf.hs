@@ -3,6 +3,7 @@ module Properties.Primitives.Leaf (tests) where
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 
+import Data.BTree.Primitives.Ids
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Leaf
 import qualified Data.BTree.Pure.TwoThree as Tree
@@ -14,7 +15,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
-import Properties.Utils (PageSize(..))
+import Properties.Primitives.Ids () -- Arbitrary instance of PageSize
 
 tests :: Test
 tests = testGroup "Primitives.Leaf"

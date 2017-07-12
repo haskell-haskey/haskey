@@ -117,8 +117,6 @@ test-suite haskey-integration
     vector        >=0.10 && <1,
 
     QuickCheck    >=2    && <3,
-    pretty        >=1.1  && <2,
-    pretty-show   >=1.6  && <2,
     haskey
 
   default-language:    Haskell2010

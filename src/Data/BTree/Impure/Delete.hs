@@ -2,26 +2,29 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-| Algorithms related to deletion from an impure B+-tree. -}
+module Data.BTree.Impure.Delete where
 
-module Data.BTree.Delete where
-
-import           Data.BTree.Alloc.Class
-import           Data.BTree.Insert
-import           Data.BTree.Primitives
-import           Data.BTree.Pure.TwoThree
-
+import Data.Monoid
+import Data.Traversable (traverse)
 import qualified Data.Map as M
-import           Data.Monoid
-import           Data.Traversable (traverse)
+
+import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Insert
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
+import Data.BTree.Pure.TwoThree
 
 --------------------------------------------------------------------------------
 
+{-| Check whether a node needs to be merged. -}
 nodeNeedsMerge :: Node height key val -> Bool
 nodeNeedsMerge (Idx children) =
     indexNumKeys children < minIdxKeys
 nodeNeedsMerge (Leaf items) =
     M.size items < minLeafItems
 
+{-| Merge two nodes. -}
 mergeNodes :: (AllocM m, Key key, Value val)
     => Height height
     -> Node height key val
@@ -84,6 +87,7 @@ deleteRec key = fetchAndGo
 
 --------------------------------------------------------------------------------
 
+{-| Delete a node from the tree. -}
 deleteTree :: (AllocM m, Key key, Value val)
     => key
     -> Tree key val

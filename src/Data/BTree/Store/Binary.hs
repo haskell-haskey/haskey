@@ -12,33 +12,32 @@
 
 module Data.BTree.Store.Binary where
 
-import Data.BTree.Alloc.Append
-import Data.BTree.Primitives
-import Data.BTree.Store.Class
-
-import Control.Applicative              (Applicative(..), (<$>))
+import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT
-                                        , runStateT
-                                        )
+import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
-import           Data.Binary (Binary(..), Put, Get)
+import Data.Binary (Binary(..), Put, Get)
+import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (fromStrict, toStrict)
+import Data.Coerce
+import Data.Map (Map)
+import Data.Proxy
+import Data.Typeable
 import qualified Data.Binary as B
 import qualified Data.Binary.Get as B
 import qualified Data.Binary.Put as B
-import           Data.ByteString (ByteString)
-import           Data.ByteString.Lazy (fromStrict, toStrict)
 import qualified Data.ByteString.Lazy as BL
-import           Data.Coerce
-import           Data.Map (Map)
 import qualified Data.Map as M
-import           Data.Proxy
-import           Data.Typeable
 
 import GHC.Generics (Generic)
+
+import Data.BTree.Alloc.Append
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
+import Data.BTree.Store.Class
 
 --------------------------------------------------------------------------------
 

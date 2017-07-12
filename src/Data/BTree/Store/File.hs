@@ -37,6 +37,7 @@ import GHC.Generics (Generic)
 import System.IO
 
 import Data.BTree.Alloc.Append
+import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 import Data.BTree.Store.Class
 

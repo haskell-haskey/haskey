@@ -1,12 +1,7 @@
-module Properties.Insert (tests) where
+module Properties.Impure.Insert where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-
-import Data.BTree.Alloc.Append
-import Data.BTree.Insert
-import Data.BTree.Store.Binary
-import qualified Data.BTree.Fold as Tree
 
 import Control.Monad ((>=>))
 
@@ -14,8 +9,13 @@ import Data.Int
 import Data.Maybe (isJust)
 import qualified Data.Map as M
 
+import Data.BTree.Alloc.Append
+import Data.BTree.Impure.Insert
+import Data.BTree.Store.Binary
+import qualified Data.BTree.Impure.Fold as Tree
+
 tests :: Test
-tests = testGroup "Insert"
+tests = testGroup "Impure.Insert"
     [ testProperty "insertTreeMany" prop_insertTreeMany
     ]
 

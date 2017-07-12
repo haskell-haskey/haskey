@@ -1,19 +1,20 @@
 {-# LANGUAGE GADTs #-}
-module Data.BTree.Fold where
+{-| Algorithms related to folding over an impure B+-tree. -}
+module Data.BTree.Impure.Fold where
 
 import Prelude hiding (foldr, foldl)
 
 import Control.Applicative ((<$>))
 
-import Data.BTree.Alloc.Class
-import Data.BTree.Primitives
-
 import Data.Function (on)
 import Data.List (sortBy)
 import Data.Monoid (Monoid, (<>), mempty)
 import qualified Data.Map as M
-
 import qualified Data.Foldable as F
+
+import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
@@ -51,11 +52,14 @@ foldrNodeWithKeyM f x h (Idx idx) =
 
 --------------------------------------------------------------------------------
 
+{-| Map each value of the tree to a monoid, and combine the results. -}
 foldMap :: (AllocM m, Key k, Value a, Monoid c)
       => (a -> c) -> Tree k a -> m c
 foldMap f = foldr ((<>) . f) mempty
 
-{-| Todo: something is wrong with foldr, so sorting is necessary for now as a
+{-| Convert an impure B+-tree to a list of key-value pairs.
+ -
+ - BUG: something is wrong with foldr, so sorting is necessary for now as a
  - a work around. -}
 toList :: (AllocM m, Key k, Value a)
       => Tree k a -> m [(k, a)]

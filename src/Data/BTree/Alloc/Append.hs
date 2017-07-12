@@ -9,21 +9,23 @@
 
 module Data.BTree.Alloc.Append where
 
-import           Data.BTree.Delete
-import           Data.BTree.Insert
-import           Data.BTree.Alloc.Class
-import           Data.BTree.Primitives
-import           Data.BTree.Store.Class
+import Control.Applicative (Applicative(..), (<$>))
+import Control.Monad.Reader.Class
+import Control.Monad.Trans.Reader (ReaderT, runReaderT)
+
+import Data.Binary (Binary)
+import Data.Proxy
+import Data.Typeable
+
+import GHC.Generics (Generic)
+
+import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Delete
+import Data.BTree.Impure.Insert
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
+import Data.BTree.Store.Class
 import qualified Data.BTree.Store.Class as Store
-
-import           Control.Applicative (Applicative(..), (<$>))
-import           Control.Monad.Reader.Class
-import           Control.Monad.Trans.Reader (ReaderT, runReaderT)
-import           Data.Binary (Binary)
-import           Data.Proxy
-import           Data.Typeable
-
-import           GHC.Generics (Generic)
 
 --------------------------------------------------------------------------------
 

@@ -1,18 +1,24 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-| Algorithms related to inserting key-value pairs in an impure B+-tree. -}
+module Data.BTree.Impure.Insert where
 
-module Data.BTree.Insert where
-
-import           Data.BTree.Alloc.Class
-import           Data.BTree.Primitives
-
-import           Data.Map (Map)
+import Data.Map (Map)
+import Data.Traversable (traverse)
 import qualified Data.Map as M
-import           Data.Traversable (traverse)
+
+import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
+{-| Split an index node.
+ -
+ - This function is partial. It fails when the original index cannot be split,
+ - because it does not contain enough elements (underflow).
+ -}
 splitIndex :: (AllocM m, Key key, Value val) =>
    Height ('S height) ->
    Index key (NodeId height key val) ->
@@ -25,6 +31,11 @@ splitIndex h index = do
         Just extIndex -> return extIndex
         Nothing       -> error "Splitting failed!? Underflow "
 
+{-| Split a leaf node.
+ -
+ - This function is partial. It fails when the original leaf cannot be split,
+ - because it does not contain enough elements (underflow).
+ -}
 splitLeaf :: (AllocM m, Key key, Value val) =>
     Map key val ->
     m (Index key (Node 'Z key val))
@@ -88,6 +99,7 @@ insertRecMany h kvs nid
 
 --------------------------------------------------------------------------------
 
+{-| Insert a key-value pair in an impure B+-tree. -}
 insertTree :: (AllocM m, Key key, Value val)
     => key
     -> val
@@ -127,6 +139,7 @@ insertTree key val tree
               , treeRootId = Just newRootId
               }
 
+{-| Bulk insert a bunch of key-value pairs in an impure B+-tree. -}
 insertTreeMany :: (AllocM m, Key key, Value val)
     => Map key val
     -> Tree key val

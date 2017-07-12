@@ -1,22 +1,21 @@
-module Properties.Fold (tests) where
+module Properties.Impure.Fold where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-
-import Data.BTree.Alloc.Append
-import Data.BTree.Insert
-import Data.BTree.Primitives.Key
-import Data.BTree.Primitives.Value
-import Data.BTree.Store.Binary
-import qualified Data.BTree.Fold as Tree
 
 import Control.Monad ((>=>))
 
 import Data.Int
 import qualified Data.Map as M
 
+import Data.BTree.Alloc.Append
+import Data.BTree.Impure.Insert
+import Data.BTree.Primitives
+import Data.BTree.Store.Binary
+import qualified Data.BTree.Impure.Fold as Tree
+
 tests :: Test
-tests = testGroup "Fold"
+tests = testGroup "Impure.Fold"
     [ testProperty "foldable toList fromList" prop_foldable_toList_fromList
     ]
 

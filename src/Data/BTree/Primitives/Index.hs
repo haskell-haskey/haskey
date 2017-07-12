@@ -5,21 +5,22 @@
 
 module Data.BTree.Primitives.Index where
 
-import           Data.BTree.Internal
+import Control.Applicative ((<$>))
+import Control.Monad.Identity (runIdentity)
 
-import           Control.Applicative ((<$>))
-import           Control.Monad.Identity (runIdentity)
-
-import           Data.Binary (Binary)
-import           Data.Foldable (Foldable)
+import Data.Binary (Binary)
+import Data.Foldable (Foldable)
+import Data.Monoid
+import Data.Traversable (Traversable)
+import Data.Vector (Vector)
+import Data.Vector.Binary ()
 import qualified Data.Map as M
-import           Data.Traversable (Traversable)
-import           Data.Monoid
-import           Data.Vector (Vector)
 import qualified Data.Vector as V
-import           Data.Vector.Binary ()
 
 import GHC.Generics (Generic)
+
+import Data.BTree.Utils.List (safeLast)
+import Data.BTree.Utils.Vector (isStrictlyIncreasing, vecUncons, vecUnsnoc)
 
 --------------------------------------------------------------------------------
 

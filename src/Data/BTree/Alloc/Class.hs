@@ -1,6 +1,7 @@
 
 module Data.BTree.Alloc.Class where
 
+import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 
 import Control.Applicative (Applicative)

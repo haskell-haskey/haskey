@@ -7,13 +7,13 @@ import Test.QuickCheck
 
 import Control.Applicative ((<$>), (<*>))
 
-import Data.BTree.Alloc.Append
-
 import Data.Int
 import Data.Typeable
 import qualified Data.Binary as B
 
-import Properties.Primitives (treeEqShape)
+import Data.BTree.Alloc.Append
+
+import Properties.Impure.Structures (treeEqShape)
 import Properties.Primitives.Ids () -- Arbitrary instance of TxId, PageId
 
 instance Arbitrary (AppendMeta k v) where

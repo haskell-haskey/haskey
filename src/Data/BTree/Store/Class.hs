@@ -5,6 +5,7 @@
 
 module Data.BTree.Store.Class where
 
+import Data.BTree.Impure
 import Data.BTree.Primitives
 
 import Control.Applicative (Applicative)

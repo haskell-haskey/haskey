@@ -8,10 +8,11 @@ import Data.Int
 import Data.Proxy
 import Data.Word
 
+import Data.BTree.Impure.Structures (castNode)
 import Data.BTree.Primitives
 import Data.BTree.Store.File
 
-import Properties.Primitives (genLeafNode, genIndexNode)
+import Properties.Impure.Structures (genLeafNode, genIndexNode)
 import Properties.Utils (PageSize(..))
 
 tests :: Test

@@ -2,12 +2,13 @@ module Data.BTree.Primitives.Leaf where
 
 import Control.Applicative ((<$>))
 
-import Data.BTree.Internal
-import Data.BTree.Primitives.Index
-import Data.BTree.Primitives.Key
-
 import Data.Map (Map)
 import qualified Data.Map as M
+
+import Data.BTree.Primitives.Index
+import Data.BTree.Primitives.Key
+import Data.BTree.Utils.List (safeLast)
+import Data.BTree.Utils.Map (mapInits, mapSplitAt)
 
 --------------------------------------------------------------------------------
 

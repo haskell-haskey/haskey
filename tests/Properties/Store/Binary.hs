@@ -7,10 +7,11 @@ import Test.QuickCheck
 import Data.Int
 import Data.Proxy
 
+import Data.BTree.Impure.Structures (castNode)
 import Data.BTree.Primitives
 import Data.BTree.Store.Binary
 
-import Properties.Primitives (genLeafNode, genIndexNode)
+import Properties.Impure.Structures (genLeafNode, genIndexNode)
 
 tests :: Test
 tests = testGroup "Store.Binary"

@@ -58,9 +58,9 @@ foldMap :: (AllocM m, Key k, Value a, Monoid c)
 foldMap f = foldr ((<>) . f) mempty
 
 {-| Convert an impure B+-tree to a list of key-value pairs.
- -
- - BUG: something is wrong with foldr, so sorting is necessary for now as a
- - a work around. -}
+
+   BUG: something is wrong with foldr, so sorting is necessary for now as a
+   a work around. -}
 toList :: (AllocM m, Key k, Value a)
       => Tree k a -> m [(k, a)]
 toList t = sortBy (compare `on` fst) <$> foldrWithKey (\k v xs -> (k, v):xs) [] t

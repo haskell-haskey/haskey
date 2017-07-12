@@ -74,8 +74,8 @@ data Page =
     deriving (Typeable)
 
 {-| Encode a page padding it to the maxim page size.
- -
- - Return 'Nothing' of the page is too large to fit into one page size.
+
+   Return 'Nothing' of the page is too large to fit into one page size.
  -}
 encodeAndPad :: PageSize -> Page -> Maybe ByteString
 encodeAndPad size page

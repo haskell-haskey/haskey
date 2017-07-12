@@ -15,9 +15,9 @@ import Data.BTree.Primitives
 --------------------------------------------------------------------------------
 
 {-| Split an index node.
- -
- - This function is partial. It fails when the original index cannot be split,
- - because it does not contain enough elements (underflow).
+
+   This function is partial. It fails when the original index cannot be split,
+   because it does not contain enough elements (underflow).
  -}
 splitIndex :: (AllocM m, Key key, Value val) =>
    Height ('S height) ->
@@ -32,9 +32,9 @@ splitIndex h index = do
         Nothing       -> error "Splitting failed!? Underflow "
 
 {-| Split a leaf node.
- -
- - This function is partial. It fails when the original leaf cannot be split,
- - because it does not contain enough elements (underflow).
+
+   This function is partial. It fails when the original leaf cannot be split,
+   because it does not contain enough elements (underflow).
  -}
 splitLeaf :: (AllocM m, Key key, Value val) =>
     Map key val ->

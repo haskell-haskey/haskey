@@ -1,5 +1,5 @@
 {-| Primitive data structures and algorithms needed for both the pure
- - ("Data.BTree.Pure") and impure ("Data.BTree.Impure") B+-tree implementation.
+   ("Data.BTree.Pure") and impure ("Data.BTree.Impure") B+-tree implementation.
  -}
 module Data.BTree.Primitives (
   module Data.BTree.Primitives.Height

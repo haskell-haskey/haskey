@@ -85,7 +85,7 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
     putAppendMeta :: (Key k, Value v) => hnd -> PageId -> AppendMeta k v -> m ()
 
     {-| Find the most recent append-only meta-data structure in all pages. If
-     - there isn't any page that contains some meta-data, return 'Nothing'.
+       there isn't any page that contains some meta-data, return 'Nothing'.
      -}
     openAppendMeta :: (Key k, Value v)
                  => hnd

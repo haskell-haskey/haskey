@@ -25,7 +25,7 @@ import Data.BTree.Alloc.Class (PageSize)
 {-| A storage back-end that can store and fetch physical pages. -}
 class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
     {-| A function that calculates the hypothetical size of a node, if it were
-     - to be written to a page (regardless of the maximum page size). -}
+       to be written to a page (regardless of the maximum page size). -}
     nodePageSize :: (Key key, Value val)
                  => m (Height height -> Node height key val -> PageSize)
 

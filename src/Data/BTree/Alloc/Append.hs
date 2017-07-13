@@ -34,7 +34,14 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
                   -> Proxy v
                   -> PageId
                   -> m (AppendMeta k v)
+
     putAppendMeta :: (Key k, Value v) => hnd -> PageId -> AppendMeta k v -> m ()
+
+    openAppendMeta :: (Key k, Value v)
+                 => hnd
+                 -> Proxy k
+                 -> Proxy v
+                 -> m (Maybe (AppendMeta k v, PageId))
 
 data AppendMeta k v = AppendMeta
     { appendMetaRevision :: TxId
@@ -87,6 +94,20 @@ data AppendDb hnd k v = AppendDb
     , appendDbMetaId :: PageId
     , appendDbMeta   :: AppendMeta k v
     } deriving (Show)
+
+openAppendDb :: (Key k, Value v, AppendMetaStoreM hnd m)
+    => hnd
+    -> m (Maybe (AppendDb hnd k v))
+openAppendDb hnd = do
+    m <- openAppendMeta hnd Proxy Proxy
+    case m of
+        Nothing -> return Nothing
+        Just (meta, metaId) ->
+            return . Just $! AppendDb
+                { appendDbHandle = hnd
+                , appendDbMetaId = metaId
+                , appendDbMeta = meta
+                }
 
 createAppendDb :: forall k v hnd m. (Key k, Value v, AppendMetaStoreM hnd m)
     => hnd

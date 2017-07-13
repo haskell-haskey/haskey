@@ -1,9 +1,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -50,13 +52,19 @@ data Page = PageEmpty
 encode :: Page -> ByteString
 encode = toStrict . B.runPut . putPage
 
+decodeMaybe :: Get a -> ByteString -> Maybe a
+decodeMaybe g bs =
+    case B.runGetOrFail g . fromStrict $ bs of
+        Left _ -> Nothing
+        Right (_, _, a) -> Just a
+
 decode :: Get a -> ByteString -> a
 decode g = B.runGet g . fromStrict
 
 deriving instance Show Page
 
 data BPage = BPageEmpty | BPageNode | BPageAppendMeta
-           deriving (Eq, Generic)
+           deriving (Eq, Generic, Show)
 instance Binary BPage where
 
 putPage :: Page -> Put
@@ -65,18 +73,22 @@ putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
 getEmptyPage :: Get Page
-getEmptyPage = B.get >>= \BPageEmpty -> return PageEmpty
+getEmptyPage = B.get >>= \case
+    BPageEmpty -> return PageEmpty
+    x          -> fail $ "unexpected " ++ show x
 
 getPageNode :: (Key key, Value val)
             => Height height
             -> Proxy key
             -> Proxy val
             -> Get Page
-getPageNode h key val = B.get >>= \BPageNode -> do
-    h' <- B.get
-    if fromHeight h == fromHeight h'
-        then PageNode h <$> getNode' h' key val
-        else fail $ "expected height " ++ show h ++ " but got " ++ show h'
+getPageNode h key val = B.get >>= \case
+    BPageNode -> do
+        h' <- B.get
+        if fromHeight h == fromHeight h'
+            then PageNode h <$> getNode' h' key val
+            else fail $ "expected height " ++ show h ++ " but got " ++ show h'
+    x -> fail $ "unexpected " ++ show x
   where
     getNode' :: (Key key, Value val)
              => Height h
@@ -89,8 +101,9 @@ getPageAppendMeta :: (Key key, Value val)
                   => Proxy key
                   -> Proxy val
                   -> Get Page
-getPageAppendMeta k v = B.get >>= \BPageAppendMeta ->
-    PageAppendMeta <$> getAppendMeta' k v
+getPageAppendMeta k v = B.get >>= \case
+    BPageAppendMeta -> PageAppendMeta <$> getAppendMeta' k v
+    x               -> fail $ "unexpected " ++ show x
   where
     getAppendMeta' :: (Key key, Value val)
                    => Proxy key
@@ -140,7 +153,7 @@ instance (Ord fp, Applicative m, Monad m) =>
     -- closeStore _ = return ()
     nodePageSize = return $ \h ->
         fromIntegral . BL.length . B.runPut . putPage . PageNode h
-    maxPageSize = return 64
+    maxPageSize = return 256
     setSize fp (PageCount n) = StoreT $ do
         let emptyFile = M.fromList
                         [ (PageId i, encode PageEmpty)
@@ -169,7 +182,24 @@ instance (Ord fp, Applicative m, Monad m) =>
         Just bs <- gets (M.lookup h >=> M.lookup i)
         PageAppendMeta meta <- return (decode (getPageAppendMeta key val) bs)
         return $! coerce meta
+
     putAppendMeta h i meta = StoreT $
         modify (M.update (Just. M.insert i (encode (PageAppendMeta meta))) h)
+
+    openAppendMeta hnd k v = do
+        numPages <- getSize hnd
+        page <- StoreT $ go $ PageId (fromPageCount (numPages - 1))
+        case page of
+            Nothing -> return Nothing
+            Just x -> do
+                (PageAppendMeta meta, pid) <- return x
+                return $ Just (coerce meta, pid)
+      where
+        go pid = do
+            Just bs <- gets (M.lookup hnd >=> M.lookup pid)
+            case decodeMaybe (getPageAppendMeta k v) bs of
+                Nothing -> if pid == 0 then return Nothing else go (pid - 1)
+                Just x -> return $ Just (x, pid)
+
 
 --------------------------------------------------------------------------------

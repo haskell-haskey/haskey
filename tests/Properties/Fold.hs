@@ -13,7 +13,6 @@ import qualified Data.BTree.Fold as Tree
 import Control.Monad ((>=>))
 
 import Data.Int
-import qualified Data.Foldable as F
 import qualified Data.Map as M
 
 tests :: Test
@@ -26,7 +25,7 @@ prop_foldable_toList_fromList kvs
     | Just l <- evalStore (createAppendDb "Main"
                            >>= insertAll kvs
                            >>= readTransact Tree.toList)
-    = l == F.toList (M.fromList kvs)
+    = l == M.toList (M.fromList kvs)
     | otherwise = False
 
 insertAll :: (AppendMetaStoreM hnd m, Key key, Value val)

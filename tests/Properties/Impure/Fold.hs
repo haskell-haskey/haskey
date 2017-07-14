@@ -23,7 +23,7 @@ prop_foldable_toList_fromList :: [(Int64, Integer)] -> Bool
 prop_foldable_toList_fromList kvs
     | Just l <- evalStore (createAppendDb "Main"
                            >>= insertAll kvs
-                           >>= readTransact Tree.toList)
+                           >>= transactReadOnly Tree.toList)
     = l == M.toList (M.fromList kvs)
     | otherwise = False
 

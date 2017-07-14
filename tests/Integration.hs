@@ -62,7 +62,7 @@ openAndReadMemory :: Files String
 openAndReadMemory files =
     runIdentity . flip evalStoreT files $ do
         Just db <- openAppendDb "Main"
-        readTransact Tree.toList db
+        transactReadOnly Tree.toList db
 
 --------------------------------------------------------------------------------
 
@@ -95,7 +95,7 @@ openAndReadFile :: FilePath
 openAndReadFile fp fh = run $
     FS.evalStore fp fh $ do
         Just db <- openAppendDb fp
-        readTransact Tree.toList db
+        transactReadOnly Tree.toList db
 
 --------------------------------------------------------------------------------
 

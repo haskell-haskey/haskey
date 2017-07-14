@@ -25,11 +25,11 @@ module Data.BTree.Alloc.Append (
 , Transaction
 , transact
 , transact_
+, transactReadOnly
 , commit
 , commit_
 , abort
 , abort_
-, readTransact
 
   -- * Storage requirements
 , AppendMeta(..)
@@ -127,7 +127,7 @@ instance Monad (AppendT m) where
 runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
-instance AllocM (AppendT m) where
+instance AllocWriterM (AppendT m) where
     nodePageSize = AppendT Store.nodePageSize
     maxPageSize = AppendT Store.maxPageSize
     allocNode height n = AppendT $ do
@@ -137,10 +137,12 @@ instance AllocM (AppendT m) where
         let nid = NodeId (fromPageCount pc)
         putNodePage hnd height nid n
         return nid
+    freeNode _height _nid = return ()
+
+instance AllocReaderM (AppendT m) where
     readNode height nid = AppendT $ do
         hnd <- ask
         getNodePage hnd height Proxy Proxy nid
-    freeNode _height _nid = return ()
 
 --------------------------------------------------------------------------------
 
@@ -209,20 +211,6 @@ abort = return . Abort
 abort_ :: AllocM n => n (Transaction key val ())
 abort_ = return $ Abort ()
 
-{-| Execute a read-only transaction. -}
-readTransact :: (AppendMetaStoreM hnd m)
-             => (forall n. AllocM n => Tree key val -> n a)
-             -> AppendDb hnd key val -> m a
-readTransact act db
-    | AppendDb
-      { appendDbMeta   = meta
-      , appendDbHandle = hnd
-      } <- db
-    , AppendMeta
-      { appendMetaTree = tree
-      } <- meta
-    = runAppendT (act tree) hnd
-
 {-| Execute a write transaction, with a result. -}
 transact :: (AppendMetaStoreM hnd m, Key key, Value val)
          -- => (forall n. AllocM n => Tree key val -> n (Tree key val))
@@ -259,3 +247,17 @@ transact_ :: (AppendMetaStoreM hnd m, Key key, Value val)
           => (forall n. AllocM n => Tree key val -> n (Transaction key val ()))
           -> AppendDb hnd key val -> m (AppendDb hnd key val)
 transact_ act db = fst <$> transact act db
+
+{-| Execute a read-only transaction. -}
+transactReadOnly :: (AppendMetaStoreM hnd m)
+                 => (forall n. AllocReaderM n => Tree key val -> n a)
+                 -> AppendDb hnd key val -> m a
+transactReadOnly act db
+    | AppendDb
+      { appendDbMeta   = meta
+      , appendDbHandle = hnd
+      } <- db
+    , AppendMeta
+      { appendMetaTree = tree
+      } <- meta
+    = runAppendT (act tree) hnd

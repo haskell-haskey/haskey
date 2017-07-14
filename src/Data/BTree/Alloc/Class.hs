@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-| A page allocator manages all physical pages. -}
 module Data.BTree.Alloc.Class where
 
@@ -8,8 +9,19 @@ import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
-{-| A page allocator that manages physical pages. -}
-class (Applicative m, Monad m) => AllocM m where
+{-| A page allocator that can both read and write physical pages. -}
+type AllocM m = (AllocReaderM m, AllocWriterM m)
+
+{-| A page allocator that can read physical pages. -}
+class (Applicative m, Monad m) => AllocReaderM m where
+    {-| Read a page and return the actual node. -}
+    readNode ::  (Key key, Value val)
+             =>  Height height
+             ->  NodeId height key val
+             ->  m (Node height key val)
+
+{-| A page allocator that can write physical pages. -}
+class (Applicative m, Monad m) => AllocWriterM m where
     {-| A function that calculates the hypothetical size of a node, if it were
        to be written to a page (regardless of the maximum page size).
      -}
@@ -24,12 +36,6 @@ class (Applicative m, Monad m) => AllocM m where
                  =>  Height height
                  ->  Node height key val
                  ->  m (NodeId height key val)
-
-    {-| Read a page and return the actual node. -}
-    readNode     ::  (Key key, Value val)
-                 =>  Height height
-                 ->  NodeId height key val
-                 ->  m (Node height key val)
 
     {-| Free the page belonging to the node. -}
     freeNode     ::  Height height

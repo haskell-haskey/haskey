@@ -12,7 +12,7 @@ import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
-lookupRec :: forall m height key val. (AllocM m, Key key, Value val)
+lookupRec :: forall m height key val. (AllocReaderM m, Key key, Value val)
     => key
     -> Height height
     -> NodeId height key val
@@ -39,7 +39,7 @@ lookupRec k = fetchAndGo
 --------------------------------------------------------------------------------
 
 {-| Lookup a value in an impure B+-tree. -}
-lookupTree :: forall m key val. (AllocM m, Key key, Value val)
+lookupTree :: forall m key val. (AllocReaderM m, Key key, Value val)
     => key
     -> Tree key val
     -> m (Maybe val)

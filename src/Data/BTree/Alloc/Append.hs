@@ -14,8 +14,6 @@
 module Data.BTree.Alloc.Append (
   -- * Allocator
   AppendDb(..)
-, AppendT
-, runAppendT
 
   -- * Open and create databases
 , createAppendDb
@@ -101,7 +99,7 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
 
 --------------------------------------------------------------------------------
 
-{-| Monad in which append-only page allocations can take place.
+{-| Internal monad in which append-only page allocations can take place.
 
    The monad has access to an 'AppendMetaStoreM' back-end which manages pages
    containing the necessary append-only page allocator meta-data

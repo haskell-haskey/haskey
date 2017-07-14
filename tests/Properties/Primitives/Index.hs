@@ -6,24 +6,25 @@ import Test.Framework                       (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
-import           Data.BTree.Primitives.Index
-import           Data.BTree.Primitives.Key
-import qualified Data.BTree.TwoThree as Tree
+import Control.Applicative ((<$>))
 
-import           Control.Applicative ((<$>))
-
+import Data.Int
+import Data.List (nub)
+import Data.List.Ordered (isSortedBy)
+import Data.Maybe (isNothing)
+import Data.Monoid ((<>))
 import qualified Data.Binary as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Foldable as F
-import           Data.Int
-import           Data.Maybe          (isJust)
-import           Data.List           (nub)
-import           Data.List.Ordered   (isSortedBy)
-import           Data.Monoid         ((<>))
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
-import Properties.Utils (PageSize(..))
+import Data.BTree.Primitives.Ids
+import Data.BTree.Primitives.Index
+import Data.BTree.Primitives.Key
+import qualified Data.BTree.Pure.TwoThree as Tree
+
+import Properties.Primitives.Ids () -- Arbitrary instance of PageSize
 
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
   arbitrary = do
@@ -65,7 +66,7 @@ prop_validIndex_singletonIndex i =
 
 prop_mergeIndex_splitIndexAt :: Property
 prop_mergeIndex_splitIndexAt =
-    forAll (arbitrary `suchThat` (not . isJust . fromSingletonIndex)) $ \ix ->
+    forAll (arbitrary `suchThat` (isNothing . fromSingletonIndex)) $ \ix ->
       and [ mergeIndex left middle right == (ix :: Index Int64 Bool)
           | k <- [0..indexNumKeys ix - 1]
           , let (left, middle, right) = splitIndexAt k ix

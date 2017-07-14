@@ -11,7 +11,7 @@ import Data.BTree.Primitives.Value
 
 import Data.Binary (Binary)
 import Data.Typeable (Typeable)
-import Data.Word (Word64)
+import Data.Word
 import Numeric (showHex)
 
 --------------------------------------------------------------------------------
@@ -24,6 +24,10 @@ newtype PageId = PageId { fromPageId :: Word64 }
 newtype PageCount = PageCount { fromPageCount :: Word64 }
   deriving (Eq, Ord, Binary, Num, Enum, Typeable)
 
+{-| Type used to indicate the size of a single physical page in bytes. -}
+newtype PageSize = PageSize { fromPageSize :: Word32 }
+  deriving (Eq, Ord, Show, Binary, Num, Enum, Real, Integral, Typeable)
+
 {-| Reference to a stored 'Node'.
 
     'NodeId' has phantom type arguments for the parameters of 'Node' to be able
@@ -34,6 +38,10 @@ newtype PageCount = PageCount { fromPageCount :: Word64 }
 -}
 newtype NodeId (height :: Nat) key val = NodeId { fromNodeId :: Word64 }
   deriving (Eq, Ord, Binary, Num)
+
+{-| Convert a 'NodeId' to a 'PageId' -}
+nodeIdToPageId :: NodeId height key val -> PageId
+nodeIdToPageId = PageId . fromNodeId
 
 {-| Transaction ids that are used as revision numbers. -}
 newtype TxId = TxId { fromTxId :: Word64 }

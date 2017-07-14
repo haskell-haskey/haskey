@@ -18,11 +18,10 @@ import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
 import Data.BTree.Alloc.Append
-import Data.BTree.Store.Binary
-import Data.BTree.Insert
-import Data.BTree.Delete
+import Data.BTree.Impure
 import Data.BTree.Primitives
-import qualified Data.BTree.Fold as Tree
+import Data.BTree.Store.Binary
+import qualified Data.BTree.Impure as Tree
 import qualified Data.BTree.Store.File as FS
 
 --------------------------------------------------------------------------------

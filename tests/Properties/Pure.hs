@@ -1,11 +1,15 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-module Properties.Pure (tests) where
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
+module Properties.Pure where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
-import Data.BTree.Primitives
+import Data.BTree.Primitives.Index
+import Data.BTree.Primitives.Key
+import Data.BTree.Pure
 import qualified Data.BTree.Pure as Tree
 
 import Control.Applicative ((<$>))
@@ -37,7 +41,7 @@ prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
   where xs' = nubByFstEq . map(\x -> (fst x, Sum $ snd x)) $ xs
 
 prop_validTree_fromList :: [(Int64, Int)] -> Bool
-prop_validTree_fromList xs = Tree.validTree (Tree.fromList xs)
+prop_validTree_fromList xs = validTree (Tree.fromList xs)
 
 prop_foldableToList_fromList :: [(Int64, Int)] -> Bool
 prop_foldableToList_fromList xs =
@@ -51,7 +55,7 @@ prop_toList_fromList xs =
 
 prop_insertMany :: [(Int64, Int)] -> [(Int64, Int)] -> Bool
 prop_insertMany xs ys
-    | isValid <- Tree.validTree txy
+    | isValid <- validTree txy
     , equiv   <- Tree.toList txy == M.toList mxy
     = isValid && equiv
   where
@@ -70,3 +74,18 @@ prop_lookup_insert k v t = Tree.lookup k (Tree.insert k v t) == Just v
 
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
 nubByFstEq = nubBy ((==) `on` fst)
+
+{-| Check whether a given tree is valid. -}
+validTree :: Ord key => Tree key val -> Bool
+validTree (Tree Nothing) = True
+validTree (Tree (Just (Leaf items))) = M.size items <= maxLeafItems
+validTree (Tree (Just (Idx idx))) =
+    validIndexSize 1 maxIdxKeys idx && F.all validNode idx
+
+{-| Check whether a (non-root) node is valid. -}
+validNode :: Ord key => Node height key val -> Bool
+validNode = \case
+    Leaf items -> M.size items >= minLeafItems &&
+                  M.size items <= maxLeafItems
+    Idx idx    -> validIndexSize minIdxKeys maxIdxKeys idx &&
+                  F.all validNode idx

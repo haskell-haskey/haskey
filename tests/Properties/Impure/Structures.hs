@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Properties.Primitives (tests, genLeafNode, genIndexNode, treeEqShape) where
+module Properties.Impure.Structures where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
@@ -9,20 +9,21 @@ import Test.QuickCheck
 
 import Control.Applicative ((<$>), (<*>))
 
-import Data.BTree.Primitives
-
 import Data.Binary.Get (runGet)
 import Data.Binary.Put (runPut)
 import Data.Int
 import Data.Typeable
 import qualified Data.Binary as B
 
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
+
 import Properties.Primitives.Height (genNonZeroHeight)
 import Properties.Primitives.Index ()  -- Arbitrary instance of Index
 import Properties.Primitives.Ids ()    -- Arbitrary instance of NodeId
 
 tests :: Test
-tests = testGroup "Primitives"
+tests = testGroup "Impure.Structures"
     [ testProperty "binary leafNode" prop_binary_leafNode
     , testProperty "binary indexNode" prop_binary_indexNode
     , testProperty "binary tree" prop_binary_tree

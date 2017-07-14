@@ -18,12 +18,15 @@ extra-source-files:  README.md
 
 library
   exposed-modules:
+    Data.BTree.Alloc
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
-    Data.BTree.Delete
-    Data.BTree.Fold
-    Data.BTree.Insert
-    Data.BTree.Lookup
+    Data.BTree.Impure
+    Data.BTree.Impure.Delete
+    Data.BTree.Impure.Fold
+    Data.BTree.Impure.Insert
+    Data.BTree.Impure.Lookup
+    Data.BTree.Impure.Structures
     Data.BTree.Primitives
     Data.BTree.Primitives.Height
     Data.BTree.Primitives.Ids
@@ -32,13 +35,16 @@ library
     Data.BTree.Primitives.Leaf
     Data.BTree.Primitives.Value
     Data.BTree.Pure
-    Data.BTree.Store.Class
+    Data.BTree.Pure.TwoThree
+    Data.BTree.Store
     Data.BTree.Store.Binary
+    Data.BTree.Store.Class
     Data.BTree.Store.File
-    Data.BTree.TwoThree
 
   other-modules:
-    Data.BTree.Internal
+    Data.BTree.Utils.List
+    Data.BTree.Utils.Map
+    Data.BTree.Utils.Vector
 
   other-extensions:
     DataKinds
@@ -70,9 +76,9 @@ test-suite haskey-properties
   type:                exitcode-stdio-1.0
   other-modules:
     Properties.Alloc.Append
-    Properties.Fold
-    Properties.Insert
-    Properties.Primitives
+    Properties.Impure.Fold
+    Properties.Impure.Insert
+    Properties.Impure.Structures
     Properties.Primitives.Height
     Properties.Primitives.Ids
     Properties.Primitives.Index

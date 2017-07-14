@@ -8,11 +8,11 @@ import Data.Int
 import Data.Proxy
 import Data.Word
 
+import Data.BTree.Impure.Structures (castNode)
 import Data.BTree.Primitives
 import Data.BTree.Store.File
 
-import Properties.Primitives (genLeafNode, genIndexNode)
-import Properties.Utils (PageSize(..))
+import Properties.Impure.Structures (genLeafNode, genIndexNode)
 
 tests :: Test
 tests = testGroup "Store.File"
@@ -23,7 +23,7 @@ tests = testGroup "Store.File"
     ]
 
 prop_binary_pageMeta :: Word64 -> PageSize -> Bool
-prop_binary_pageMeta pc (PageSize ps)
+prop_binary_pageMeta pc ps
     | Just bs <- encodeAndPad ps (PageMeta (PageCount pc))
     = case decode getMetaPage bs of
         PageMeta pc' -> pc' == PageCount pc
@@ -31,7 +31,7 @@ prop_binary_pageMeta pc (PageSize ps)
     | otherwise = False -- should always work
 
 prop_binary_pageEmpty :: PageSize -> Bool
-prop_binary_pageEmpty (PageSize ps)
+prop_binary_pageEmpty ps
     | Just bs <- encodeAndPad ps PageEmpty
     = case decode getEmptyPage bs of
         PageEmpty -> True
@@ -39,7 +39,7 @@ prop_binary_pageEmpty (PageSize ps)
     | otherwise = False -- should always work
 
 prop_binary_pageNode_leaf :: PageSize -> Property
-prop_binary_pageNode_leaf (PageSize ps) = forAll genLeafNode $ \leaf ->
+prop_binary_pageNode_leaf ps = forAll genLeafNode $ \leaf ->
     case encodeAndPad ps (PageNode zeroHeight leaf) of
         Nothing -> True -- too big, skip
         Just bs -> case decode (getPageNode zeroHeight key val) bs of
@@ -50,7 +50,7 @@ prop_binary_pageNode_leaf (PageSize ps) = forAll genLeafNode $ \leaf ->
    val = Proxy :: Proxy Bool
 
 prop_binary_pageNode_idx :: PageSize -> Property
-prop_binary_pageNode_idx (PageSize ps) = forAll genIndexNode $ \(srcHgt, idx) ->
+prop_binary_pageNode_idx ps = forAll genIndexNode $ \(srcHgt, idx) ->
     case encodeAndPad ps (PageNode srcHgt idx) of
         Nothing -> True -- too big, skip
         Just bs -> case decode (getPageNode srcHgt key val) bs of

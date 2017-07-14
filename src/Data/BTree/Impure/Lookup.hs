@@ -1,13 +1,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-
-module Data.BTree.Lookup where
-
-import Data.BTree.Alloc.Class
-import Data.BTree.Primitives
+{-| Algorithms related to looking up key-value pairs in an impure B+-tree. -}
+module Data.BTree.Impure.Lookup where
 
 import qualified Data.Map as M
+
+import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
@@ -37,6 +38,7 @@ lookupRec k = fetchAndGo
 
 --------------------------------------------------------------------------------
 
+{-| Lookup a value in an impure B+-tree. -}
 lookupTree :: forall m key val. (AllocM m, Key key, Value val)
     => key
     -> Tree key val

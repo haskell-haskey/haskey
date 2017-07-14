@@ -6,43 +6,56 @@
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE StandaloneDeriving        #-}
+{-| The module implements an append-only page allocator.
 
-module Data.BTree.Alloc.Append where
+   All written data will be written to newly created pages, and their is
+   absolutetely no page reuse.
+ -}
+module Data.BTree.Alloc.Append (
+  -- * Allocator
+  AppendDb(..)
+, AppendT
+, runAppendT
 
-import           Data.BTree.Delete
-import           Data.BTree.Insert
-import           Data.BTree.Alloc.Class
-import           Data.BTree.Primitives
-import           Data.BTree.Store.Class
+  -- * Open and create databases
+, createAppendDb
+, openAppendDb
+
+  -- * Manipulation and transactions
+, transact
+, readTransact
+
+  -- * Storage requirements
+, AppendMeta(..)
+, AppendMetaStoreM(..)
+) where
+
+import Control.Applicative (Applicative(..), (<$>))
+import Control.Monad.Reader.Class
+import Control.Monad.Trans.Reader (ReaderT, runReaderT)
+
+import Data.Binary (Binary)
+import Data.Proxy
+import Data.Typeable
+
+import GHC.Generics (Generic)
+
+import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Structures
+import Data.BTree.Primitives
+import Data.BTree.Store.Class
 import qualified Data.BTree.Store.Class as Store
-
-import           Control.Applicative (Applicative(..), (<$>))
-import           Control.Monad.Reader.Class
-import           Control.Monad.Trans.Reader (ReaderT, runReaderT)
-import           Data.Binary (Binary)
-import           Data.Proxy
-import           Data.Typeable
-
-import           GHC.Generics (Generic)
 
 --------------------------------------------------------------------------------
 
-class StoreM hnd m => AppendMetaStoreM hnd m where
-    getAppendMeta :: (Key k, Value v)
-                  => hnd
-                  -> Proxy k
-                  -> Proxy v
-                  -> PageId
-                  -> m (AppendMeta k v)
+{-| An active append-only page allocator. -}
+data AppendDb hnd k v = AppendDb
+    { appendDbHandle :: hnd
+    , appendDbMetaId :: PageId
+    , appendDbMeta   :: AppendMeta k v
+    } deriving (Show)
 
-    putAppendMeta :: (Key k, Value v) => hnd -> PageId -> AppendMeta k v -> m ()
-
-    openAppendMeta :: (Key k, Value v)
-                 => hnd
-                 -> Proxy k
-                 -> Proxy v
-                 -> m (Maybe (AppendMeta k v, PageId))
-
+{-| Meta-data of an append-only page allocator. -}
 data AppendMeta k v = AppendMeta
     { appendMetaRevision :: TxId
     , appendMetaTree     :: Tree k v
@@ -53,8 +66,43 @@ deriving instance (Show k, Show v) => Show (AppendMeta k v)
 
 instance (Binary k, Binary v) => Binary (AppendMeta k v) where
 
+{-| A class representing the storage requirements of the append-only page
+   allocator.
+
+   A store supporting the append-only page allocator should be an instance of
+   this class.
+ -}
+class StoreM hnd m => AppendMetaStoreM hnd m where
+    {-| Read a the append-only meta-data structure from a certain page. -}
+    getAppendMeta :: (Key k, Value v)
+                  => hnd
+                  -> Proxy k
+                  -> Proxy v
+                  -> PageId
+                  -> m (AppendMeta k v)
+
+    {-| Write the append-only meta-data structure to a certain page. -}
+    putAppendMeta :: (Key k, Value v) => hnd -> PageId -> AppendMeta k v -> m ()
+
+    {-| Find the most recent append-only meta-data structure in all pages. If
+       there isn't any page that contains some meta-data, return 'Nothing'.
+     -}
+    openAppendMeta :: (Key k, Value v)
+                 => hnd
+                 -> Proxy k
+                 -> Proxy v
+                 -> m (Maybe (AppendMeta k v, PageId))
+
 --------------------------------------------------------------------------------
 
+{-| Monad in which append-only page allocations can take place.
+
+   The monad has access to an 'AppendMetaStoreM' back-end which manages pages
+   containing the necessary append-only page allocator meta-data
+
+   It also has acces to a handle, which is used to properly access the page
+   storage back-end.
+ -}
 newtype AppendT m a = AppendT
     { fromAppendT :: forall hnd. AppendMetaStoreM hnd m =>
         ReaderT hnd m a
@@ -69,6 +117,7 @@ instance Monad (AppendT m) where
     return          = pure
     AppendT m >>= f = AppendT (m >>= fromAppendT . f)
 
+{-| Run the actions in an 'AppendT' monad, given a storage back-end handle. -}
 runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
@@ -89,12 +138,12 @@ instance AllocM (AppendT m) where
 
 --------------------------------------------------------------------------------
 
-data AppendDb hnd k v = AppendDb
-    { appendDbHandle :: hnd
-    , appendDbMetaId :: PageId
-    , appendDbMeta   :: AppendMeta k v
-    } deriving (Show)
+{-| Try to open an existing append-only database.
 
+   This function tries to find the most recent valid 'AppendMeta' structure to
+   open the database. If no such meta-data is present in the database, a new
+   append-only database can be created by using 'createAppendDb'.
+ -}
 openAppendDb :: (Key k, Value v, AppendMetaStoreM hnd m)
     => hnd
     -> m (Maybe (AppendDb hnd k v))
@@ -109,6 +158,7 @@ openAppendDb hnd = do
                 , appendDbMeta = meta
                 }
 
+{-| Create a new append-only database. -}
 createAppendDb :: forall k v hnd m. (Key k, Value v, AppendMetaStoreM hnd m)
     => hnd
     -> m (AppendDb hnd k v)
@@ -132,6 +182,7 @@ createAppendDb hnd = do
 
 --------------------------------------------------------------------------------
 
+{-| Execute a read-only transaction. -}
 readTransact :: (AppendMetaStoreM hnd m)
              => (forall n. AllocM n => Tree key val -> n a)
              -> AppendDb hnd key val -> m a
@@ -145,6 +196,7 @@ readTransact act db
       } <- meta
     = runAppendT (act tree) hnd
 
+{-| Execute a write transaction, without a result. -}
 transact :: (AppendMetaStoreM hnd m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Tree key val))
          -> AppendDb hnd key val -> m (AppendDb hnd key val)
@@ -170,18 +222,3 @@ transact act db
               , appendDbMetaId = newMetaId
               , appendDbMeta   = newMeta
               }
-
---------------------------------------------------------------------------------
-
-insert :: (AppendMetaStoreM hnd m, Key k, Value v)
-    => k
-    -> v
-    -> AppendDb hnd k v -> m (AppendDb hnd k v)
-insert k v = transact (insertTree k v)
-
-delete :: (AppendMetaStoreM hnd m, Key k, Value v)
-    => k
-    -> AppendDb hnd k v -> m (AppendDb hnd k v)
-delete k = transact (deleteTree k)
-
---------------------------------------------------------------------------------

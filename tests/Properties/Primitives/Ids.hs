@@ -7,11 +7,17 @@ import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
-import Data.BTree.Primitives.Ids
+import Control.Applicative ((<$>))
 
 import Data.Int
 
+import Data.BTree.Primitives.Ids
+
 import Properties.Utils (testBinary)
+
+instance Arbitrary PageSize where
+    arbitrary = PageSize . fromIntegral <$> elements pows
+      where pows = ((2 :: Int) ^) <$> ([6..12] :: [Int])
 
 deriving instance Arbitrary (NodeId height key val)
 deriving instance Arbitrary PageId

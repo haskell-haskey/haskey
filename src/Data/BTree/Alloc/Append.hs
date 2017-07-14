@@ -211,7 +211,6 @@ abort_ = return $ Abort ()
 
 {-| Execute a write transaction, with a result. -}
 transact :: (AppendMetaStoreM hnd m, Key key, Value val)
-         -- => (forall n. AllocM n => Tree key val -> n (Tree key val))
          => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
          -> AppendDb hnd key val -> m (AppendDb hnd key val, a)
 transact act db

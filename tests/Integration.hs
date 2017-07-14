@@ -110,7 +110,9 @@ writeSequence (TestSequence _ actions) =
     writeAction (Replace k v) = insertTree k v
     writeAction (Delete k)    = deleteTree k
 
-    transaction = transact $ foldl (>=>) return (map writeAction actions)
+    transaction = transact_ $
+        foldl (>=>) return (map writeAction actions)
+        >=> commit_
 
 --------------------------------------------------------------------------------
 

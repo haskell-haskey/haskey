@@ -31,4 +31,6 @@ insertAll :: (AppendMetaStoreM hnd m, Key key, Value val)
          => [(key, val)]
          -> AppendDb hnd key val
          -> m (AppendDb hnd key val)
-insertAll kvs = transact (foldl (>=>) return (map (uncurry insertTree) kvs))
+insertAll kvs = transact_ $
+    foldl (>=>) return (map (uncurry insertTree) kvs)
+    >=> commit_

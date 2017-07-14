@@ -22,7 +22,13 @@ module Data.BTree.Alloc.Append (
 , openAppendDb
 
   -- * Manipulation and transactions
+, Transaction
 , transact
+, transact_
+, commit
+, commit_
+, abort
+, abort_
 , readTransact
 
   -- * Storage requirements
@@ -182,6 +188,27 @@ createAppendDb hnd = do
 
 --------------------------------------------------------------------------------
 
+{-| A committed or aborted transaction, with a return value of type @a@. -}
+data Transaction key val a =
+      Commit (Tree key val) a
+    | Abort a
+
+{-| Commit the new tree and return a computed value. -}
+commit :: AllocM n => a -> Tree key val -> n (Transaction key val a)
+commit v t = return $ Commit t v
+
+{-| Commit the new tree, without return a computed value. -}
+commit_ :: AllocM n => Tree key val -> n (Transaction key val ())
+commit_ = commit ()
+
+{-| Abort the transaction and return a computed value. -}
+abort :: AllocM n => a -> n (Transaction key val a)
+abort = return . Abort
+
+{-| Abort the transaction, without returning a computed value. -}
+abort_ :: AllocM n => n (Transaction key val ())
+abort_ = return $ Abort ()
+
 {-| Execute a read-only transaction. -}
 readTransact :: (AppendMetaStoreM hnd m)
              => (forall n. AllocM n => Tree key val -> n a)
@@ -196,10 +223,11 @@ readTransact act db
       } <- meta
     = runAppendT (act tree) hnd
 
-{-| Execute a write transaction, without a result. -}
+{-| Execute a write transaction, with a result. -}
 transact :: (AppendMetaStoreM hnd m, Key key, Value val)
-         => (forall n. AllocM n => Tree key val -> n (Tree key val))
-         -> AppendDb hnd key val -> m (AppendDb hnd key val)
+         -- => (forall n. AllocM n => Tree key val -> n (Tree key val))
+         => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
+         -> AppendDb hnd key val -> m (AppendDb hnd key val, a)
 transact act db
     | AppendDb
       { appendDbMeta   = meta
@@ -209,16 +237,25 @@ transact act db
       { appendMetaTree = tree
       } <- meta
     = do
-          newTree <- runAppendT (act tree) hnd
-          let newMeta = AppendMeta
-                  { appendMetaRevision = appendMetaRevision meta + 1
-                  , appendMetaTree     = newTree
-                  , appendMetaPrevious = appendDbMetaId db
-                  }
-          newMetaId <- PageId . fromPageCount <$> getSize hnd
-          putAppendMeta hnd newMetaId newMeta
-          return AppendDb
-              { appendDbHandle = hnd
-              , appendDbMetaId = newMetaId
-              , appendDbMeta   = newMeta
-              }
+    tx <- runAppendT (act tree) hnd
+    case tx of
+        Abort v -> return (db, v)
+        Commit newTree v -> do
+            let newMeta = AppendMeta
+                    { appendMetaRevision = appendMetaRevision meta + 1
+                    , appendMetaTree     = newTree
+                    , appendMetaPrevious = appendDbMetaId db
+                    }
+            newMetaId <- PageId . fromPageCount <$> getSize hnd
+            putAppendMeta hnd newMetaId newMeta
+            return (AppendDb
+                { appendDbHandle = hnd
+                , appendDbMetaId = newMetaId
+                , appendDbMeta   = newMeta
+                }, v)
+
+{-| Execute a write transaction, without a result. -}
+transact_ :: (AppendMetaStoreM hnd m, Key key, Value val)
+          => (forall n. AllocM n => Tree key val -> n (Transaction key val ()))
+          -> AppendDb hnd key val -> m (AppendDb hnd key val)
+transact_ act db = fst <$> transact act db

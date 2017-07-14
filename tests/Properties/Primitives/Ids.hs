@@ -7,9 +7,11 @@ import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
-import Data.BTree.Primitives.Ids
+import Control.Applicative ((<$>))
 
 import Data.Int
+
+import Data.BTree.Primitives.Ids
 
 import Properties.Utils (testBinary)
 

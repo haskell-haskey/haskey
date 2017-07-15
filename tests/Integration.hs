@@ -62,7 +62,7 @@ openAndReadMemory :: Files String
 openAndReadMemory files =
     runIdentity . flip evalStoreT files $ do
         Just db <- openAppendDb "Main"
-        readTransact Tree.toList db
+        transactReadOnly Tree.toList db
 
 --------------------------------------------------------------------------------
 
@@ -95,7 +95,7 @@ openAndReadFile :: FilePath
 openAndReadFile fp fh = run $
     FS.evalStore fp fh $ do
         Just db <- openAppendDb fp
-        readTransact Tree.toList db
+        transactReadOnly Tree.toList db
 
 --------------------------------------------------------------------------------
 
@@ -110,7 +110,9 @@ writeSequence (TestSequence _ actions) =
     writeAction (Replace k v) = insertTree k v
     writeAction (Delete k)    = deleteTree k
 
-    transaction = transact $ foldl (>=>) return (map writeAction actions)
+    transaction = transact_ $
+        foldl (>=>) return (map writeAction actions)
+        >=> commit_
 
 --------------------------------------------------------------------------------
 

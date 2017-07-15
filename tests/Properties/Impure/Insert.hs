@@ -24,7 +24,9 @@ prop_insertTreeMany xs ys = ty1 == ty2 && isJust ty1
   where
     tx  = createAppendDb "Main" >>= insertAll xs
     ty1 = evalStore $ tx >>= insertAll ys
-                         >>= readTransact Tree.toList
-    ty2 = evalStore $ tx >>= transact (insertTreeMany $ M.fromList ys)
-                         >>= readTransact Tree.toList
-    insertAll kvs = transact (foldl (>=>) return (map (uncurry insertTree) kvs))
+                         >>= transactReadOnly Tree.toList
+    ty2 = evalStore $ tx >>= transact_ (insertTreeMany (M.fromList ys) >=> commit_)
+                         >>= transactReadOnly Tree.toList
+    insertAll kvs = transact_ $
+        foldl (>=>) return (map (uncurry insertTree) kvs)
+        >=> commit_

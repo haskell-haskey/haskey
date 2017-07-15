@@ -23,7 +23,7 @@ prop_foldable_toList_fromList :: [(Int64, Integer)] -> Bool
 prop_foldable_toList_fromList kvs
     | Just l <- evalStore (createAppendDb "Main"
                            >>= insertAll kvs
-                           >>= readTransact Tree.toList)
+                           >>= transactReadOnly Tree.toList)
     = l == M.toList (M.fromList kvs)
     | otherwise = False
 
@@ -31,4 +31,6 @@ insertAll :: (AppendMetaStoreM hnd m, Key key, Value val)
          => [(key, val)]
          -> AppendDb hnd key val
          -> m (AppendDb hnd key val)
-insertAll kvs = transact (foldl (>=>) return (map (uncurry insertTree) kvs))
+insertAll kvs = transact_ $
+    foldl (>=>) return (map (uncurry insertTree) kvs)
+    >=> commit_

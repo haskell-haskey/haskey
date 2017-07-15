@@ -1,11 +1,12 @@
-{-# LANGUAGE DeriveDataTypeable        #-}
-{-# LANGUAGE DeriveGeneric             #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE MultiParamTypeClasses     #-}
-{-# LANGUAGE RankNTypes                #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE StandaloneDeriving        #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-| The module implements an append-only page allocator.
 
    All written data will be written to newly created pages, and their is
@@ -14,16 +15,20 @@
 module Data.BTree.Alloc.Append (
   -- * Allocator
   AppendDb(..)
-, AppendT
-, runAppendT
 
   -- * Open and create databases
 , createAppendDb
 , openAppendDb
 
   -- * Manipulation and transactions
+, Transaction
 , transact
-, readTransact
+, transact_
+, transactReadOnly
+, commit
+, commit_
+, abort
+, abort_
 
   -- * Storage requirements
 , AppendMeta(..)
@@ -95,7 +100,7 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
 
 --------------------------------------------------------------------------------
 
-{-| Monad in which append-only page allocations can take place.
+{-| Internal monad in which append-only page allocations can take place.
 
    The monad has access to an 'AppendMetaStoreM' back-end which manages pages
    containing the necessary append-only page allocator meta-data
@@ -121,7 +126,7 @@ instance Monad (AppendT m) where
 runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
-instance AllocM (AppendT m) where
+instance AllocWriterM (AppendT m) where
     nodePageSize = AppendT Store.nodePageSize
     maxPageSize = AppendT Store.maxPageSize
     allocNode height n = AppendT $ do
@@ -131,10 +136,12 @@ instance AllocM (AppendT m) where
         let nid = NodeId (fromPageCount pc)
         putNodePage hnd height nid n
         return nid
+    freeNode _height _nid = return ()
+
+instance AllocReaderM (AppendT m) where
     readNode height nid = AppendT $ do
         hnd <- ask
         getNodePage hnd height Proxy Proxy nid
-    freeNode _height _nid = return ()
 
 --------------------------------------------------------------------------------
 
@@ -182,24 +189,31 @@ createAppendDb hnd = do
 
 --------------------------------------------------------------------------------
 
-{-| Execute a read-only transaction. -}
-readTransact :: (AppendMetaStoreM hnd m)
-             => (forall n. AllocM n => Tree key val -> n a)
-             -> AppendDb hnd key val -> m a
-readTransact act db
-    | AppendDb
-      { appendDbMeta   = meta
-      , appendDbHandle = hnd
-      } <- db
-    , AppendMeta
-      { appendMetaTree = tree
-      } <- meta
-    = runAppendT (act tree) hnd
+{-| A committed or aborted transaction, with a return value of type @a@. -}
+data Transaction key val a =
+      Commit (Tree key val) a
+    | Abort a
 
-{-| Execute a write transaction, without a result. -}
+{-| Commit the new tree and return a computed value. -}
+commit :: AllocM n => a -> Tree key val -> n (Transaction key val a)
+commit v t = return $ Commit t v
+
+{-| Commit the new tree, without return a computed value. -}
+commit_ :: AllocM n => Tree key val -> n (Transaction key val ())
+commit_ = commit ()
+
+{-| Abort the transaction and return a computed value. -}
+abort :: AllocM n => a -> n (Transaction key val a)
+abort = return . Abort
+
+{-| Abort the transaction, without returning a computed value. -}
+abort_ :: AllocM n => n (Transaction key val ())
+abort_ = return $ Abort ()
+
+{-| Execute a write transaction, with a result. -}
 transact :: (AppendMetaStoreM hnd m, Key key, Value val)
-         => (forall n. AllocM n => Tree key val -> n (Tree key val))
-         -> AppendDb hnd key val -> m (AppendDb hnd key val)
+         => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
+         -> AppendDb hnd key val -> m (AppendDb hnd key val, a)
 transact act db
     | AppendDb
       { appendDbMeta   = meta
@@ -209,16 +223,39 @@ transact act db
       { appendMetaTree = tree
       } <- meta
     = do
-          newTree <- runAppendT (act tree) hnd
-          let newMeta = AppendMeta
-                  { appendMetaRevision = appendMetaRevision meta + 1
-                  , appendMetaTree     = newTree
-                  , appendMetaPrevious = appendDbMetaId db
-                  }
-          newMetaId <- PageId . fromPageCount <$> getSize hnd
-          putAppendMeta hnd newMetaId newMeta
-          return AppendDb
-              { appendDbHandle = hnd
-              , appendDbMetaId = newMetaId
-              , appendDbMeta   = newMeta
-              }
+    tx <- runAppendT (act tree) hnd
+    case tx of
+        Abort v -> return (db, v)
+        Commit newTree v -> do
+            let newMeta = AppendMeta
+                    { appendMetaRevision = appendMetaRevision meta + 1
+                    , appendMetaTree     = newTree
+                    , appendMetaPrevious = appendDbMetaId db
+                    }
+            newMetaId <- PageId . fromPageCount <$> getSize hnd
+            putAppendMeta hnd newMetaId newMeta
+            return (AppendDb
+                { appendDbHandle = hnd
+                , appendDbMetaId = newMetaId
+                , appendDbMeta   = newMeta
+                }, v)
+
+{-| Execute a write transaction, without a result. -}
+transact_ :: (AppendMetaStoreM hnd m, Key key, Value val)
+          => (forall n. AllocM n => Tree key val -> n (Transaction key val ()))
+          -> AppendDb hnd key val -> m (AppendDb hnd key val)
+transact_ act db = fst <$> transact act db
+
+{-| Execute a read-only transaction. -}
+transactReadOnly :: (AppendMetaStoreM hnd m)
+                 => (forall n. AllocReaderM n => Tree key val -> n a)
+                 -> AppendDb hnd key val -> m a
+transactReadOnly act db
+    | AppendDb
+      { appendDbMeta   = meta
+      , appendDbHandle = hnd
+      } <- db
+    , AppendMeta
+      { appendMetaTree = tree
+      } <- meta
+    = runAppendT (act tree) hnd

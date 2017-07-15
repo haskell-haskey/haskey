@@ -19,31 +19,31 @@ import Data.BTree.Primitives
 --------------------------------------------------------------------------------
 
 {-| Perform a right-associative fold over the tree. -}
-foldr :: (AllocM m, Key k, Value a)
+foldr :: (AllocReaderM m, Key k, Value a)
       => (a -> b -> b) -> b -> Tree k a -> m b
 foldr f = foldrM (\a b -> return (f a b))
 
 {-| Perform a right-associative fold over the tree key-value pairs. -}
-foldrWithKey :: (AllocM m, Key k, Value a)
+foldrWithKey :: (AllocReaderM m, Key k, Value a)
              => (k -> a -> b -> b) -> b -> Tree k a -> m b
 foldrWithKey f = foldrWithKeyM (\k a b -> return (f k a b))
 
 {-| Perform a monadic right-associative fold over the tree. -}
-foldrM :: (AllocM m, Key k, Value a)
+foldrM :: (AllocReaderM m, Key k, Value a)
        => (a -> b -> m b) -> b -> Tree k a -> m b
 foldrM f = foldrWithKeyM (const f)
 
 {-| Perform a monadic right-assiciative fold over the tree key-value pairs. -}
-foldrWithKeyM :: (AllocM m, Key k, Value a)
+foldrWithKeyM :: (AllocReaderM m, Key k, Value a)
               => (k -> a -> b -> m b) -> b -> Tree k a -> m b
 foldrWithKeyM _ x (Tree _ Nothing) = return x
 foldrWithKeyM f x (Tree h (Just nid)) = foldrIdWithKeyM f x h nid
 
-foldrIdWithKeyM :: (AllocM m, Key k, Value a)
+foldrIdWithKeyM :: (AllocReaderM m, Key k, Value a)
          => (k -> a -> b -> m b) -> b -> Height h -> NodeId h k a -> m b
 foldrIdWithKeyM f x h nid = readNode h nid >>= foldrNodeWithKeyM f x h
 
-foldrNodeWithKeyM :: (AllocM m, Key k, Value a)
+foldrNodeWithKeyM :: (AllocReaderM m, Key k, Value a)
            => (k -> a -> b -> m b) -> b -> Height h -> Node h k a -> m b
 foldrNodeWithKeyM f x _ (Leaf items) = M.foldrWithKey f' return items x
   where f' k a m z = f k a z >>= m
@@ -53,7 +53,7 @@ foldrNodeWithKeyM f x h (Idx idx) =
 --------------------------------------------------------------------------------
 
 {-| Map each value of the tree to a monoid, and combine the results. -}
-foldMap :: (AllocM m, Key k, Value a, Monoid c)
+foldMap :: (AllocReaderM m, Key k, Value a, Monoid c)
       => (a -> c) -> Tree k a -> m c
 foldMap f = foldr ((<>) . f) mempty
 
@@ -61,7 +61,7 @@ foldMap f = foldr ((<>) . f) mempty
 
    BUG: something is wrong with foldr, so sorting is necessary for now as a
    a work around. -}
-toList :: (AllocM m, Key k, Value a)
+toList :: (AllocReaderM m, Key k, Value a)
       => Tree k a -> m [(k, a)]
 toList t = sortBy (compare `on` fst) <$> foldrWithKey (\k v xs -> (k, v):xs) [] t
 

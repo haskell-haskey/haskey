@@ -1,5 +1,6 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-| Algorithms related to inserting key-value pairs in an impure B+-tree. -}
 module Data.BTree.Impure.Insert where

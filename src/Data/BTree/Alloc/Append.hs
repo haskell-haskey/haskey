@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
@@ -108,28 +109,28 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
    It also has acces to a handle, which is used to properly access the page
    storage back-end.
  -}
-newtype AppendT m a = AppendT
+newtype AppendT txId m a = AppendT
     { fromAppendT :: forall hnd. AppendMetaStoreM hnd m =>
-        ReaderT (AppendEnv hnd) m a
+        ReaderT (AppendEnv hnd txId) m a
     }
 
-data AppendEnv hnd = AppendEnv { envHnd :: hnd
-                               , envTxId :: TxId }
+data AppendEnv hnd txId = AppendEnv { envHnd :: hnd
+                                    , envTxId :: txId }
 
-instance Functor (AppendT m) where
+instance Functor (AppendT txId m) where
     fmap f (AppendT m) = AppendT (fmap f m)
-instance Applicative (AppendT m) where
+instance Applicative (AppendT txId m) where
     pure a                  = AppendT (pure a)
     AppendT f <*> AppendT a = AppendT (f <*> a)
-instance Monad (AppendT m) where
+instance Monad (AppendT txId m) where
     return          = pure
     AppendT m >>= f = AppendT (m >>= fromAppendT . f)
 
 {-| Run the actions in an 'AppendT' monad, given a storage back-end handle. -}
-runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> AppendEnv hnd -> m a
+runAppendT :: AppendMetaStoreM hnd m => AppendT txId m a -> AppendEnv hnd txId -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
-instance AllocWriterM (AppendT m) where
+instance AllocWriterM (AppendT TxId m) where
     nodePageSize = AppendT Store.nodePageSize
     maxPageSize = AppendT Store.maxPageSize
     allocNode height n = AppendT $ do
@@ -143,7 +144,7 @@ instance AllocWriterM (AppendT m) where
 
     txId = AppendT $ envTxId <$> ask
 
-instance AllocReaderM (AppendT m) where
+instance AllocReaderM (AppendT txId m) where
     readNode height nid = AppendT $ do
         hnd <- envHnd <$> ask
         getNodePage hnd height Proxy Proxy nid
@@ -264,4 +265,4 @@ transactReadOnly act db
     , AppendMeta
       { appendMetaTree = tree
       } <- meta
-    = runAppendT (act tree) (AppendEnv hnd (appendMetaRevision meta))
+    = runAppendT (act tree) (AppendEnv hnd ())

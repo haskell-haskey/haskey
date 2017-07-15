@@ -110,8 +110,11 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
  -}
 newtype AppendT m a = AppendT
     { fromAppendT :: forall hnd. AppendMetaStoreM hnd m =>
-        ReaderT hnd m a
+        ReaderT (AppendEnv hnd) m a
     }
+
+data AppendEnv hnd = AppendEnv { envHnd :: hnd
+                               , envTxId :: TxId }
 
 instance Functor (AppendT m) where
     fmap f (AppendT m) = AppendT (fmap f m)
@@ -123,14 +126,14 @@ instance Monad (AppendT m) where
     AppendT m >>= f = AppendT (m >>= fromAppendT . f)
 
 {-| Run the actions in an 'AppendT' monad, given a storage back-end handle. -}
-runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> hnd -> m a
+runAppendT :: AppendMetaStoreM hnd m => AppendT m a -> AppendEnv hnd -> m a
 runAppendT m = runReaderT (fromAppendT m)
 
 instance AllocWriterM (AppendT m) where
     nodePageSize = AppendT Store.nodePageSize
     maxPageSize = AppendT Store.maxPageSize
     allocNode height n = AppendT $ do
-        hnd <- ask
+        hnd <- envHnd <$> ask
         pc <- getSize hnd
         setSize hnd (pc+1)
         let nid = NodeId (fromPageCount pc)
@@ -138,9 +141,11 @@ instance AllocWriterM (AppendT m) where
         return nid
     freeNode _height _nid = return ()
 
+    txId = AppendT $ envTxId <$> ask
+
 instance AllocReaderM (AppendT m) where
     readNode height nid = AppendT $ do
-        hnd <- ask
+        hnd <- envHnd <$> ask
         getNodePage hnd height Proxy Proxy nid
 
 --------------------------------------------------------------------------------
@@ -223,12 +228,13 @@ transact act db
       { appendMetaTree = tree
       } <- meta
     = do
-    tx <- runAppendT (act tree) hnd
+    let newRevision = appendMetaRevision meta + 1
+    tx <- runAppendT (act tree) (AppendEnv hnd newRevision)
     case tx of
         Abort v -> return (db, v)
         Commit newTree v -> do
             let newMeta = AppendMeta
-                    { appendMetaRevision = appendMetaRevision meta + 1
+                    { appendMetaRevision = newRevision
                     , appendMetaTree     = newTree
                     , appendMetaPrevious = appendDbMetaId db
                     }
@@ -258,4 +264,4 @@ transactReadOnly act db
     , AppendMeta
       { appendMetaTree = tree
       } <- meta
-    = runAppendT (act tree) hnd
+    = runAppendT (act tree) (AppendEnv hnd (appendMetaRevision meta))

@@ -25,20 +25,20 @@ prop_binary_pageEmpty = case decode getEmptyPage (encode PageEmpty) of
     PageEmpty -> True
     _         -> False
 
-prop_binary_pageNode_leaf :: Property
-prop_binary_pageNode_leaf = forAll genLeafNode $ \leaf ->
-    case decode (getPageNode zeroHeight key val) (encode (PageNode zeroHeight leaf)) of
-        PageNode h n -> maybe False (== leaf) $ castNode h zeroHeight n
-        _            -> False
+prop_binary_pageNode_leaf :: TxId -> Property
+prop_binary_pageNode_leaf tx = forAll genLeafNode $ \leaf ->
+    case decode (getPageNode zeroHeight key val) (encode (PageNode tx zeroHeight leaf)) of
+        PageNode _ h n -> maybe False (== leaf) $ castNode h zeroHeight n
+        _              -> False
  where
    key = Proxy :: Proxy Int64
    val = Proxy :: Proxy Bool
 
-prop_binary_pageNode_idx :: Property
-prop_binary_pageNode_idx = forAll genIndexNode $ \(srcHgt, idx) ->
-    case decode (getPageNode srcHgt key val) (encode (PageNode srcHgt idx)) of
-        PageNode h n -> maybe False (== idx) $ castNode h srcHgt n
-        _            -> False
+prop_binary_pageNode_idx :: TxId -> Property
+prop_binary_pageNode_idx tx = forAll genIndexNode $ \(srcHgt, idx) ->
+    case decode (getPageNode srcHgt key val) (encode (PageNode tx srcHgt idx)) of
+        PageNode _ h n -> maybe False (== idx) $ castNode h srcHgt n
+        _              -> False
  where
    key = Proxy :: Proxy Int64
    val = Proxy :: Proxy Bool

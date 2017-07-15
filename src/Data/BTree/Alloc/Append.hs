@@ -131,23 +131,36 @@ runAppendT :: AppendMetaStoreM hnd m => AppendT txId m a -> AppendEnv hnd txId -
 runAppendT m = runReaderT (fromAppendT m)
 
 instance AllocWriterM (AppendT TxId m) where
-    nodePageSize = AppendT Store.nodePageSize
+    readNodeTxId height nid = AppendT $ do
+        hnd <- envHnd <$> ask
+        getNodePage hnd height Proxy Proxy nid
+
+    nodePageSize = currentTxId >>= \tx ->
+        AppendT (Store.nodePageSize tx)
+
     maxPageSize = AppendT Store.maxPageSize
-    allocNode height n = AppendT $ do
+
+    allocNode height n = currentTxId >>= \tx -> AppendT $ do
         hnd <- envHnd <$> ask
         pc <- getSize hnd
         setSize hnd (pc+1)
         let nid = NodeId (fromPageCount pc)
-        putNodePage hnd height nid n
+        putNodePage hnd tx height nid n
         return nid
+
+    replaceNode nid height n = currentTxId >>= \tx -> AppendT $ do
+        hnd <- envHnd <$> ask
+        putNodePage hnd tx height nid n
+        return nid
+
     freeNode _height _nid = return ()
 
-    txId = AppendT $ envTxId <$> ask
+    currentTxId = AppendT $ envTxId <$> ask
 
 instance AllocReaderM (AppendT txId m) where
     readNode height nid = AppendT $ do
         hnd <- envHnd <$> ask
-        getNodePage hnd height Proxy Proxy nid
+        fst <$> getNodePage hnd height Proxy Proxy nid
 
 --------------------------------------------------------------------------------
 

@@ -68,7 +68,7 @@ data Page =
       PageMeta PageCount
     | PageEmpty
     | forall height key val. (Key key, Value val) =>
-      PageNode (Height height) (Node height key val)
+      PageNode TxId (Height height) (Node height key val)
     | forall key val.        (Key key, Value val) =>
       PageAppendMeta (AppendMeta key val)
     deriving (Typeable)
@@ -116,7 +116,10 @@ instance Binary BPage where
 putPage :: Page -> Put
 putPage (PageMeta c) = B.put BPageMeta >> B.put c
 putPage PageEmpty = B.put BPageEmpty
-putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
+putPage (PageNode tx h n) = B.put BPageNode
+                      >> B.put tx
+                      >> B.put h
+                      >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
 {-| Decoder for meta pages. Will return a 'PageMeta'. -}
@@ -139,9 +142,10 @@ getPageNode :: (Key key, Value val)
             -> Get Page
 getPageNode h key val = B.get >>= \case
     BPageNode -> do
+        tx <- B.get
         h' <- B.get
         if fromHeight h == fromHeight h'
-            then PageNode h <$> getNode' h' key val
+            then PageNode tx h <$> getNode' h' key val
             else fail $ "expected height " ++ show h ++ " but got " ++ show h'
     x -> fail $ "unexpected " ++ show x
   where
@@ -227,9 +231,9 @@ evalStore fp handle action = fst <$> runStore fp handle action
 instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
     StoreM fp (StoreT fp m)
   where
-    nodePageSize =
+    nodePageSize tx =
         return $ \h ->
-            fromIntegral . BL.length . encode . PageNode h
+            fromIntegral . BL.length . encode . PageNode tx h
 
     maxPageSize = return 256
 
@@ -250,18 +254,19 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
     getNodePage fp height key val nid = do
         handle   <- StoreT . MaybeT $ gets (M.lookup fp)
         pageSize <- maxPageSize
-        PageNode hgtSrc tree <- StoreT $ readPageNode handle
-                                                      height key val
-                                                      (nodeIdToPageId nid)
-                                                      pageSize
-        StoreT . MaybeT $ return (castNode hgtSrc height tree)
+        PageNode tx hgtSrc tree <- StoreT $ readPageNode handle
+                                                         height key val
+                                                         (nodeIdToPageId nid)
+                                                         pageSize
+        n' <- StoreT . MaybeT $ return (castNode hgtSrc height tree)
+        return (n', tx)
 
-    putNodePage fp hgt nid node = do
+    putNodePage fp tx hgt nid node = do
         handle   <- StoreT . MaybeT $ gets (M.lookup fp)
         pageSize <- maxPageSize
         StoreT $ writePage handle
                            (nodeIdToPageId nid)
-                           (PageNode hgt node)
+                           (PageNode tx hgt node)
                            pageSize
 
 

@@ -31,11 +31,40 @@ class (Applicative m, Monad m) => AllocWriterM m where
     {-| The maximum page size the allocator can handle. -}
     maxPageSize  ::  m PageSize
 
+    {-| Read a page and return the actual node and the transaction id this
+       node was written at. -}
+    readNodeTxId :: (Key key, Value val)
+                 => Height height
+                 -> NodeId height key val
+                 -> m (Node height key val, TxId)
+
     {-| Allocate a new page for a node, and write the node to the page. -}
-    allocNode    ::  (Key key, Value val)
-                 =>  Height height
-                 ->  Node height key val
-                 ->  m (NodeId height key val)
+    allocNode    :: (Key key, Value val)
+                 => Height height
+                 -> Node height key val
+                 -> m (NodeId height key val)
+
+    {-| Write the a node to an existing page.  -}
+    replaceNode  :: (Key key, Value val)
+                 => NodeId height key val
+                 -> Height height
+                 -> Node height key val
+                 -> m (NodeId height key val)
+
+    {-| Read a node, map a function, and write the result, either to a new page
+       or by replacing the contents of a dirty page that was written to already
+       in the same transaction. -}
+    writeNode :: (Key key, Value val)
+              => Height height
+              -> NodeId height key val
+              -> (Node height key val -> m (Node height key val))
+              -> m (NodeId height key val)
+    writeNode h nid f = do
+        (n, tx) <- readNodeTxId h nid
+        curTx   <- currentTxId
+        newNode <- f n
+        if curTx == tx then replaceNode nid h newNode
+                       else allocNode h newNode
 
     {-| Free the page belonging to the node. -}
     freeNode     ::  Height height
@@ -43,6 +72,6 @@ class (Applicative m, Monad m) => AllocWriterM m where
                  ->  m ()
 
     {-| The id of the current write transaction. -}
-    txId :: m TxId
+    currentTxId :: m TxId
 
 --------------------------------------------------------------------------------

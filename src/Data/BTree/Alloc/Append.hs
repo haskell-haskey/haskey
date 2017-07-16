@@ -148,7 +148,7 @@ instance AllocWriterM (AppendT TxId m) where
         putNodePage hnd tx height nid n
         return nid
 
-    replaceNode nid height n = currentTxId >>= \tx -> AppendT $ do
+    writeNode nid height n = currentTxId >>= \tx -> AppendT $ do
         hnd <- envHnd <$> ask
         putNodePage hnd tx height nid n
         return nid

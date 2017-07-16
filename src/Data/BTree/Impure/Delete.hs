@@ -63,16 +63,14 @@ deleteRec key = fetchAndGo
         newChild <- fetchAndGo subHeight childId
         let childNeedsMerge = nodeNeedsMerge newChild
         if | childNeedsMerge, Just (rKey, rChildId, rCtx) <- rightView ctx -> do
-                 rChild <- readNode subHeight rChildId
-                 freeNode subHeight rChildId
+                 (rChild, writer) <- replaceNode subHeight rChildId
                  newChildren    <- mergeNodes subHeight newChild rKey rChild
-                 newChildrenIds <- traverse (allocNode subHeight) newChildren
+                 newChildrenIds <- runReplacer $ traverse writer newChildren
                  return (Idx (putIdx rCtx newChildrenIds))
            | childNeedsMerge, Just (lCtx, lChildId, lKey) <- leftView ctx -> do
-                 lChild <- readNode subHeight lChildId
-                 freeNode subHeight lChildId
+                 (lChild, writer) <- replaceNode subHeight lChildId
                  newChildren    <- mergeNodes subHeight lChild lKey newChild
-                 newChildrenIds <- traverse (allocNode subHeight) newChildren
+                 newChildrenIds <- runReplacer $ traverse writer newChildren
                  return (Idx (putIdx lCtx newChildrenIds))
            -- No left or right sibling? This is a constraint violation. Also
            -- this couldn't be the root because it would've been shrunk

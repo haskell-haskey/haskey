@@ -38,24 +38,24 @@ prop_binary_pageEmpty ps
         _         -> False
     | otherwise = False -- should always work
 
-prop_binary_pageNode_leaf :: PageSize -> Property
-prop_binary_pageNode_leaf ps = forAll genLeafNode $ \leaf ->
-    case encodeAndPad ps (PageNode zeroHeight leaf) of
+prop_binary_pageNode_leaf :: PageSize -> TxId -> Property
+prop_binary_pageNode_leaf ps tx = forAll genLeafNode $ \leaf ->
+    case encodeAndPad ps (PageNode tx zeroHeight leaf) of
         Nothing -> True -- too big, skip
         Just bs -> case decode (getPageNode zeroHeight key val) bs of
-            PageNode h n -> maybe False (== leaf) $ castNode h zeroHeight n
-            _            -> False
+            PageNode _ h n -> maybe False (== leaf) $ castNode h zeroHeight n
+            _              -> False
  where
    key = Proxy :: Proxy Int64
    val = Proxy :: Proxy Bool
 
-prop_binary_pageNode_idx :: PageSize -> Property
-prop_binary_pageNode_idx ps = forAll genIndexNode $ \(srcHgt, idx) ->
-    case encodeAndPad ps (PageNode srcHgt idx) of
+prop_binary_pageNode_idx :: PageSize -> TxId -> Property
+prop_binary_pageNode_idx ps tx = forAll genIndexNode $ \(srcHgt, idx) ->
+    case encodeAndPad ps (PageNode tx srcHgt idx) of
         Nothing -> True -- too big, skip
         Just bs -> case decode (getPageNode srcHgt key val) bs of
-            PageNode h n -> maybe False (== idx) $ castNode h srcHgt n
-            _            -> False
+            PageNode _ h n -> maybe False (== idx) $ castNode h srcHgt n
+            _              -> False
  where
    key = Proxy :: Proxy Int64
    val = Proxy :: Proxy Bool

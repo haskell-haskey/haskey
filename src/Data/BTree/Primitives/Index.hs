@@ -115,13 +115,15 @@ extendIndexPred p f = go
         | let indexEnc = f index
         , p indexEnc
         = Just (singletonIndex indexEnc)
+        | indexNumKeys index <= 2
+        = error "cannot split node with only 2 keys, increase page size"
         | otherwise
         = do
             let numKeys = indexNumKeys index
             (leftEnc, (middleKey, right)) <- safeLast $
                 takeWhile (p . fst)
                 [ (leftEnc, (middleKey, right))
-                | i <- [1..numKeys-1]
+                | i <- [1..numKeys-2] -- left and right must contain at least one key
                 , let (left,middleKey,right) = splitIndexAt i index
                       leftEnc                = f left
                 ]

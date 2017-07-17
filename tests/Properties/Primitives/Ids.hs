@@ -17,7 +17,10 @@ import Properties.Utils (testBinary)
 
 instance Arbitrary PageSize where
     arbitrary = PageSize . fromIntegral <$> elements pows
-      where pows = ((2 :: Int) ^) <$> ([6..12] :: [Int])
+      where
+        -- minimum page size is 128 (fits at
+        -- least two keys in an index node)
+        pows = ((2 :: Int) ^) <$> ([7..12] :: [Int])
 
 deriving instance Arbitrary (NodeId height key val)
 deriving instance Arbitrary PageId

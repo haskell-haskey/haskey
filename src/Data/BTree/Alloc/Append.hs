@@ -252,7 +252,9 @@ transact act db
                     , appendMetaTree     = newTree
                     , appendMetaPrevious = appendDbMetaId db
                     }
-            newMetaId <- PageId . fromPageCount <$> getSize hnd
+            size <- getSize hnd
+            setSize hnd (size + 1)
+            let newMetaId = PageId . fromPageCount $ size
             putAppendMeta hnd newMetaId newMeta
             return (AppendDb
                 { appendDbHandle = hnd

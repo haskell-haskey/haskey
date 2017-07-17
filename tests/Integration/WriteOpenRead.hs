@@ -13,6 +13,7 @@ import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State
 
+import Data.List (inits)
 import Data.Map (Map)
 import qualified Data.Map as M
 
@@ -35,7 +36,8 @@ tests = testGroup "WriteOpenRead"
 
 prop_memory_backend :: Property
 prop_memory_backend = forAll genSequencySetup $ \setup ->
-                      forAll (genTestSequence setup) $ \testSeq ->
+                      forAllShrink (genTestSequence setup)
+                                   shrinkTestSequence $ \testSeq ->
     let Just (files, orig) = createAndWriteMemory testSeq
         Just read'         = openAndReadMemory files
     in
@@ -102,7 +104,7 @@ writeSequence :: (AppendMetaStoreM hnd m, Key k, Value v)
               => TestSequence k v
               -> AppendDb hnd k v
               -> m (AppendDb hnd k v)
-writeSequence (TestSequence _ actions) =
+writeSequence (TestSequence actions) =
     transaction
   where
     writeAction (Insert k v)  = insertTree k v
@@ -133,22 +135,28 @@ insertHeavySetup = SequenceSetup { sequenceInsertFrequency = 6
 genSequencySetup :: Gen SequenceSetup
 genSequencySetup = elements [deleteHeavySetup, insertHeavySetup]
 
-data TestSequence k v = TestSequence (Map k v) [TestAction k v]
+newtype TestSequence k v = TestSequence [TestAction k v]
                       deriving (Show)
 
-testSequenceResult :: TestSequence k v -> Map k v
-testSequenceResult (TestSequence m _) = m
+testSequenceResult :: Ord k => TestSequence k v -> Map k v
+testSequenceResult (TestSequence actions) = foldl doAction M.empty actions
 
 data TestAction k v = Insert k v
                     | Replace k v
                     | Delete k
                     deriving (Show)
 
+doAction :: Ord k => Map k v -> TestAction k v -> Map k v
+doAction m action
+    | Insert  k v <- action = M.insert k v m
+    | Replace k v <- action = M.insert k v m
+    | Delete  k   <- action = M.delete k m
+
 genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => SequenceSetup -> Gen (TestSequence k v)
 genTestSequence SequenceSetup{..} = sized $ \n -> do
     k            <- choose (0, n)
-    (m, actions) <- execStateT (replicateM k next) (M.empty, [])
-    return $ TestSequence m (reverse actions)
+    (_, actions) <- execStateT (replicateM k next) (M.empty, [])
+    return $ TestSequence (reverse actions)
   where
     genAction :: (Ord k, Arbitrary k, Arbitrary v)
               => Map k v
@@ -171,7 +179,8 @@ genTestSequence SequenceSetup{..} = sized $ \n -> do
         action <- lift $ genAction m
         put (doAction m action, action:actions)
 
-    doAction m action
-        | Insert  k v <- action = M.insert k v m
-        | Replace k v <- action = M.insert k v m
-        | Delete  k   <- action = M.delete k m
+shrinkTestSequence :: (Ord k, Arbitrary k, Arbitrary v)
+                   => TestSequence k v
+                   -> [TestSequence k v]
+shrinkTestSequence (TestSequence []) = []
+shrinkTestSequence (TestSequence actions) = map TestSequence (init (inits actions))

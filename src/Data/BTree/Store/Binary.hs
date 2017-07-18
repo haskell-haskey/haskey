@@ -65,7 +65,7 @@ import Data.BTree.Store.Class
 {-| A decoded binary page. -}
 data Page = PageEmpty
     | forall height key val. (Key key, Value val) =>
-      PageNode TxId (Height height) (Node height key val)
+      PageNode (Height height) (Node height key val)
     | forall key val.        (Key key, Value val) =>
       PageAppendMeta (AppendMeta key val)
     deriving (Typeable)
@@ -97,10 +97,7 @@ instance Binary BPage where
 {-| The encoder of a page. -}
 putPage :: Page -> Put
 putPage PageEmpty = B.put BPageEmpty
-putPage (PageNode tx h n) = B.put BPageNode
-                         >> B.put tx
-                         >> B.put h
-                         >> putNode n
+putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 
 {-| Decoder for empty pages. Will return a 'PageEmpty'. -}
@@ -117,10 +114,9 @@ getPageNode :: (Key key, Value val)
             -> Get Page
 getPageNode h key val = B.get >>= \case
     BPageNode -> do
-        tx <- B.get
         h' <- B.get
         if fromHeight h == fromHeight h'
-            then PageNode tx h <$> getNode' h' key val
+            then PageNode h <$> getNode' h' key val
             else fail $ "expected height " ++ show h ++ " but got " ++ show h'
     x -> fail $ "unexpected " ++ show x
   where
@@ -202,8 +198,8 @@ instance (Ord fp, Applicative m, Monad m) =>
     -- --     modify (M.insertWith (flip const) fp M.empty)
     -- --     return fp
     -- closeStore _ = return ()
-    nodePageSize tx = return $ \h ->
-        fromIntegral . BL.length . B.runPut . putPage . PageNode tx h
+    nodePageSize = return $ \h ->
+        fromIntegral . BL.length . B.runPut . putPage . PageNode h
 
     maxPageSize = return 128
 
@@ -218,14 +214,13 @@ instance (Ord fp, Applicative m, Monad m) =>
     getNodePage hnd height key val nid = StoreT $ do
         Just bs <-
             gets (M.lookup hnd >=> M.lookup (nodeIdToPageId nid))
-        PageNode tx heightSrc tree <-
+        PageNode heightSrc tree <-
             return (decode (getPageNode height key val) bs)
-        n' <- MaybeT $ return (castNode heightSrc height tree)
-        return (n', tx)
+        MaybeT $ return (castNode heightSrc height tree)
 
-    putNodePage hnd tx height nid node = StoreT $
+    putNodePage hnd height nid node = StoreT $
         modify (M.update (Just . M.insert (nodeIdToPageId nid) (encode
-                    (PageNode tx height node))) hnd)
+                    (PageNode height node))) hnd)
 
     getSize hnd = StoreT $
         fromIntegral . M.size <$> MaybeT (gets (M.lookup hnd))

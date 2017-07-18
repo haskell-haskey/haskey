@@ -136,19 +136,14 @@ runAppendT :: AppendMetaStoreM hnd m => AppendT env m a -> env hnd -> m a
 runAppendT m = evalStateT (fromAppendT m)
 
 instance AllocWriterM (AppendT WriterEnv m) where
-    readNodeTxId height nid = AppendT $ do
-        hnd <- writerHnd <$> get
-        getNodePage hnd height Proxy Proxy nid
-
-    nodePageSize = currentTxId >>= \tx ->
-        AppendT (Store.nodePageSize tx)
+    nodePageSize = AppendT Store.nodePageSize
 
     maxPageSize = AppendT Store.maxPageSize
 
-    allocNode height n = currentTxId >>= \tx -> AppendT $ do
+    allocNode height n = AppendT $ do
         hnd <- writerHnd <$> get
         nid <- getNid
-        putNodePage hnd tx height nid n
+        putNodePage hnd height nid n
         return nid
       where
         getNid :: AppendMetaStoreM hnd m
@@ -164,9 +159,9 @@ instance AllocWriterM (AppendT WriterEnv m) where
                 return $ pageIdToNodeId x
 
 
-    writeNode nid height n = currentTxId >>= \tx -> AppendT $ do
+    writeNode nid height n = AppendT $ do
         hnd <- writerHnd <$> get
-        putNodePage hnd tx height nid n
+        putNodePage hnd height nid n
         return nid
 
     freeNode _ nid = AppendT $ modify $ \env ->
@@ -177,12 +172,12 @@ instance AllocWriterM (AppendT WriterEnv m) where
 instance AllocReaderM (AppendT WriterEnv m) where
     readNode height nid = AppendT $ do
         hnd <- writerHnd <$> get
-        fst <$> getNodePage hnd height Proxy Proxy nid
+        getNodePage hnd height Proxy Proxy nid
 
 instance AllocReaderM (AppendT ReaderEnv m) where
     readNode height nid = AppendT $ do
         hnd <- readerHnd <$> get
-        fst <$> getNodePage hnd height Proxy Proxy nid
+        getNodePage hnd height Proxy Proxy nid
 
 --------------------------------------------------------------------------------
 

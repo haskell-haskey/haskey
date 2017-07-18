@@ -32,13 +32,6 @@ class (Applicative m, Monad m) => AllocWriterM m where
     {-| The maximum page size the allocator can handle. -}
     maxPageSize  ::  m PageSize
 
-    {-| Read a page and return the actual node and the transaction id this
-       node was written at. -}
-    readNodeTxId :: (Key key, Value val)
-                 => Height height
-                 -> NodeId height key val
-                 -> m (Node height key val, TxId)
-
     {-| Allocate a new page for a node, and write the node to the page. -}
     allocNode    :: (Key key, Value val)
                  => Height height

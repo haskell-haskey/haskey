@@ -22,8 +22,7 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
     {-| A function that calculates the hypothetical size of a node, if it were
        to be written to a page (regardless of the maximum page size). -}
     nodePageSize :: (Key key, Value val)
-                 => TxId
-                 -> m (Height height -> Node height key val -> PageSize)
+                 => m (Height height -> Node height key val -> PageSize)
 
     {-| The maximum page size the allocator can handle. -}
     maxPageSize  :: m PageSize
@@ -42,31 +41,30 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
                  -> Proxy key
                  -> Proxy val
                  -> NodeId height key val
-                 -> m (Node height key val, TxId)
+                 -> m (Node height key val)
 
     {-| Write a node to a physical page. -}
     putNodePage  :: (Key key, Value val)
                  => hnd
-                 -> TxId
                  -> Height height
                  -> NodeId height key val
                  -> Node height key val
                  -> m ()
 
 instance StoreM hnd m => StoreM hnd (StateT s m) where
-    nodePageSize = lift.             nodePageSize
+    nodePageSize = lift              nodePageSize
     maxPageSize  = lift              maxPageSize
     setSize      = (lift.).          setSize
     getSize      = lift.             getSize
     getNodePage  = ((((lift.).).).). getNodePage
-    putNodePage  = ((((lift.).).).). putNodePage
+    putNodePage  = (((lift.).).).    putNodePage
 
 instance StoreM hnd m => StoreM hnd (ReaderT s m) where
-    nodePageSize = lift.             nodePageSize
+    nodePageSize = lift              nodePageSize
     maxPageSize  = lift              maxPageSize
     setSize      = (lift.).          setSize
     getSize      = lift.             getSize
     getNodePage  = ((((lift.).).).). getNodePage
-    putNodePage  = ((((lift.).).).). putNodePage
+    putNodePage  = (((lift.).).).    putNodePage
 
 --------------------------------------------------------------------------------

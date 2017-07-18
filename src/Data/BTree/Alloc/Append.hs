@@ -2,8 +2,10 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -37,8 +39,7 @@ module Data.BTree.Alloc.Append (
 ) where
 
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Monad.Reader.Class
-import Control.Monad.Trans.Reader (ReaderT, runReaderT)
+import Control.Monad.State
 
 import Data.Binary (Binary)
 import Data.Proxy
@@ -109,30 +110,34 @@ class StoreM hnd m => AppendMetaStoreM hnd m where
    It also has acces to a handle, which is used to properly access the page
    storage back-end.
  -}
-newtype AppendT txId m a = AppendT
+newtype AppendT env m a = AppendT
     { fromAppendT :: forall hnd. AppendMetaStoreM hnd m =>
-        ReaderT (AppendEnv hnd txId) m a
+        StateT (env hnd) m a
     }
 
-data AppendEnv hnd txId = AppendEnv { envHnd :: hnd
-                                    , envTxId :: txId }
+newtype ReaderEnv hnd = ReaderEnv { readerHnd :: hnd }
 
-instance Functor (AppendT txId m) where
+data WriterEnv hnd = WriterEnv { writerHnd :: hnd
+                               , writerTxId :: TxId
+                               , writerFreePages :: [PageId] }
+
+instance Functor (AppendT env m) where
     fmap f (AppendT m) = AppendT (fmap f m)
-instance Applicative (AppendT txId m) where
+instance Applicative (AppendT env m) where
     pure a                  = AppendT (pure a)
     AppendT f <*> AppendT a = AppendT (f <*> a)
-instance Monad (AppendT txId m) where
+instance Monad (AppendT env m) where
     return          = pure
     AppendT m >>= f = AppendT (m >>= fromAppendT . f)
 
-{-| Run the actions in an 'AppendT' monad, given a storage back-end handle. -}
-runAppendT :: AppendMetaStoreM hnd m => AppendT txId m a -> AppendEnv hnd txId -> m a
-runAppendT m = runReaderT (fromAppendT m)
+{-| Run the actions in an 'AppendT' monad, given a reader or writer
+   environment. -}
+runAppendT :: AppendMetaStoreM hnd m => AppendT env m a -> env hnd -> m a
+runAppendT m = evalStateT (fromAppendT m)
 
-instance AllocWriterM (AppendT TxId m) where
+instance AllocWriterM (AppendT WriterEnv m) where
     readNodeTxId height nid = AppendT $ do
-        hnd <- envHnd <$> ask
+        hnd <- writerHnd <$> get
         getNodePage hnd height Proxy Proxy nid
 
     nodePageSize = currentTxId >>= \tx ->
@@ -141,25 +146,42 @@ instance AllocWriterM (AppendT TxId m) where
     maxPageSize = AppendT Store.maxPageSize
 
     allocNode height n = currentTxId >>= \tx -> AppendT $ do
-        hnd <- envHnd <$> ask
-        pc <- getSize hnd
-        setSize hnd (pc+1)
-        let nid = NodeId (fromPageCount pc)
+        hnd <- writerHnd <$> get
+        nid <- getNid
         putNodePage hnd tx height nid n
         return nid
+      where
+        getNid :: AppendMetaStoreM hnd m
+               => StateT (WriterEnv hnd) m (NodeId height key val)
+        getNid = (writerFreePages <$> get) >>= \case
+            [] -> do
+                hnd <- writerHnd <$> get
+                pc <-  getSize hnd
+                setSize hnd (pc + 1)
+                return $! NodeId (fromPageCount pc)
+            x:xs -> do
+                modify $ \env -> env { writerFreePages = xs }
+                return $ pageIdToNodeId x
+
 
     writeNode nid height n = currentTxId >>= \tx -> AppendT $ do
-        hnd <- envHnd <$> ask
+        hnd <- writerHnd <$> get
         putNodePage hnd tx height nid n
         return nid
 
-    freeNode _height _nid = return ()
+    freeNode _ nid = AppendT $ modify $ \env ->
+        env { writerFreePages = nodeIdToPageId nid : writerFreePages env }
 
-    currentTxId = AppendT $ envTxId <$> ask
+    currentTxId = AppendT $ writerTxId <$> get
 
-instance AllocReaderM (AppendT txId m) where
+instance AllocReaderM (AppendT WriterEnv m) where
     readNode height nid = AppendT $ do
-        hnd <- envHnd <$> ask
+        hnd <- writerHnd <$> get
+        fst <$> getNodePage hnd height Proxy Proxy nid
+
+instance AllocReaderM (AppendT ReaderEnv m) where
+    readNode height nid = AppendT $ do
+        hnd <- readerHnd <$> get
         fst <$> getNodePage hnd height Proxy Proxy nid
 
 --------------------------------------------------------------------------------
@@ -243,7 +265,7 @@ transact act db
       } <- meta
     = do
     let newRevision = appendMetaRevision meta + 1
-    tx <- runAppendT (act tree) (AppendEnv hnd newRevision)
+    tx <- runAppendT (act tree) (WriterEnv hnd newRevision [])
     case tx of
         Abort v -> return (db, v)
         Commit newTree v -> do
@@ -280,4 +302,4 @@ transactReadOnly act db
     , AppendMeta
       { appendMetaTree = tree
       } <- meta
-    = runAppendT (act tree) (AppendEnv hnd ())
+    = runAppendT (act tree) (ReaderEnv hnd)

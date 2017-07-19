@@ -44,6 +44,8 @@ import Control.Monad.State
 import Data.Binary (Binary)
 import Data.Proxy
 import Data.Typeable
+import Data.Set (Set)
+import qualified Data.Set as S
 
 import GHC.Generics (Generic)
 
@@ -118,9 +120,17 @@ newtype AppendT env m a = AppendT
 
 newtype ReaderEnv hnd = ReaderEnv { readerHnd :: hnd }
 
-data WriterEnv hnd = WriterEnv { writerHnd :: hnd
-                               , writerTxId :: TxId
-                               , writerFreePages :: [PageId] }
+data WriterEnv hnd = WriterEnv
+    { writerHnd :: hnd
+    , writerTxId :: TxId
+    , writerNewlyFreedPages :: [PageId] -- ^ Pages free'd in this transaction,
+                                        -- not ready for reuse until the
+                                        -- transaction is commited.
+    , writerAllocdPages :: Set PageId -- ^ Pages allocated in this transcation.
+                                      -- These pages can be reused in the same
+                                      -- transaction if free'd later.
+    , writerFreePages :: [PageId] -- ^ Pages free for immediate reuse.
+    }
 
 instance Functor (AppendT env m) where
     fmap f (AppendT m) = AppendT (fmap f m)
@@ -149,6 +159,8 @@ instance AllocWriterM (AppendT WriterEnv m) where
     allocNode height n = AppendT $ do
         hnd <- writerHnd <$> get
         nid <- getNid
+        modify $ \env -> env { writerAllocdPages =
+            S.insert (nodeIdToPageId nid) (writerAllocdPages env) }
         putNodePage hnd height nid n
         return nid
       where
@@ -171,7 +183,11 @@ instance AllocWriterM (AppendT WriterEnv m) where
         return nid
 
     freeNode _ nid = AppendT $ modify $ \env ->
-        env { writerFreePages = nodeIdToPageId nid : writerFreePages env }
+        if S.member pid (writerAllocdPages env)
+            then env { writerFreePages = pid : writerFreePages env }
+            else env { writerNewlyFreedPages = pid : writerNewlyFreedPages env }
+      where
+        pid = nodeIdToPageId nid
 
     currentTxId = AppendT $ writerTxId <$> get
 
@@ -269,7 +285,12 @@ transact act db
       } <- meta
     = do
     let newRevision = appendMetaRevision meta + 1
-    (tx, env) <- runAppendT (act tree) (WriterEnv hnd newRevision freePages)
+    let wEnv = WriterEnv { writerHnd = hnd
+                         , writerTxId = newRevision
+                         , writerNewlyFreedPages = []
+                         , writerAllocdPages = S.empty
+                         , writerFreePages = freePages }
+    (tx, env) <- runAppendT (act tree) wEnv
     case tx of
         Abort v -> return (db, v)
         Commit newTree v -> do
@@ -286,7 +307,8 @@ transact act db
                 { appendDbHandle    = hnd
                 , appendDbMetaId    = newMetaId
                 , appendDbMeta      = newMeta
-                , appendDbFreePages = writerFreePages env
+                , appendDbFreePages =
+                    writerNewlyFreedPages env ++ writerFreePages env
                 }, v)
 
 {-| Execute a write transaction, without a result. -}

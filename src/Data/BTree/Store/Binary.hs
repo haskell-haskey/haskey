@@ -23,6 +23,7 @@ module Data.BTree.Store.Binary (
 , execStoreT
 , runStore
 , evalStore
+, emptyStore
 
   -- * Binary encoding
 , encode
@@ -188,6 +189,10 @@ runStore = runIdentity . flip runStoreT initialStore
    underlying monad, and with the empty store as the initial store. -}
 evalStore :: StoreT String Identity a -> Maybe a
 evalStore = fst . runStore
+
+{-| Construct a store with an empty database with name of type @hnd@. -}
+emptyStore :: Ord hnd => hnd -> Files hnd
+emptyStore hnd = M.fromList [(hnd, M.empty)]
 
 --------------------------------------------------------------------------------
 

@@ -43,6 +43,10 @@ newtype NodeId (height :: Nat) key val = NodeId { fromNodeId :: Word64 }
 nodeIdToPageId :: NodeId height key val -> PageId
 nodeIdToPageId = PageId . fromNodeId
 
+{-| Convert a 'PageId' to a 'NodeId' -}
+pageIdToNodeId :: PageId -> NodeId height key val
+pageIdToNodeId = NodeId . fromPageId
+
 {-| Transaction ids that are used as revision numbers. -}
 newtype TxId = TxId { fromTxId :: Word64 }
   deriving (Eq, Ord, Binary, Num, Value, Key, Typeable)

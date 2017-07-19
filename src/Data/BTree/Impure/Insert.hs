@@ -63,15 +63,16 @@ insertRec k v = fetch
         -> NodeId hgt key val
         -> m (Index key (NodeId hgt key val))
     fetch hgt nid = do
-        (node, writer) <- replaceNode hgt nid
+        node <- readNode hgt nid
+        freeNode hgt nid
         case node of
             Idx children -> do
                 let (ctx,childId) = valView k children
                 newChildIdx <- fetch (decrHeight hgt) childId
                 newChildren <- splitIndex hgt (putIdx ctx newChildIdx)
-                runReplacer $ traverse writer newChildren
+                traverse (allocNode hgt) newChildren
             Leaf items ->
-                (runReplacer . traverse writer) =<< splitLeaf (M.insert k v items)
+                traverse (allocNode hgt) =<< splitLeaf (M.insert k v items)
 
 insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
     => Height height
@@ -81,15 +82,16 @@ insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
 insertRecMany h kvs nid
     | M.null kvs = return (singletonIndex nid)
     | otherwise = do
-    (n, writer) <- replaceNode h nid
+    n <- readNode h nid
+    freeNode h nid
     case n of
         Idx idx -> do
             let dist = distribute kvs idx
             newIndex    <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
             newChildren <- splitIndex h newIndex
-            runReplacer $ traverse writer newChildren
+            traverse (allocNode h) newChildren
         Leaf items ->
-            (runReplacer . traverse writer) =<< splitLeaf (M.union kvs items)
+            traverse (allocNode h) =<< splitLeaf (M.union kvs items)
 
 --------------------------------------------------------------------------------
 

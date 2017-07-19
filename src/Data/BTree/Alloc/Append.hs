@@ -60,6 +60,7 @@ data AppendDb hnd k v = AppendDb
     { appendDbHandle :: hnd
     , appendDbMetaId :: PageId
     , appendDbMeta   :: AppendMeta k v
+    , appendDbFreePages :: [PageId]
     } deriving (Show)
 
 {-| Meta-data of an append-only page allocator. -}
@@ -132,8 +133,13 @@ instance Monad (AppendT env m) where
 
 {-| Run the actions in an 'AppendT' monad, given a reader or writer
    environment. -}
-runAppendT :: AppendMetaStoreM hnd m => AppendT env m a -> env hnd -> m a
-runAppendT m = evalStateT (fromAppendT m)
+runAppendT :: AppendMetaStoreM hnd m => AppendT env m a -> env hnd -> m (a, env hnd)
+runAppendT m = runStateT (fromAppendT m)
+
+{-| Evaluate the actions in an 'AppendT' monad, given a reader or writer
+   environment. -}
+evalAppendT :: AppendMetaStoreM hnd m => AppendT env m a -> env hnd -> m a
+evalAppendT m env = fst <$> runAppendT m env
 
 instance AllocWriterM (AppendT WriterEnv m) where
     nodePageSize = AppendT Store.nodePageSize
@@ -199,6 +205,7 @@ openAppendDb hnd = do
                 { appendDbHandle = hnd
                 , appendDbMetaId = metaId
                 , appendDbMeta = meta
+                , appendDbFreePages = []
                 }
 
 {-| Create a new append-only database. -}
@@ -221,6 +228,7 @@ createAppendDb hnd = do
         { appendDbHandle = hnd
         , appendDbMetaId = metaId
         , appendDbMeta   = meta
+        , appendDbFreePages = []
         }
 
 --------------------------------------------------------------------------------
@@ -252,15 +260,16 @@ transact :: (AppendMetaStoreM hnd m, Key key, Value val)
          -> AppendDb hnd key val -> m (AppendDb hnd key val, a)
 transact act db
     | AppendDb
-      { appendDbMeta   = meta
-      , appendDbHandle = hnd
+      { appendDbMeta      = meta
+      , appendDbHandle    = hnd
+      , appendDbFreePages = freePages
       } <- db
     , AppendMeta
       { appendMetaTree = tree
       } <- meta
     = do
     let newRevision = appendMetaRevision meta + 1
-    tx <- runAppendT (act tree) (WriterEnv hnd newRevision [])
+    (tx, env) <- runAppendT (act tree) (WriterEnv hnd newRevision freePages)
     case tx of
         Abort v -> return (db, v)
         Commit newTree v -> do
@@ -274,9 +283,10 @@ transact act db
             let newMetaId = PageId . fromPageCount $ size
             putAppendMeta hnd newMetaId newMeta
             return (AppendDb
-                { appendDbHandle = hnd
-                , appendDbMetaId = newMetaId
-                , appendDbMeta   = newMeta
+                { appendDbHandle    = hnd
+                , appendDbMetaId    = newMetaId
+                , appendDbMeta      = newMeta
+                , appendDbFreePages = writerFreePages env
                 }, v)
 
 {-| Execute a write transaction, without a result. -}
@@ -297,4 +307,4 @@ transactReadOnly act db
     , AppendMeta
       { appendMetaTree = tree
       } <- meta
-    = runAppendT (act tree) (ReaderEnv hnd)
+    = evalAppendT (act tree) (ReaderEnv hnd)

@@ -35,15 +35,15 @@ tests = testGroup "WriteOpenRead"
     ]
 
 prop_memory_backend :: Property
-prop_memory_backend = forAll genSequencySetup $ \setup ->
-                      forAllShrink (genTestSequence setup)
-                                   shrinkTestSequence $ \testSeq ->
+prop_memory_backend = forAll genTransactionSetup $ \setup ->
+                      forAllShrink (genTestTransaction setup)
+                                   shrinkTestTransaction $ \testSeq ->
     let Just (files, orig) = createAndWriteMemory testSeq
         Just read'         = openAndReadMemory files
     in
     read' == M.toList orig
 
-createAndWriteMemory :: TestSequence Integer Integer
+createAndWriteMemory :: TestTransaction Integer Integer
                      -> Maybe (Files String, Map Integer Integer)
 createAndWriteMemory testSeq =
     let (db, files) = runIdentity . flip runStoreT initialStore $
@@ -51,7 +51,7 @@ createAndWriteMemory testSeq =
     in
     case db of
         Nothing -> Nothing
-        Just _-> Just (files, testSequenceResult testSeq)
+        Just _-> Just (files, testTransactionResult testSeq)
 
   where
     initialStore :: Files String
@@ -82,13 +82,13 @@ prop_file_backend = do
 createAndWriteFile :: FilePath
                    -> Handle
                    -> PropertyM IO (Maybe (Map Integer Integer))
-createAndWriteFile fp fh = forAllM genSequencySetup $ \setup ->
-                           forAllM (genTestSequence setup) $ \testSeq -> run $ do
+createAndWriteFile fp fh = forAllM genTransactionSetup $ \setup ->
+                           forAllM (genTestTransaction setup) $ \testSeq -> run $ do
     (db, _) <- FS.runStore fp fh $
                 createAppendDb fp >>= writeSequence testSeq
     case db of
         Nothing -> return Nothing
-        Just _ -> return $ Just (testSequenceResult testSeq)
+        Just _ -> return $ Just (testTransactionResult testSeq)
 
 openAndReadFile :: FilePath
                 -> Handle
@@ -101,10 +101,10 @@ openAndReadFile fp fh = run $
 --------------------------------------------------------------------------------
 
 writeSequence :: (AppendMetaStoreM hnd m, Key k, Value v)
-              => TestSequence k v
+              => TestTransaction k v
               -> AppendDb hnd k v
               -> m (AppendDb hnd k v)
-writeSequence (TestSequence actions) =
+writeSequence (TestTransaction actions) =
     transaction
   where
     writeAction (Insert k v)  = insertTree k v
@@ -117,29 +117,29 @@ writeSequence (TestSequence actions) =
 
 --------------------------------------------------------------------------------
 
-data SequenceSetup = SequenceSetup { sequenceInsertFrequency :: !Int
-                                   , sequenceReplaceFrequency :: !Int
-                                   , sequenceDeleteFrequency :: !Int }
+data TransactionSetup = TransactionSetup { sequenceInsertFrequency :: !Int
+                                         , sequenceReplaceFrequency :: !Int
+                                         , sequenceDeleteFrequency :: !Int }
                    deriving (Show)
 
-deleteHeavySetup :: SequenceSetup
-deleteHeavySetup = SequenceSetup { sequenceInsertFrequency = 35
-                                 , sequenceReplaceFrequency = 20
-                                 , sequenceDeleteFrequency = 45 }
+deleteHeavySetup :: TransactionSetup
+deleteHeavySetup = TransactionSetup { sequenceInsertFrequency = 35
+                                    , sequenceReplaceFrequency = 20
+                                    , sequenceDeleteFrequency = 45 }
 
-insertHeavySetup :: SequenceSetup
-insertHeavySetup = SequenceSetup { sequenceInsertFrequency = 6
-                                 , sequenceReplaceFrequency = 2
-                                 , sequenceDeleteFrequency = 2 }
+insertHeavySetup :: TransactionSetup
+insertHeavySetup = TransactionSetup { sequenceInsertFrequency = 6
+                                    , sequenceReplaceFrequency = 2
+                                    , sequenceDeleteFrequency = 2 }
 
-genSequencySetup :: Gen SequenceSetup
-genSequencySetup = elements [deleteHeavySetup, insertHeavySetup]
+genTransactionSetup :: Gen TransactionSetup
+genTransactionSetup = elements [deleteHeavySetup, insertHeavySetup]
 
-newtype TestSequence k v = TestSequence [TestAction k v]
-                      deriving (Show)
+newtype TestTransaction k v = TestTransaction [TestAction k v]
+                            deriving (Show)
 
-testSequenceResult :: Ord k => TestSequence k v -> Map k v
-testSequenceResult (TestSequence actions) = foldl doAction M.empty actions
+testTransactionResult :: Ord k => TestTransaction k v -> Map k v
+testTransactionResult (TestTransaction actions) = foldl doAction M.empty actions
 
 data TestAction k v = Insert k v
                     | Replace k v
@@ -152,11 +152,11 @@ doAction m action
     | Replace k v <- action = M.insert k v m
     | Delete  k   <- action = M.delete k m
 
-genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => SequenceSetup -> Gen (TestSequence k v)
-genTestSequence SequenceSetup{..} = sized $ \n -> do
+genTestTransaction :: (Ord k, Arbitrary k, Arbitrary v) => TransactionSetup -> Gen (TestTransaction k v)
+genTestTransaction TransactionSetup{..} = sized $ \n -> do
     k            <- choose (0, n)
     (_, actions) <- execStateT (replicateM k next) (M.empty, [])
-    return $ TestSequence (reverse actions)
+    return $ TestTransaction (reverse actions)
   where
     genAction :: (Ord k, Arbitrary k, Arbitrary v)
               => Map k v
@@ -179,8 +179,8 @@ genTestSequence SequenceSetup{..} = sized $ \n -> do
         action <- lift $ genAction m
         put (doAction m action, action:actions)
 
-shrinkTestSequence :: (Ord k, Arbitrary k, Arbitrary v)
-                   => TestSequence k v
-                   -> [TestSequence k v]
-shrinkTestSequence (TestSequence []) = []
-shrinkTestSequence (TestSequence actions) = map TestSequence (init (inits actions))
+shrinkTestTransaction :: (Ord k, Arbitrary k, Arbitrary v)
+                   => TestTransaction k v
+                   -> [TestTransaction k v]
+shrinkTestTransaction (TestTransaction []) = []
+shrinkTestTransaction (TestTransaction actions) = map TestTransaction (init (inits actions))

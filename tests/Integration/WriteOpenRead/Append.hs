@@ -1,23 +1,18 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
-module Integration.WriteOpenRead where
+module Integration.WriteOpenRead.Append where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
-import Control.Applicative ((<$>), (<*>), pure)
 import Control.Monad
 import Control.Monad.Identity
-import Control.Monad.State
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 
 import Data.Foldable (foldlM)
-import Data.List (inits)
 import Data.Map (Map)
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Map as M
@@ -27,15 +22,17 @@ import System.IO
 import System.IO.Temp (openTempFile)
 
 import Data.BTree.Alloc.Append
-import Data.BTree.Alloc.Class (AllocM)
+import Data.BTree.Alloc.Class
 import Data.BTree.Impure
 import Data.BTree.Primitives
 import Data.BTree.Store.Binary
 import qualified Data.BTree.Impure as Tree
 import qualified Data.BTree.Store.File as FS
 
+import Integration.WriteOpenRead.Transactions
+
 tests :: Test
-tests = testGroup "WriteOpenRead"
+tests = testGroup "WriteOpenRead.Append"
     [ testProperty "memory backend" prop_memory_backend
     , testProperty "file backend" (monadicIO prop_file_backend)
     ]
@@ -148,90 +145,3 @@ readAll :: (AppendMetaStoreM hnd m, Key k, Value v)
 readAll = transactReadOnly Tree.toList
 
 --------------------------------------------------------------------------------
-
-newtype TestSequence k v = TestSequence [TestTransaction k v]
-                         deriving (Show)
-
-data TransactionSetup = TransactionSetup { sequenceInsertFrequency :: !Int
-                                         , sequenceReplaceFrequency :: !Int
-                                         , sequenceDeleteFrequency :: !Int }
-                      deriving (Show)
-
-deleteHeavySetup :: TransactionSetup
-deleteHeavySetup = TransactionSetup { sequenceInsertFrequency = 35
-                                    , sequenceReplaceFrequency = 20
-                                    , sequenceDeleteFrequency = 45 }
-
-insertHeavySetup :: TransactionSetup
-insertHeavySetup = TransactionSetup { sequenceInsertFrequency = 6
-                                    , sequenceReplaceFrequency = 2
-                                    , sequenceDeleteFrequency = 2 }
-
-genTransactionSetup :: Gen TransactionSetup
-genTransactionSetup = elements [deleteHeavySetup, insertHeavySetup]
-
-data TxType = TxAbort | TxCommit
-            deriving (Show)
-
-genTxType :: Gen TxType
-genTxType = elements [TxAbort, TxCommit]
-
-data TestTransaction k v = TestTransaction TxType [TestAction k v]
-                         deriving (Show)
-
-testTransactionResult :: Ord k => Map k v -> TestTransaction k v -> Map k v
-testTransactionResult m (TestTransaction TxAbort _) = m
-testTransactionResult m (TestTransaction TxCommit actions)
-    = foldl doAction m actions
-
-data TestAction k v = Insert k v
-                    | Replace k v
-                    | Delete k
-                    deriving (Show)
-
-doAction :: Ord k => Map k v -> TestAction k v -> Map k v
-doAction m action
-    | Insert  k v <- action = M.insert k v m
-    | Replace k v <- action = M.insert k v m
-    | Delete  k   <- action = M.delete k m
-
-genTestTransaction :: (Ord k, Arbitrary k, Arbitrary v) => TransactionSetup -> Gen (TestTransaction k v)
-genTestTransaction TransactionSetup{..} = sized $ \n -> do
-    k            <- choose (0, n)
-    (_, actions) <- execStateT (replicateM k next) (M.empty, [])
-    TestTransaction <$> genTxType <*> pure (reverse actions)
-  where
-    genAction :: (Ord k, Arbitrary k, Arbitrary v)
-              => Map k v
-              -> Gen (TestAction k v)
-    genAction m
-        | M.null m = genInsert
-        | otherwise = frequency [(sequenceInsertFrequency,  genInsert   ),
-                                 (sequenceReplaceFrequency, genReplace m),
-                                 (sequenceDeleteFrequency,  genDelete m )]
-
-    genInsert :: (Arbitrary k, Arbitrary v) => Gen (TestAction k v)
-    genInsert = Insert <$> arbitrary <*> arbitrary
-    genReplace m = Replace <$> elements (M.keys m) <*> arbitrary
-    genDelete m = Delete <$> elements (M.keys m)
-
-    next :: (Ord k, Arbitrary k, Arbitrary v)
-         => StateT (Map k v, [TestAction k v]) Gen ()
-    next = do
-        (m, actions) <- get
-        action <- lift $ genAction m
-        put (doAction m action, action:actions)
-
-shrinkTestTransaction :: (Ord k, Arbitrary k, Arbitrary v)
-                   => TestTransaction k v
-                   -> [TestTransaction k v]
-shrinkTestTransaction (TestTransaction _ []) = []
-shrinkTestTransaction (TestTransaction t actions) = map (TestTransaction t) (init (inits actions))
-
-genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => Gen (TestSequence k v)
-genTestSequence = TestSequence <$> listOf (genTransactionSetup >>= genTestTransaction)
-
-shrinkTestSequence :: (Ord k, Arbitrary k, Arbitrary v)
-                   => TestSequence k v
-                   -> [TestSequence k v]
-shrinkTestSequence (TestSequence txs) = map TestSequence (shrinkList shrinkTestTransaction txs)

@@ -36,7 +36,7 @@ splitLeafManyPred p f = go
                        (fst $ M.findMin right)
                        <$> go right
       where
-        inits' = mapInits items
+        inits' = tail (mapInits items)
 
     lstForWhich :: (a -> Bool) -> [a] -> Maybe a
     lstForWhich g xs = safeLast $ takeWhile g xs

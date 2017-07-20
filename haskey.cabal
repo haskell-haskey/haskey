@@ -21,6 +21,7 @@ library
     Data.BTree.Alloc
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
+    Data.BTree.Alloc.PageReuse
     Data.BTree.Impure
     Data.BTree.Impure.Delete
     Data.BTree.Impure.Fold
@@ -111,7 +112,9 @@ test-suite haskey-integration
   main-is:             Integration.hs
   type:                exitcode-stdio-1.0
   other-modules:
-    Integration.WriteOpenRead
+    Integration.WriteOpenRead.Append
+    Integration.WriteOpenRead.PageReuse
+    Integration.WriteOpenRead.Transactions
 
   build-depends:
     base          >=4.7  && <5,

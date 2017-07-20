@@ -4,11 +4,13 @@ module Main (main) where
 
 import Test.Framework (Test, defaultMain)
 
-import qualified Integration.WriteOpenRead
+import qualified Integration.WriteOpenRead.Append
+import qualified Integration.WriteOpenRead.PageReuse
 
 tests :: [Test]
 tests =
-    [ Integration.WriteOpenRead.tests
+    [ Integration.WriteOpenRead.Append.tests
+    , Integration.WriteOpenRead.PageReuse.tests
     ]
 
 main :: IO ()

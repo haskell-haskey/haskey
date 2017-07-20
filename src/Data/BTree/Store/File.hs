@@ -57,6 +57,7 @@ import GHC.Generics (Generic)
 import System.IO
 
 import Data.BTree.Alloc.Append
+import Data.BTree.Alloc.PageReuse
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 import Data.BTree.Store.Class
@@ -71,6 +72,8 @@ data Page =
       PageNode (Height height) (Node height key val)
     | forall key val.        (Key key, Value val) =>
       PageAppendMeta (AppendMeta key val)
+    | forall key val.        (Key key, Value val) =>
+      PagePageReuseMeta (PageReuseMeta key val)
     deriving (Typeable)
 
 {-| Encode a page padding it to the maxim page size.
@@ -108,7 +111,7 @@ decode g = fromMaybe (error "decoding unexpectedly failed") . decodeMaybe g
 
 deriving instance Show Page
 
-data BPage = BPageMeta | BPageEmpty | BPageNode | BPageAppendMeta
+data BPage = BPageMeta | BPageEmpty | BPageNode | BPageAppendMeta | BPagePageReuseMeta
            deriving (Eq, Generic, Show)
 instance Binary BPage where
 
@@ -118,6 +121,7 @@ putPage (PageMeta c) = B.put BPageMeta >> B.put c
 putPage PageEmpty = B.put BPageEmpty
 putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
+putPage (PagePageReuseMeta m) = B.put BPagePageReuseMeta >> B.put m
 
 {-| Decoder for meta pages. Will return a 'PageMeta'. -}
 getMetaPage :: Get Page
@@ -166,6 +170,21 @@ getPageAppendMeta k v = B.get >>= \case
                    -> Proxy val
                    -> Get (AppendMeta key val)
     getAppendMeta' _ _ = B.get
+
+{-| Decoder for a page containg 'PageReuseMeta'. Will return a 'PagePageReuseMeta'. -}
+getPagePageReuseMeta :: (Key key, Value val)
+                  => Proxy key
+                  -> Proxy val
+                  -> Get Page
+getPagePageReuseMeta k v = B.get >>= \case
+    BPagePageReuseMeta -> PagePageReuseMeta <$> getPageReuseMeta' k v
+    x               -> fail $ "unexpected " ++ show x
+  where
+    getPageReuseMeta' :: (Key key, Value val)
+                   => Proxy key
+                   -> Proxy val
+                   -> Get (PageReuseMeta key val)
+    getPageReuseMeta' _ _ = B.get
 
 --------------------------------------------------------------------------------
 
@@ -333,6 +352,41 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
             Just x -> return $ Just (x, pid)
             Nothing -> go h ps (pid - 1)
 
+instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
+    PageReuseMetaStoreM fp (StoreT fp m)
+  where
+    getPageReuseMeta fp key val i = do
+        handle   <- StoreT . MaybeT $ gets (M.lookup fp)
+        pageSize <- maxPageSize
+        Just (PagePageReuseMeta meta) <-
+            StoreT $ readPageReuseMetaNode handle
+                                        key val
+                                        i pageSize
+        return $! coerce meta
+
+    putPageReuseMeta fp i meta = do
+        handle   <- StoreT . MaybeT $ gets (M.lookup fp)
+        pageSize <- maxPageSize
+        StoreT $ writePage handle i
+                           (PagePageReuseMeta meta)
+                           pageSize
+
+    openPageReuseMeta fp k v = do
+        handle   <- StoreT . MaybeT $ gets (M.lookup fp)
+        numPages <- getSize fp
+        pageSize <- maxPageSize
+        page <- StoreT $ go handle pageSize $ PageId (fromPageCount (numPages - 1))
+        case page of
+            Nothing -> return Nothing
+            Just x -> do
+                (PagePageReuseMeta meta, pid) <- return x
+                return $ Just (coerce meta, pid)
+      where
+        go _ _ 0 = return Nothing
+        go h ps pid = readPageReuseMetaNode h k v pid ps >>= \case
+            Just x -> return $ Just (x, pid)
+            Nothing -> go h ps (pid - 1)
+
 --------------------------------------------------------------------------------
 
 readAppendMetaNode :: (MonadIO m, Key key, Value val)
@@ -347,4 +401,15 @@ readAppendMetaNode h k v (PageId pid) size = liftIO $ do
     bs <- hGet h (fromIntegral size)
     return $ decodeMaybe (getPageAppendMeta k v) bs
 
+readPageReuseMetaNode :: (MonadIO m, Key key, Value val)
+                      => Handle
+                      -> Proxy key
+                      -> Proxy val
+                      -> PageId
+                      -> PageSize
+                      -> m (Maybe Page)
+readPageReuseMetaNode h k v (PageId pid) size = liftIO $ do
+    hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
+    bs <- hGet h (fromIntegral size)
+    return $ decodeMaybe (getPagePageReuseMeta k v) bs
 --------------------------------------------------------------------------------

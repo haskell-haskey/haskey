@@ -57,6 +57,7 @@ import qualified Data.Map as M
 import GHC.Generics (Generic)
 
 import Data.BTree.Alloc.Append
+import Data.BTree.Alloc.PageReuse
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 import Data.BTree.Store.Class
@@ -69,6 +70,8 @@ data Page = PageEmpty
       PageNode (Height height) (Node height key val)
     | forall key val.        (Key key, Value val) =>
       PageAppendMeta (AppendMeta key val)
+    | forall key val.        (Key key, Value val) =>
+      PagePageReuseMeta (PageReuseMeta key val)
     deriving (Typeable)
 
 {-| Encode a page. -}
@@ -91,7 +94,7 @@ decode g = B.runGet g . fromStrict
 
 deriving instance Show Page
 
-data BPage = BPageEmpty | BPageNode | BPageAppendMeta
+data BPage = BPageEmpty | BPageNode | BPageAppendMeta | BPagePageReuseMeta
            deriving (Eq, Generic, Show)
 instance Binary BPage where
 
@@ -100,6 +103,7 @@ putPage :: Page -> Put
 putPage PageEmpty = B.put BPageEmpty
 putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
+putPage (PagePageReuseMeta m) = B.put BPagePageReuseMeta >> B.put m
 
 {-| Decoder for empty pages. Will return a 'PageEmpty'. -}
 getEmptyPage :: Get Page
@@ -142,6 +146,21 @@ getPageAppendMeta k v = B.get >>= \case
                    -> Proxy val
                    -> Get (AppendMeta key val)
     getAppendMeta' _ _ = B.get
+
+{-| Decoder for a page containg 'PageReuseMeta'. Will return a 'PagePageReuseMeta'. -}
+getPagePageReuseMeta :: (Key key, Value val)
+                  => Proxy key
+                  -> Proxy val
+                  -> Get Page
+getPagePageReuseMeta k v = B.get >>= \case
+    BPagePageReuseMeta -> PagePageReuseMeta <$> getPageReuseMeta' k v
+    x               -> fail $ "unexpected " ++ show x
+  where
+    getPageReuseMeta' :: (Key key, Value val)
+                   => Proxy key
+                   -> Proxy val
+                   -> Get (PageReuseMeta key val)
+    getPageReuseMeta' _ _ = B.get
 
 --------------------------------------------------------------------------------
 
@@ -206,7 +225,7 @@ instance (Ord fp, Applicative m, Monad m) =>
     nodePageSize = return $ \h ->
         fromIntegral . BL.length . B.runPut . putPage . PageNode h
 
-    maxPageSize = return 128
+    maxPageSize = return 256
 
     setSize fp (PageCount n) = StoreT $ do
         let emptyFile = M.fromList
@@ -258,5 +277,30 @@ instance (Ord fp, Applicative m, Monad m) =>
                 Nothing -> if pid == 0 then return Nothing else go (pid - 1)
                 Just x -> return $ Just (x, pid)
 
+instance (Ord fp, Applicative m, Monad m) =>
+    PageReuseMetaStoreM fp (StoreT fp m)
+  where
+    getPageReuseMeta h key val i = StoreT $ do
+        Just bs <- gets (M.lookup h >=> M.lookup i)
+        PagePageReuseMeta meta <- return (decode (getPagePageReuseMeta key val) bs)
+        return $! coerce meta
+
+    putPageReuseMeta h i meta = StoreT $
+        modify (M.update (Just. M.insert i (encode (PagePageReuseMeta meta))) h)
+
+    openPageReuseMeta hnd k v = do
+        numPages <- getSize hnd
+        page <- StoreT $ go $ PageId (fromPageCount (numPages - 1))
+        case page of
+            Nothing -> return Nothing
+            Just x -> do
+                (PagePageReuseMeta meta, pid) <- return x
+                return $ Just (coerce meta, pid)
+      where
+        go pid = do
+            Just bs <- gets (M.lookup hnd >=> M.lookup pid)
+            case decodeMaybe (getPagePageReuseMeta k v) bs of
+                Nothing -> if pid == 0 then return Nothing else go (pid - 1)
+                Just x -> return $ Just (x, pid)
 
 --------------------------------------------------------------------------------

@@ -189,8 +189,6 @@ instance AllocWriterM (AppendT WriterEnv m) where
       where
         pid = nodeIdToPageId nid
 
-    currentTxId = AppendT $ writerTxId <$> get
-
 instance AllocReaderM (AppendT WriterEnv m) where
     readNode height nid = AppendT $ do
         hnd <- writerHnd <$> get

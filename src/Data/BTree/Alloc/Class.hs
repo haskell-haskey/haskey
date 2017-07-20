@@ -50,7 +50,4 @@ class (Applicative m, Monad m) => AllocWriterM m where
                  ->  NodeId height key val
                  ->  m ()
 
-    {-| The id of the current write transaction. -}
-    currentTxId :: m TxId
-
 --------------------------------------------------------------------------------

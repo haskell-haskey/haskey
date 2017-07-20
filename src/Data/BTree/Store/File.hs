@@ -250,7 +250,7 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
         return $ \h ->
             fromIntegral . BL.length . encode . PageNode h
 
-    maxPageSize = return 256
+    maxPageSize = return 4096
 
     getSize fp = do
         handle     <- StoreT . MaybeT $ gets (M.lookup fp)

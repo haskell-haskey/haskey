@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -8,13 +9,17 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative ((<$>), (<*>), pure)
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State
+import Control.Monad.Trans (lift)
+import Control.Monad.Trans.Maybe
 
+import Data.Foldable (foldlM)
 import Data.List (inits)
 import Data.Map (Map)
+import Data.Maybe (fromJust, isJust)
 import qualified Data.Map as M
 
 import System.Directory (removeFile, getTemporaryDirectory)
@@ -22,6 +27,7 @@ import System.IO
 import System.IO.Temp (openTempFile)
 
 import Data.BTree.Alloc.Append
+import Data.BTree.Alloc.Class (AllocM)
 import Data.BTree.Impure
 import Data.BTree.Primitives
 import Data.BTree.Store.Binary
@@ -35,76 +41,92 @@ tests = testGroup "WriteOpenRead"
     ]
 
 prop_memory_backend :: Property
-prop_memory_backend = forAll genSequencySetup $ \setup ->
-                      forAllShrink (genTestSequence setup)
-                                   shrinkTestSequence $ \testSeq ->
-    let Just (files, orig) = createAndWriteMemory testSeq
-        Just read'         = openAndReadMemory files
-    in
-    read' == M.toList orig
-
-createAndWriteMemory :: TestSequence Integer Integer
-                     -> Maybe (Files String, Map Integer Integer)
-createAndWriteMemory testSeq =
-    let (db, files) = runIdentity . flip runStoreT initialStore $
-                        createAppendDb "Main" >>= writeSequence testSeq
-    in
-    case db of
-        Nothing -> Nothing
-        Just _-> Just (files, testSequenceResult testSeq)
-
+prop_memory_backend = forAllShrink genTestSequence
+                                   shrinkTestSequence $ \(TestSequence txs) ->
+    let (_, idb) = create
+        result   = foldlM (\(db, m) tx -> writeReadTest db tx m)
+                          (idb, M.empty)
+                          txs
+    in case result of
+        Nothing -> False
+        Just _  -> True
   where
-    initialStore :: Files String
-    initialStore = M.fromList [("Main", M.empty)]
 
-openAndReadMemory :: Files String
-                  -> Maybe [(Integer, Integer)]
-openAndReadMemory files =
-    runIdentity . flip evalStoreT files $ do
-        Just db <- openAppendDb "Main"
-        transactReadOnly Tree.toList db
+    writeReadTest :: Files String
+                  -> TestTransaction Integer Integer
+                  -> Map Integer Integer
+                  -> Maybe (Files String, Map Integer Integer)
+    writeReadTest db tx m =
+        let db'      = openAndWrite db tx
+            read'    = openAndRead db'
+            expected = testTransactionResult m tx
+        in if read' == M.toList expected
+            then Just (db', expected)
+            else error $ "error:"
+                    ++ "\n    after:   " ++ show tx
+                    ++ "\n    expectd: " ++ show (M.toList expected)
+                    ++ "\n    got:     " ++ show read'
+
+    create :: (Maybe (AppendDb String Integer Integer), Files String)
+    create = runIdentity $ runStoreT (createAppendDb "Main")
+                                     (emptyStore "Main")
+
+    openAndRead db = fromJust . runIdentity $ evalStoreT (open >>= readAll) db
+    openAndWrite db tx = runIdentity $ execStoreT (open >>= writeTransaction tx) db
+
+    open = fromJust <$> openAppendDb "Main"
+
 
 --------------------------------------------------------------------------------
 
 prop_file_backend :: PropertyM IO ()
-prop_file_backend = do
+prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     tmpDir   <- run getTemporaryDirectory
     (fp, fh) <- run $ openTempFile tmpDir "db.haskey"
 
-    Just orig  <- createAndWriteFile fp fh
-    Just read' <- openAndReadFile fp fh
+    Just _ <- run $ create fp fh
+    result <- run . runMaybeT $ foldM (flip (writeReadTest fp fh))
+                                      M.empty
+                                      txs
 
     run $ hClose fh
     run $ removeFile fp
 
-    assert $ read' == M.toList orig
+    assert $ isJust result
+  where
+    writeReadTest :: FilePath
+                  -> Handle
+                  -> TestTransaction Integer Integer
+                  -> Map Integer Integer
+                  -> MaybeT IO (Map Integer Integer)
+    writeReadTest fp fh tx m = do
+        lift $ openAndWrite fp fh tx
+        read' <- lift $ openAndRead fp fh
+        let expected = testTransactionResult m tx
+        if read' == M.toList expected
+            then return expected
+            else error $ "error:"
+                    ++ "\n    after:   " ++ show tx
+                    ++ "\n    expectd: " ++ show (M.toList expected)
+                    ++ "\n    got:     " ++ show read'
 
-createAndWriteFile :: FilePath
-                   -> Handle
-                   -> PropertyM IO (Maybe (Map Integer Integer))
-createAndWriteFile fp fh = forAllM genSequencySetup $ \setup ->
-                           forAllM (genTestSequence setup) $ \testSeq -> run $ do
-    (db, _) <- FS.runStore fp fh $
-                createAppendDb fp >>= writeSequence testSeq
-    case db of
-        Nothing -> return Nothing
-        Just _ -> return $ Just (testSequenceResult testSeq)
+    create :: FilePath
+           -> Handle
+           -> IO (Maybe (AppendDb FilePath Integer Integer))
+    create fp fh = FS.evalStore fp fh (createAppendDb fp)
 
-openAndReadFile :: FilePath
-                -> Handle
-                -> PropertyM IO (Maybe [(Integer, Integer)])
-openAndReadFile fp fh = run $
-    FS.evalStore fp fh $ do
-        Just db <- openAppendDb fp
-        transactReadOnly Tree.toList db
+
+    openAndRead fp fh = fromJust <$> FS.evalStore fp fh (open fp >>= readAll)
+    openAndWrite fp fh tx = void $ FS.evalStore fp fh (open fp >>= writeTransaction tx)
+    open fp = fromJust <$> openAppendDb fp
 
 --------------------------------------------------------------------------------
 
-writeSequence :: (AppendMetaStoreM hnd m, Key k, Value v)
-              => TestSequence k v
-              -> AppendDb hnd k v
-              -> m (AppendDb hnd k v)
-writeSequence (TestSequence actions) =
+writeTransaction :: (AppendMetaStoreM hnd m, Key k, Value v)
+                 => TestTransaction k v
+                 -> AppendDb hnd k v
+                 -> m (AppendDb hnd k v)
+writeTransaction (TestTransaction txType actions) =
     transaction
   where
     writeAction (Insert k v)  = insertTree k v
@@ -113,33 +135,54 @@ writeSequence (TestSequence actions) =
 
     transaction = transact_ $
         foldl (>=>) return (map writeAction actions)
-        >=> commit_
+        >=> commitOrAbort
+
+    commitOrAbort :: AllocM n => Tree key val -> n (Transaction key val ())
+    commitOrAbort
+        | TxAbort  <- txType = const abort_
+        | TxCommit <- txType = commit_
+
+readAll :: (AppendMetaStoreM hnd m, Key k, Value v)
+        => AppendDb hnd k v
+        -> m [(k, v)]
+readAll = transactReadOnly Tree.toList
 
 --------------------------------------------------------------------------------
 
-data SequenceSetup = SequenceSetup { sequenceInsertFrequency :: !Int
-                                   , sequenceReplaceFrequency :: !Int
-                                   , sequenceDeleteFrequency :: !Int }
-                   deriving (Show)
+newtype TestSequence k v = TestSequence [TestTransaction k v]
+                         deriving (Show)
 
-deleteHeavySetup :: SequenceSetup
-deleteHeavySetup = SequenceSetup { sequenceInsertFrequency = 35
-                                 , sequenceReplaceFrequency = 20
-                                 , sequenceDeleteFrequency = 45 }
-
-insertHeavySetup :: SequenceSetup
-insertHeavySetup = SequenceSetup { sequenceInsertFrequency = 6
-                                 , sequenceReplaceFrequency = 2
-                                 , sequenceDeleteFrequency = 2 }
-
-genSequencySetup :: Gen SequenceSetup
-genSequencySetup = elements [deleteHeavySetup, insertHeavySetup]
-
-newtype TestSequence k v = TestSequence [TestAction k v]
+data TransactionSetup = TransactionSetup { sequenceInsertFrequency :: !Int
+                                         , sequenceReplaceFrequency :: !Int
+                                         , sequenceDeleteFrequency :: !Int }
                       deriving (Show)
 
-testSequenceResult :: Ord k => TestSequence k v -> Map k v
-testSequenceResult (TestSequence actions) = foldl doAction M.empty actions
+deleteHeavySetup :: TransactionSetup
+deleteHeavySetup = TransactionSetup { sequenceInsertFrequency = 35
+                                    , sequenceReplaceFrequency = 20
+                                    , sequenceDeleteFrequency = 45 }
+
+insertHeavySetup :: TransactionSetup
+insertHeavySetup = TransactionSetup { sequenceInsertFrequency = 6
+                                    , sequenceReplaceFrequency = 2
+                                    , sequenceDeleteFrequency = 2 }
+
+genTransactionSetup :: Gen TransactionSetup
+genTransactionSetup = elements [deleteHeavySetup, insertHeavySetup]
+
+data TxType = TxAbort | TxCommit
+            deriving (Show)
+
+genTxType :: Gen TxType
+genTxType = elements [TxAbort, TxCommit]
+
+data TestTransaction k v = TestTransaction TxType [TestAction k v]
+                         deriving (Show)
+
+testTransactionResult :: Ord k => Map k v -> TestTransaction k v -> Map k v
+testTransactionResult m (TestTransaction TxAbort _) = m
+testTransactionResult m (TestTransaction TxCommit actions)
+    = foldl doAction m actions
 
 data TestAction k v = Insert k v
                     | Replace k v
@@ -152,11 +195,11 @@ doAction m action
     | Replace k v <- action = M.insert k v m
     | Delete  k   <- action = M.delete k m
 
-genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => SequenceSetup -> Gen (TestSequence k v)
-genTestSequence SequenceSetup{..} = sized $ \n -> do
+genTestTransaction :: (Ord k, Arbitrary k, Arbitrary v) => TransactionSetup -> Gen (TestTransaction k v)
+genTestTransaction TransactionSetup{..} = sized $ \n -> do
     k            <- choose (0, n)
     (_, actions) <- execStateT (replicateM k next) (M.empty, [])
-    return $ TestSequence (reverse actions)
+    TestTransaction <$> genTxType <*> pure (reverse actions)
   where
     genAction :: (Ord k, Arbitrary k, Arbitrary v)
               => Map k v
@@ -179,8 +222,16 @@ genTestSequence SequenceSetup{..} = sized $ \n -> do
         action <- lift $ genAction m
         put (doAction m action, action:actions)
 
+shrinkTestTransaction :: (Ord k, Arbitrary k, Arbitrary v)
+                   => TestTransaction k v
+                   -> [TestTransaction k v]
+shrinkTestTransaction (TestTransaction _ []) = []
+shrinkTestTransaction (TestTransaction t actions) = map (TestTransaction t) (init (inits actions))
+
+genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => Gen (TestSequence k v)
+genTestSequence = TestSequence <$> listOf (genTransactionSetup >>= genTestTransaction)
+
 shrinkTestSequence :: (Ord k, Arbitrary k, Arbitrary v)
                    => TestSequence k v
                    -> [TestSequence k v]
-shrinkTestSequence (TestSequence []) = []
-shrinkTestSequence (TestSequence actions) = map TestSequence (init (inits actions))
+shrinkTestSequence (TestSequence txs) = map TestSequence (shrinkList shrinkTestTransaction txs)

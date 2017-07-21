@@ -7,6 +7,7 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
+import Control.Applicative ((<$>))
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.Trans (lift)

@@ -1,4 +1,3 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -13,7 +12,7 @@
 {-| The module implements an append-only page allocator.
 
    All written data will be written to newly created pages, and their is
-   absolutetely no page reuse.
+   absolutetely no page reuse, except for the dirty pages of a transaction.
  -}
 module Data.BTree.Alloc.Append (
   -- * Allocator
@@ -62,7 +61,6 @@ data AppendDb hnd k v = AppendDb
     { appendDbHandle :: hnd
     , appendDbMetaId :: PageId
     , appendDbMeta   :: AppendMeta k v
-    , appendDbFreePages :: [PageId]
     } deriving (Show)
 
 {-| Meta-data of an append-only page allocator. -}
@@ -123,9 +121,6 @@ newtype ReaderEnv hnd = ReaderEnv { readerHnd :: hnd }
 data WriterEnv hnd = WriterEnv
     { writerHnd :: hnd
     , writerTxId :: TxId
-    , writerNewlyFreedPages :: [PageId] -- ^ Pages free'd in this transaction,
-                                        -- not ready for reuse until the
-                                        -- transaction is commited.
     , writerAllocdPages :: Set PageId -- ^ Pages allocated in this transcation.
                                       -- These pages can be reused in the same
                                       -- transaction if free'd later.
@@ -151,7 +146,7 @@ runAppendT m = runStateT (fromAppendT m)
 evalAppendT :: AppendMetaStoreM hnd m => AppendT env m a -> env hnd -> m a
 evalAppendT m env = fst <$> runAppendT m env
 
-instance AllocWriterM (AppendT WriterEnv m) where
+instance AllocM (AppendT WriterEnv m) where
     nodePageSize = AppendT Store.nodePageSize
 
     maxPageSize = AppendT Store.maxPageSize
@@ -185,11 +180,9 @@ instance AllocWriterM (AppendT WriterEnv m) where
     freeNode _ nid = AppendT $ modify $ \env ->
         if S.member pid (writerAllocdPages env)
             then env { writerFreePages = pid : writerFreePages env }
-            else env { writerNewlyFreedPages = pid : writerNewlyFreedPages env }
+            else env
       where
         pid = nodeIdToPageId nid
-
-    currentTxId = AppendT $ writerTxId <$> get
 
 instance AllocReaderM (AppendT WriterEnv m) where
     readNode height nid = AppendT $ do
@@ -221,7 +214,6 @@ openAppendDb hnd = do
                 { appendDbHandle = hnd
                 , appendDbMetaId = metaId
                 , appendDbMeta = meta
-                , appendDbFreePages = []
                 }
 
 {-| Create a new append-only database. -}
@@ -244,7 +236,6 @@ createAppendDb hnd = do
         { appendDbHandle = hnd
         , appendDbMetaId = metaId
         , appendDbMeta   = meta
-        , appendDbFreePages = []
         }
 
 --------------------------------------------------------------------------------
@@ -278,7 +269,6 @@ transact act db
     | AppendDb
       { appendDbMeta      = meta
       , appendDbHandle    = hnd
-      , appendDbFreePages = freePages
       } <- db
     , AppendMeta
       { appendMetaTree = tree
@@ -287,10 +277,9 @@ transact act db
     let newRevision = appendMetaRevision meta + 1
     let wEnv = WriterEnv { writerHnd = hnd
                          , writerTxId = newRevision
-                         , writerNewlyFreedPages = []
                          , writerAllocdPages = S.empty
-                         , writerFreePages = freePages }
-    (tx, env) <- runAppendT (act tree) wEnv
+                         , writerFreePages = [] }
+    (tx, _) <- runAppendT (act tree) wEnv
     case tx of
         Abort v -> return (db, v)
         Commit newTree v -> do
@@ -307,8 +296,6 @@ transact act db
                 { appendDbHandle    = hnd
                 , appendDbMetaId    = newMetaId
                 , appendDbMeta      = newMeta
-                , appendDbFreePages =
-                    writerNewlyFreedPages env ++ writerFreePages env
                 }, v)
 
 {-| Execute a write transaction, without a result. -}

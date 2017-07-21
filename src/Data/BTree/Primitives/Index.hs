@@ -237,6 +237,20 @@ valView key (Index keys vals)
     | otherwise
     = error "valView: empty Index"
 
+valViewMin :: Index key val -> (IndexCtx key val, val)
+valViewMin (Index keys vals)
+    | Just (val, rightVals) <- vecUncons vals
+    = ( IndexCtx
+        { indexCtxLeftKeys  = V.empty
+        , indexCtxRightKeys = keys
+        , indexCtxLeftVals  = V.empty
+        , indexCtxRightVals = rightVals
+        },
+        val
+      )
+    | otherwise
+    = error "valVeiwMin: empty Index"
+
 {-| Distribute a map of key-value pairs over an index. -}
 distribute :: Ord k => M.Map k v -> Index k node -> Index k (M.Map k v, node)
 distribute kvs (Index keys nodes)

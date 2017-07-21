@@ -1,4 +1,3 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -46,7 +45,9 @@ splitLeaf items = do
     let binPred n = nodePageSize' zeroHeight n <= m
     case splitLeafManyPred binPred Leaf items of
         Just v  -> return v
-        Nothing -> error $ "Split leaf: underflow " ++ show items
+        Nothing -> error $ "Split leaf: underflow: could not split "
+                        ++ "(increase pages size or use page overflow): "
+                        ++ show items
 
 --------------------------------------------------------------------------------
 

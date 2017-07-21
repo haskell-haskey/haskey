@@ -40,4 +40,6 @@ instance (Value k1, Value k2) => Value (k1,k2) where
         (+) <$> fixedSize (Proxy :: Proxy k1)
             <*> fixedSize (Proxy :: Proxy k2)
 
+instance Value v => Value [v] where
+    fixedSize = const Nothing
 --------------------------------------------------------------------------------

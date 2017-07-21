@@ -1,6 +1,7 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE GADTs               #-}
 {-| Algorithms related to looking up key-value pairs in an impure B+-tree. -}
 module Data.BTree.Impure.Lookup where
 
@@ -36,8 +37,6 @@ lookupRec k = fetchAndGo
     go _hgt (Leaf items) =
         return $! M.lookup k items
 
---------------------------------------------------------------------------------
-
 {-| Lookup a value in an impure B+-tree. -}
 lookupTree :: forall m key val. (AllocReaderM m, Key key, Value val)
     => key
@@ -53,5 +52,29 @@ lookupTree k tree
       { treeRootId = Nothing
       } <- tree
     = return Nothing
+
+--------------------------------------------------------------------------------
+
+{-| The minimal key of the map, returns 'Nothing' if the map is empty. -}
+lookupMinTree :: (AllocReaderM m, Key key, Value val)
+              => Tree key val
+              -> m (Maybe (key, val))
+lookupMinTree tree
+    | Tree { treeRootId = Nothing } <- tree = return Nothing
+    | Tree { treeHeight = height
+           , treeRootId = Just rootId } <- tree
+    = lookupMinRec height rootId
+  where
+    lookupMinRec :: (AllocReaderM m, Key key, Value val)
+                 => Height height
+                 -> NodeId height key val
+                 -> m (Maybe (key, val))
+    lookupMinRec h nid = readNode h nid >>= \case
+        Idx children -> let (_, childId) = valViewMin children in
+                        lookupMinRec (decrHeight h) childId
+        Leaf items -> return $! lookupMin items
+
+    lookupMin m | M.null m  = Nothing
+                | otherwise = Just $! M.findMin m
 
 --------------------------------------------------------------------------------

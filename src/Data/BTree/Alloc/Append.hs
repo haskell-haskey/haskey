@@ -1,4 +1,3 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -147,7 +146,7 @@ runAppendT m = runStateT (fromAppendT m)
 evalAppendT :: AppendMetaStoreM hnd m => AppendT env m a -> env hnd -> m a
 evalAppendT m env = fst <$> runAppendT m env
 
-instance AllocWriterM (AppendT WriterEnv m) where
+instance AllocM (AppendT WriterEnv m) where
     nodePageSize = AppendT Store.nodePageSize
 
     maxPageSize = AppendT Store.maxPageSize

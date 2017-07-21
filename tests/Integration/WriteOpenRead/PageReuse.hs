@@ -38,8 +38,7 @@ tests = testGroup "WriteOpenRead.PageReuse"
     ]
 
 prop_memory_backend :: Property
-prop_memory_backend = forAllShrink genTestSequence
-                                   shrinkTestSequence $ \(TestSequence txs) ->
+prop_memory_backend = forAll genTestSequence $ \(TestSequence txs) ->
     let (_, idb) = create
         result   = foldlM (\(db, m) tx -> writeReadTest db tx m)
                           (idb, M.empty)

@@ -45,6 +45,7 @@ library
   other-modules:
     Data.BTree.Utils.List
     Data.BTree.Utils.Map
+    Data.BTree.Utils.Monad
     Data.BTree.Utils.Vector
 
   other-extensions:

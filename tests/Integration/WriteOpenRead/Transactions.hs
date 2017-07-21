@@ -1,4 +1,3 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 module Integration.WriteOpenRead.Transactions where
 

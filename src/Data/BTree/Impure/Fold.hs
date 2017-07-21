@@ -4,10 +4,6 @@ module Data.BTree.Impure.Fold where
 
 import Prelude hiding (foldr, foldl)
 
-import Control.Applicative ((<$>))
-
-import Data.Function (on)
-import Data.List (sortBy)
 import Data.Monoid (Monoid, (<>), mempty)
 import qualified Data.Map as M
 import qualified Data.Foldable as F
@@ -45,8 +41,8 @@ foldrIdWithKeyM f x h nid = readNode h nid >>= foldrNodeWithKeyM f x h
 
 foldrNodeWithKeyM :: (AllocReaderM m, Key k, Value a)
            => (k -> a -> b -> m b) -> b -> Height h -> Node h k a -> m b
-foldrNodeWithKeyM f x _ (Leaf items) = M.foldrWithKey f' return items x
-  where f' k a m z = f k a z >>= m
+foldrNodeWithKeyM f x _ (Leaf items) = M.foldlWithKey f' return items x
+  where f' m k a z = f k a z >>= m
 foldrNodeWithKeyM f x h (Idx idx) =
     F.foldrM (\nid x' -> foldrIdWithKeyM f x' (decrHeight h) nid) x idx
 
@@ -57,12 +53,9 @@ foldMap :: (AllocReaderM m, Key k, Value a, Monoid c)
       => (a -> c) -> Tree k a -> m c
 foldMap f = foldr ((<>) . f) mempty
 
-{-| Convert an impure B+-tree to a list of key-value pairs.
-
-   BUG: something is wrong with foldr, so sorting is necessary for now as a
-   a work around. -}
+{-| Convert an impure B+-tree to a list of key-value pairs. -}
 toList :: (AllocReaderM m, Key k, Value a)
       => Tree k a -> m [(k, a)]
-toList t = sortBy (compare `on` fst) <$> foldrWithKey (\k v xs -> (k, v):xs) [] t
+toList = foldrWithKey (\k v xs -> (k, v):xs) []
 
 --------------------------------------------------------------------------------

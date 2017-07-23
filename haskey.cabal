@@ -22,6 +22,7 @@ library
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
     Data.BTree.Alloc.PageReuse
+    Data.BTree.Alloc.Transaction
     Data.BTree.Impure
     Data.BTree.Impure.Delete
     Data.BTree.Impure.Fold

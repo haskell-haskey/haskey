@@ -6,7 +6,6 @@ import Test.QuickCheck
 
 import Data.Int
 import Data.Proxy
-import Data.Word
 
 import Data.BTree.Impure.Structures (castNode)
 import Data.BTree.Primitives
@@ -16,19 +15,10 @@ import Properties.Impure.Structures (genLeafNode, genIndexNode)
 
 tests :: Test
 tests = testGroup "Store.File"
-    [ testProperty "binary pageMeta" prop_binary_pageMeta
-    , testProperty "binary pageEmpty" prop_binary_pageEmpty
+    [ testProperty "binary pageEmpty" prop_binary_pageEmpty
     , testProperty "binary pageNode leaf" prop_binary_pageNode_leaf
     , testProperty "binary pageNode idx" prop_binary_pageNode_idx
     ]
-
-prop_binary_pageMeta :: Word64 -> PageSize -> Bool
-prop_binary_pageMeta pc ps
-    | Just bs <- encodeAndPad ps (PageMeta (PageCount pc))
-    = case decode getMetaPage bs of
-        PageMeta pc' -> pc' == PageCount pc
-        _            -> False
-    | otherwise = False -- should always work
 
 prop_binary_pageEmpty :: PageSize -> Bool
 prop_binary_pageEmpty ps

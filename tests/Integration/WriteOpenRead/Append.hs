@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 module Integration.WriteOpenRead.Append where
@@ -26,6 +27,7 @@ import Data.BTree.Alloc.Append
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure
 import Data.BTree.Primitives
+import Data.BTree.Store.Class
 import Data.BTree.Store.Binary
 import qualified Data.BTree.Impure as Tree
 import qualified Data.BTree.Store.File as FS
@@ -81,41 +83,43 @@ prop_file_backend :: PropertyM IO ()
 prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     tmpDir   <- run getTemporaryDirectory
     (fp, fh) <- run $ openTempFile tmpDir "db.haskey"
+    run $ hClose fh
 
-    Just _ <- run $ create fp fh
-    result <- run . runMaybeT $ foldM (flip (writeReadTest fp fh))
-                                      M.empty
+    fs     <- run $ snd <$> create fp
+    result <- run . runMaybeT $ foldM (writeReadTest fp)
+                                      (M.empty, fs)
                                       txs
 
-    run $ hClose fh
+    run $ close fp fs
     run $ removeFile fp
 
     assert $ isJust result
   where
     writeReadTest :: FilePath
-                  -> Handle
+                  -> (Map Integer Integer, FS.Files FilePath)
                   -> TestTransaction Integer Integer
-                  -> Map Integer Integer
-                  -> MaybeT IO (Map Integer Integer)
-    writeReadTest fp fh tx m = do
-        lift $ openAndWrite fp fh tx
-        read' <- lift $ openAndRead fp fh
+                  -> MaybeT IO (Map Integer Integer, FS.Files FilePath)
+    writeReadTest fp (m, fs) tx = do
+        fs'   <- lift $ openAndWrite fp fs tx
+        read' <- lift $ openAndRead fp fs'
         let expected = testTransactionResult m tx
         if read' == M.toList expected
-            then return expected
+            then return (expected, fs')
             else error $ "error:"
                     ++ "\n    after:   " ++ show tx
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
     create :: FilePath
-           -> Handle
-           -> IO (Maybe (AppendDb FilePath Integer Integer))
-    create fp fh = FS.evalStore fp fh (createAppendDb fp)
+           -> IO (Maybe (AppendDb FilePath Integer Integer), FS.Files FilePath)
+    create fp = FS.runStoreT (openHandle fp >> createAppendDb fp) FS.emptyStore
+
+    close :: FilePath -> FS.Files FilePath -> IO ()
+    close fp fs = void $ FS.runStoreT (closeHandle fp) fs
 
 
-    openAndRead fp fh = fromJust <$> FS.evalStore fp fh (open fp >>= readAll)
-    openAndWrite fp fh tx = void $ FS.evalStore fp fh (open fp >>= writeTransaction tx)
+    openAndRead fp fs = fromJust <$> FS.evalStoreT (open fp >>= readAll) fs
+    openAndWrite fp fs tx = FS.execStoreT (open fp >>= writeTransaction tx) fs
     open fp = fromJust <$> openAppendDb fp
 
 --------------------------------------------------------------------------------

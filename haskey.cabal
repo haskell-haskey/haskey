@@ -21,6 +21,7 @@ library
     Data.BTree.Alloc
     Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
+    Data.BTree.Alloc.Concurrent
     Data.BTree.Alloc.PageReuse
     Data.BTree.Alloc.Transaction
     Data.BTree.Impure
@@ -47,6 +48,7 @@ library
     Data.BTree.Utils.List
     Data.BTree.Utils.Map
     Data.BTree.Utils.Monad
+    Data.BTree.Utils.STM.Map
     Data.BTree.Utils.Vector
 
   other-extensions:
@@ -65,7 +67,10 @@ library
     binary                  >=0.6  && <0.9 || >0.9 && <1,
     bytestring              >=0.10 && <1,
     containers              >=0.5  && <1,
+    list-t                  >=0.2  && <2,
     mtl                     >=2.1  && <3,
+    stm                     >=2.1  && <3,
+    stm-containers          >=0.2  && <1,
     transformers            >=0.3  && <1,
     vector                  >=0.10 && <1,
     vector-binary-instances >=0.2 && <0.3

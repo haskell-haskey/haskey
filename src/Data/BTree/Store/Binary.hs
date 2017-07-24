@@ -218,10 +218,12 @@ emptyStore hnd = M.fromList [(hnd, M.empty)]
 instance (Ord fp, Applicative m, Monad m) =>
     StoreM fp (StoreT fp m)
   where
-    -- -- openStore fp = StoreT $ do
-    -- --     modify (M.insertWith (flip const) fp M.empty)
-    -- --     return fp
-    -- closeStore _ = return ()
+    openHandle fp = StoreT $
+        modify (M.insertWith (flip const) fp M.empty)
+
+    closeHandle fp = StoreT $
+        modify (M.delete fp)
+
     nodePageSize = return $ \h ->
         fromIntegral . BL.length . B.runPut . putPage . PageNode h
 

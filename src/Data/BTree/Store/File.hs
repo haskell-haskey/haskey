@@ -32,12 +32,13 @@ module Data.BTree.Store.File (
 , getPageAppendMeta
 ) where
 import Control.Applicative (Applicative, (<$>))
+import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
-import Data.Binary (Binary(..), Put, Get)
+import Data.Binary (Binary, Put, Get)
 import Data.ByteString (ByteString, hGet, hPut)
 import Data.ByteString.Lazy (fromStrict, toStrict)
 import Data.Coerce (coerce)
@@ -243,9 +244,21 @@ evalStore fp handle action = fst <$> runStore fp handle action
 
 --------------------------------------------------------------------------------
 
-instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
-    StoreM fp (StoreT fp m)
+instance (Applicative m, Monad m, MonadIO m) =>
+    StoreM FilePath (StoreT FilePath m)
   where
+    openHandle fp = StoreT $ do
+        alreadyOpen <- M.member fp <$> get
+        unless alreadyOpen $ do
+            fh <- liftIO $ openFile fp ReadWriteMode
+            modify (M.insert fp fh)
+
+    closeHandle fp = StoreT $ (M.lookup fp <$> get) >>= \case
+        Nothing -> return ()
+        Just fh -> do
+            liftIO $ hClose fh
+            modify (M.delete fp)
+
     nodePageSize =
         return $ \h ->
             fromIntegral . BL.length . encode . PageNode h
@@ -317,8 +330,8 @@ readPageNode h hgt k v (PageId pid) size = liftIO $ do
 
 --------------------------------------------------------------------------------
 
-instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
-    AppendMetaStoreM fp (StoreT fp m)
+instance (Applicative m, Monad m, MonadIO m) =>
+    AppendMetaStoreM FilePath (StoreT FilePath m)
   where
     getAppendMeta fp key val i = do
         handle   <- StoreT . MaybeT $ gets (M.lookup fp)
@@ -352,8 +365,8 @@ instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
             Just x -> return $ Just (x, pid)
             Nothing -> go h ps (pid - 1)
 
-instance (Ord fp, Applicative m, Monad m, MonadIO m) =>
-    PageReuseMetaStoreM fp (StoreT fp m)
+instance (Applicative m, Monad m, MonadIO m) =>
+    PageReuseMetaStoreM FilePath (StoreT FilePath m)
   where
     getPageReuseMeta fp key val i = do
         handle   <- StoreT . MaybeT $ gets (M.lookup fp)

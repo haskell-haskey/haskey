@@ -14,7 +14,7 @@ module Data.BTree.Alloc.Concurrent (
   ConcurrentDb(..)
 
   -- * Open and create databases
-, DatabaseHandles(..)
+, ConcurrentHandles(..)
 , createConcurrentDb
 , openConcurrentDb
 
@@ -23,6 +23,10 @@ module Data.BTree.Alloc.Concurrent (
 , transact
 , transact_
 , transactReadOnly
+
+  -- * Storage requirements
+, ConcurrentMeta(..)
+, ConcurrentMetaStoreM(..)
 ) where
 
 import Control.Concurrent.MVar
@@ -54,6 +58,7 @@ import Data.BTree.Primitives
 import Data.BTree.Store.Class
 import Data.BTree.Utils.Monad (ifM)
 import qualified Data.BTree.Store.Class as Store
+import qualified Data.BTree.Utils.STM.Map as Map
 
 --------------------------------------------------------------------------------
 
@@ -61,10 +66,11 @@ data CurrentMetaPage = Meta1 | Meta2
 
 {-| An active page allocator with concurrency and page reuse. -}
 data ConcurrentDb hnd k v = ConcurrentDb
-    { concurrentWriterLock :: MVar ()
-    , concurrentCurrentMeta :: TVar CurrentMetaPage
-    , concurrentMeta1 :: ConcurrentMeta k v
-    , concurrentMeta2 :: ConcurrentMeta k v
+    { concurrentDbHandles :: ConcurrentHandles hnd
+    , concurrentDbWriterLock :: MVar ()
+    , concurrentDbCurrentMeta :: TVar CurrentMetaPage
+    , concurrentDbMeta1 :: ConcurrentMeta k v
+    , concurrentDbMeta2 :: ConcurrentMeta k v
     , concurrentDbReaders :: Map TxId Integer
     }
 
@@ -73,7 +79,6 @@ data ConcurrentMeta k v = ConcurrentMeta
     { concurrentMetaRevision :: TxId
     , concurrentMetaTree     :: Tree k v
     , concurrentMetaFreeTree :: Tree TxId [PageId]
-    , concurrentMetaPrevious :: PageId
     } deriving (Generic, Typeable)
 
 deriving instance (Show k, Show v) => Show (ConcurrentMeta k v)
@@ -100,14 +105,14 @@ class StoreM hnd m => ConcurrentMetaStoreM hnd m where
                       -> ConcurrentMeta k v
                       -> m ()
 
-    {-| Find the most recent meta-data structure in all pages. If
-       there isn't any page that contains some meta-data, return 'Nothing'.
+    {-| Find the most recent meta-data structure. If there isn't any page that
+       contains some meta-data, return 'Nothing'.
      -}
     openConcurrentMeta :: (Key k, Value v)
-                       => hnd
+                       => ConcurrentHandles hnds
                        -> Proxy k
                        -> Proxy v
-                       -> m (Maybe (ConcurrentMeta k v, PageId))
+                       -> m (Maybe (ConcurrentMeta k v))
 
 --------------------------------------------------------------------------------
 
@@ -129,6 +134,7 @@ newtype ReaderEnv hnd = ReaderEnv { readerHnd :: hnd }
 data WriterEnv hnd = WriterEnv
     { writerHnd :: !hnd
     , writerTxId :: !TxId
+    , writerReaders :: Map TxId Integer
     , writerNewlyFreedPages :: ![PageId] -- ^ Pages free'd in this transaction,
                                          -- not ready for reuse until the
                                          -- transaction is commited.
@@ -168,7 +174,7 @@ runConcurrentT m = runStateT (fromConcurrentT m)
 evalConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env m a -> env hnd -> m a
 evalConcurrentT m env = fst <$> runConcurrentT m env
 
-instance AllocM (ConcurrentT WriterEnv m) where
+instance MonadIO m => AllocM (ConcurrentT WriterEnv m) where
     nodePageSize = ConcurrentT Store.nodePageSize
 
     maxPageSize = ConcurrentT Store.maxPageSize
@@ -180,7 +186,7 @@ instance AllocM (ConcurrentT WriterEnv m) where
         putNodePage hnd height nid n
         return nid
       where
-        getNid :: ConcurrentT WriterEnv m (NodeId height key val)
+        getNid :: MonadIO m => ConcurrentT WriterEnv m (NodeId height key val)
         getNid = ConcurrentT (writerFreePages <$> get) >>= \case
             -- No dirty pages that are reuseable
             [] -> ConcurrentT (writerReuseablePages <$> get) >>= \case
@@ -207,11 +213,10 @@ instance AllocM (ConcurrentT WriterEnv m) where
         -- | Try to get a free page from the free page database.
         --
         -- This function will also update the writer state.
-        nidFromFreeDb :: ConcurrentT WriterEnv m (Maybe (NodeId height key val))
+        nidFromFreeDb :: MonadIO m => ConcurrentT WriterEnv m (Maybe (NodeId height key val))
         nidFromFreeDb = ifM (ConcurrentT (not . writerReusablePagesOn <$> get)) (return Nothing) $ do
             tree    <- ConcurrentT $ writerFreeTree <$> get
             oldTxId <- ConcurrentT $ writerReuseablePagesTxId <$> get
-            curTxId <- ConcurrentT $ writerTxId <$> get
 
             -- Delete the previously used 'TxId' from the tree.
             -- don't reuse pages from the free pages database while editing the
@@ -239,15 +244,17 @@ instance AllocM (ConcurrentT WriterEnv m) where
                                     , writerReuseablePagesTxId = Just txId }
                     nidFromFreeDb
 
-                Just (txId, pid:pageIds) -> if
-                    | txId < curTxId -> do
+                Just (txId, pid:pageIds) -> do
+                    readers <- ConcurrentT $ writerReaders <$> get
+                    oldest  <- ConcurrentT $ liftIO . atomically $ Map.lookupMinKey readers
+                    if | maybe True (txId <) oldest -> do
                         -- Found reusable pages, yeay! return first one and set
                         -- state accordingly.
                         ConcurrentT $ modify' $
                             \env -> env { writerReuseablePages = pageIds
                                         , writerReuseablePagesTxId = Just txId }
                         return $ Just (pageIdToNodeId pid)
-                    | otherwise -> do
+                       | otherwise -> do
                         -- Oldest transaction is not old enough, can't reuse these
                         -- pages yet.
                         ConcurrentT $ modify' $
@@ -281,41 +288,58 @@ instance AllocReaderM (ConcurrentT ReaderEnv m) where
 --------------------------------------------------------------------------------
 
 {-| All necessary database handles. -}
-data DatabaseHandles hnd = DatabaseHandles {
-    databaseHandlesMain :: hnd
-  , databaseHandlesMetadata1 :: hnd
-  , databaseHandlesMetadata2 :: hnd
+data ConcurrentHandles hnd = ConcurrentHandles {
+    concurrentHandlesMain :: hnd
+  , concurrentHandlesMetadata1 :: hnd
+  , concurrentHandlesMetadata2 :: hnd
   } deriving (Show)
+
+{-| Open all concurrent handles. -}
+openConcurrentHandles :: ConcurrentMetaStoreM hnd m
+                      => ConcurrentHandles hnd -> m ()
+openConcurrentHandles ConcurrentHandles{..} = do
+    openHandle concurrentHandlesMain
+    openHandle concurrentHandlesMetadata1
+    openHandle concurrentHandlesMetadata2
 
 {-| Open the necessary database handles, and create an empty database. -}
 createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
-                   => DatabaseHandles hnd -> m (ConcurrentDb hnd k v)
-createConcurrentDb DatabaseHandles{..} = do
-    openHandle databaseHandlesMain
-    openHandle databaseHandlesMetadata1
-    openHandle databaseHandlesMetadata2
-    db'     <- undefined
-    readers <- liftIO Map.newIO
-    meta    <- liftIO $ newTVarIO Meta1
-    lock    <- liftIO $ newMVar ()
-    return $! ConcurrentDb
-        { concurrentWriterLock = lock
-        , concurrentCurrentMeta = meta
-        , concurrentMeta1 = meta0
-        , concurrentMeta2 = meta0
-        , concurrentDbReaders = readers
-        }
+                   => ConcurrentHandles hnd -> m (ConcurrentDb hnd k v)
+createConcurrentDb hnds = do
+    openConcurrentHandles hnds
+    newConcurrentDb hnds meta0
   where
     meta0 = ConcurrentMeta { concurrentMetaRevision = 0
                            , concurrentMetaTree = Tree zeroHeight Nothing
                            , concurrentMetaFreeTree = Tree zeroHeight Nothing
-                           , concurrentMetaPrevious = 0
                            }
 
 {-| Open the necessary databse handles, and open an exisiting datbaase. -}
 openConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
-                 => DatabaseHandles hnd -> m (Maybe (ConcurrentDb hnd k v))
-openConcurrentDb = undefined
+                 => ConcurrentHandles hnd -> m (Maybe (ConcurrentDb hnd k v))
+openConcurrentDb hnds = do
+    openConcurrentHandles hnds
+    m <- openConcurrentMeta hnds Proxy Proxy
+    case m of
+        Nothing -> return Nothing
+        Just meta0 -> Just <$> newConcurrentDb hnds meta0
+
+newConcurrentDb :: (Key k, Value v, MonadIO m)
+                => ConcurrentHandles hnd
+                -> ConcurrentMeta k v
+                -> m (ConcurrentDb hnd k v)
+newConcurrentDb hnds meta0 = do
+    readers <- liftIO Map.newIO
+    meta    <- liftIO $ newTVarIO Meta1
+    lock    <- liftIO $ newMVar ()
+    return $! ConcurrentDb
+        { concurrentDbHandles = hnds
+        , concurrentDbWriterLock = lock
+        , concurrentDbCurrentMeta = meta
+        , concurrentDbMeta1 = meta0
+        , concurrentDbMeta2 = meta0
+        , concurrentDbReaders = readers
+        }
 
 --------------------------------------------------------------------------------
 
@@ -325,15 +349,99 @@ transact :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
          -> ConcurrentDb hnd key val -> m (ConcurrentDb hnd key val, a)
 transact act db
     | ConcurrentDb
-      { concurrentWriterLock = lock
+      { concurrentDbHandles = hnds
+      , concurrentDbWriterLock = lock
+      , concurrentDbReaders = readers
       } <- db
-    = withLock lock undefined
+    , ConcurrentHandles
+      { concurrentHandlesMain = hnd
+      } <- hnds
+    = withLock lock $
+    do
+    meta <- getCurrentMeta db
+    let newRevision = concurrentMetaRevision meta + 1
+    let wEnv = WriterEnv { writerHnd = hnd
+                         , writerTxId = newRevision
+                         , writerReaders = readers
+                         , writerNewlyFreedPages = []
+                         , writerAllocdPages = S.empty
+                         , writerFreePages = []
+                         , writerFreeTree = concurrentMetaFreeTree meta
+                         , writerReuseablePages = []
+                         , writerReuseablePagesTxId = Nothing
+                         , writerReusablePagesOn = True }
+    (tx, env) <- runConcurrentT (act $ concurrentMetaTree meta) wEnv
+    case tx of
+        Abort v -> return (db, v)
+        Commit newTree v -> do
+            -- Save the free'd pages to the free page database
+            -- don't try to use pages from the free database when doing so
+            freeTree' <- saveFreePages (env { writerReusablePagesOn = False })
+
+            -- Commit
+            let newMeta = ConcurrentMeta
+                    { concurrentMetaRevision = newRevision
+                    , concurrentMetaTree     = newTree
+                    , concurrentMetaFreeTree = freeTree'
+                    }
+            db' <- setCurrentMeta db newMeta
+            return (db', v)
   where
     withLock l action = do
         () <- liftIO (takeMVar l)
         v  <- action
         liftIO (putMVar l ())
         return v
+
+    -- This function assumes that **inserting the new set of free pages** that
+    -- are free'd in this specific transaction, **will eventually not free any
+    -- pages itself** after sufficient iteration. Note that this is only
+    -- possible because we can reuse dirty pages in the same transaction. If
+    -- this is not the case, this function loops forever.
+    saveFreePages :: (MonadIO m, ConcurrentMetaStoreM hnd m)
+                  => WriterEnv hnd
+                  -> m (Tree TxId [PageId])
+    saveFreePages env = do
+        let freeEnv = env { writerNewlyFreedPages = [] }
+        (freeTree', env') <- runConcurrentT (insertFreePages env (writerFreeTree env)) freeEnv
+        case writerNewlyFreedPages env' of
+            [] -> return freeTree'
+            xs  -> let env'' = env' { writerNewlyFreedPages =
+                                        nub (xs ++ writerNewlyFreedPages env')
+                                    , writerFreeTree = freeTree' } in
+                   saveFreePages env'' -- Register newly free'd pages
+
+    insertFreePages :: AllocM n
+                    => WriterEnv hnd
+                    -> Tree TxId [PageId]
+                    -> n (Tree TxId [PageId])
+    insertFreePages env t
+        -- No newly free'd pages in this tx, and no pages reused from free page db
+        | []      <- writerNewlyFreedPages env
+        , Nothing <- writerReuseablePagesTxId env
+        = return t
+
+        -- Only pages reused from free page db, no newly free'd pages in this tx
+        | []      <- writerNewlyFreedPages env
+        , Just k' <- writerReuseablePagesTxId env
+        , v'      <- writerReuseablePages env
+        = if null v' then deleteTree k' t else insertTree k' v' t
+
+        -- Only newly free'd pages in this tx, and no pages reused from free page db
+        | v       <- writerNewlyFreedPages env
+        , k       <- writerTxId env
+        , Nothing <- writerReuseablePagesTxId env
+        = insertTree k v t
+
+        -- Pages reused from free page db, and newly free'd pages in this tx
+        | v       <- writerNewlyFreedPages env
+        , k       <- writerTxId env
+        , v'      <- writerReuseablePages env
+        , Just k' <- writerReuseablePagesTxId env
+        = (if null v' then deleteTree k' t else insertTree k' v' t)
+        >>= insertTree k v
+
+        | otherwise = error "imposible"
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
@@ -342,26 +450,53 @@ transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
 transact_ act db = fst <$> transact act db
 
 {-| Execute a read-only transaction. -}
-transactReadOnly :: (ConcurrentMetaStoreM hnd m)
+transactReadOnly :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
                  => (forall n. AllocReaderM n => Tree key val -> n a)
                  -> ConcurrentDb hnd key val -> m a
-transactReadOnly _ = undefined
+transactReadOnly act db
+    | ConcurrentDb
+      { concurrentDbHandles = hnds
+      , concurrentDbReaders = readers
+      } <- db
+    , ConcurrentHandles
+      { concurrentHandlesMain = hnd
+      } <- hnds
+    = do
+    meta <- getCurrentMeta db
+    liftIO . atomically $ Map.alter (concurrentMetaRevision meta) addOne readers
+    v <- evalConcurrentT (act $ concurrentMetaTree meta) (ReaderEnv hnd)
+    liftIO . atomically $ Map.alter (concurrentMetaRevision meta) subOne readers
+    return v
+  where
+    addOne Nothing = Just 1
+    addOne (Just x) = Just $! x + 1
+    subOne Nothing = Nothing
+    subOne (Just 0) = Nothing
+    subOne (Just x) = Just $! x - 1
 
 {-| Get the current meta data. -}
-currentMeta :: (MonadIO m, Key k, Value v)
-            => ConcurrentDb hnd k v -> m (ConcurrentMeta k v)
-currentMeta db
-    | ConcurrentDb { concurrentCurrentMeta = v } <- db
+getCurrentMeta :: (MonadIO m, Key k, Value v)
+               => ConcurrentDb hnd k v -> m (ConcurrentMeta k v)
+getCurrentMeta db
+    | ConcurrentDb { concurrentDbCurrentMeta = v } <- db
     = liftIO (atomically $ readTVar v) >>= \case
-        Meta1 -> return $! concurrentMeta1 db
-        Meta2 -> return $! concurrentMeta2 db
+        Meta1 -> return $! concurrentDbMeta1 db
+        Meta2 -> return $! concurrentDbMeta2 db
 
-setCurrentMeta :: (MonadIO m, Key k, Value v)
+{-| Write the new metadata, and switch the pointer to the current one. -}
+setCurrentMeta :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
                => ConcurrentDb hnd k v -> ConcurrentMeta k v -> m (ConcurrentDb hnd k v)
 setCurrentMeta db new
-    | ConcurrentDb { concurrentCurrentMeta = v } <- db
+    | ConcurrentDb
+      { concurrentDbCurrentMeta = v
+      , concurrentDbHandles = hnds
+      } <- db
     = liftIO (atomically $ readTVar v) >>= \case
-        Meta1 -> do liftIO . atomically $ writeTVar v Meta2
-                    return $! db { concurrentMeta2 = new }
-        Meta2 -> do liftIO . atomically $ writeTVar v Meta1
-                    return $! db { concurrentMeta1 = new }
+        Meta1 -> do
+            putConcurrentMeta (concurrentHandlesMetadata2 hnds) 0 new
+            liftIO . atomically $ writeTVar v Meta2
+            return $! db { concurrentDbMeta2 = new }
+        Meta2 -> do
+            putConcurrentMeta (concurrentHandlesMetadata1 hnds) 0 new
+            liftIO . atomically $ writeTVar v Meta1
+            return $! db { concurrentDbMeta1 = new }

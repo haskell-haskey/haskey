@@ -10,6 +10,7 @@ import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Value
 
 import Data.Binary (Binary)
+import Data.Hashable (Hashable)
 import Data.Typeable (Typeable)
 import Data.Word
 import Numeric (showHex)
@@ -49,7 +50,7 @@ pageIdToNodeId = NodeId . fromPageId
 
 {-| Transaction ids that are used as revision numbers. -}
 newtype TxId = TxId { fromTxId :: Word64 }
-  deriving (Eq, Ord, Binary, Num, Value, Key, Typeable)
+  deriving (Eq, Ord, Binary, Num, Hashable, Value, Key, Typeable)
 
 instance Show PageId where
     showsPrec _ (PageId n) = showString "0x" . showHex n

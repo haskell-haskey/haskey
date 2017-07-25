@@ -13,10 +13,11 @@ module Data.BTree.Alloc.Concurrent (
   -- * Allocator
   ConcurrentDb(..)
 
-  -- * Open and create databases
+  -- * Open, close and create databases
 , ConcurrentHandles(..)
 , createConcurrentDb
 , openConcurrentDb
+, closeConcurrentDb
 
   -- * Manipulation and transactions
 , module Data.BTree.Alloc.Transaction
@@ -90,14 +91,6 @@ instance (Binary k, Binary v) => Binary (ConcurrentMeta k v) where
    A store supporting this page allocator should be an instance of this class.
  -}
 class StoreM hnd m => ConcurrentMetaStoreM hnd m where
-    {-| Read a the meta-data structure from a certain page. -}
-    getConcurrentMeta :: (Key k, Value v)
-                      => hnd
-                      -> Proxy k
-                      -> Proxy v
-                      -> PageId
-                      -> m (ConcurrentMeta k v)
-
     {-| Write the meta-data structure to a certain page. -}
     putConcurrentMeta :: (Key k, Value v)
                       => hnd
@@ -109,7 +102,7 @@ class StoreM hnd m => ConcurrentMetaStoreM hnd m where
        contains some meta-data, return 'Nothing'.
      -}
     openConcurrentMeta :: (Key k, Value v)
-                       => ConcurrentHandles hnds
+                       => ConcurrentHandles hnd
                        -> Proxy k
                        -> Proxy v
                        -> m (Maybe (ConcurrentMeta k v))
@@ -324,6 +317,21 @@ openConcurrentDb hnds = do
         Nothing -> return Nothing
         Just meta0 -> Just <$> newConcurrentDb hnds meta0
 
+{-| Close the handles of the database. -}
+closeConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
+                  => ConcurrentDb hnd k v
+                  -> m ()
+closeConcurrentDb db
+    | ConcurrentDb
+      { concurrentDbHandles = hnds
+      } <- db
+    , ConcurrentHandles{..} <- hnds
+    = do
+    closeHandle concurrentHandlesMain
+    closeHandle concurrentHandlesMetadata1
+    closeHandle concurrentHandlesMetadata2
+
+{-| Create a new concurrent database with handles and metadata provided. -}
 newConcurrentDb :: (Key k, Value v, MonadIO m)
                 => ConcurrentHandles hnd
                 -> ConcurrentMeta k v

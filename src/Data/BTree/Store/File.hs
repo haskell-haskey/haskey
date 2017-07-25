@@ -55,6 +55,7 @@ import GHC.Generics (Generic)
 import System.IO
 
 import Data.BTree.Alloc.Append
+import Data.BTree.Alloc.Concurrent
 import Data.BTree.Alloc.PageReuse
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
@@ -71,6 +72,8 @@ data Page =
       PageAppendMeta (AppendMeta key val)
     | forall key val.        (Key key, Value val) =>
       PagePageReuseMeta (PageReuseMeta key val)
+    | forall key val.        (Key key, Value val) =>
+      PageConcurrentMeta (ConcurrentMeta key val)
     deriving (Typeable)
 
 {-| Encode a page padding it to the maxim page size.
@@ -108,7 +111,8 @@ decode g = fromMaybe (error "decoding unexpectedly failed") . decodeMaybe g
 
 deriving instance Show Page
 
-data BPage = BPageEmpty | BPageNode | BPageAppendMeta | BPagePageReuseMeta
+data BPage = BPageEmpty | BPageNode
+           | BPageAppendMeta | BPagePageReuseMeta | BPageConcurrentMeta
            deriving (Eq, Generic, Show)
 instance Binary BPage where
 
@@ -118,6 +122,7 @@ putPage PageEmpty = B.put BPageEmpty
 putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 putPage (PagePageReuseMeta m) = B.put BPagePageReuseMeta >> B.put m
+putPage (PageConcurrentMeta m) = B.put BPageConcurrentMeta >> B.put m
 
 {-| Decoder for empty pages. Will return a 'PageEmpty'. -}
 getEmptyPage :: Get Page
@@ -176,6 +181,21 @@ getPagePageReuseMeta k v = B.get >>= \case
                    -> Get (PageReuseMeta key val)
     getPageReuseMeta' _ _ = B.get
 
+{-| Decoder for a page containg 'ConcurrentMeta'. Will return a 'PageConcurrentMeta'. -}
+getPageConcurrentMeta :: (Key key, Value val)
+                  => Proxy key
+                  -> Proxy val
+                  -> Get Page
+getPageConcurrentMeta k v = B.get >>= \case
+    BPageConcurrentMeta -> PageConcurrentMeta <$> getConcurrentMeta' k v
+    x                   -> fail $ "unexpected " ++ show x
+  where
+    getConcurrentMeta' :: (Key key, Value val)
+                   => Proxy key
+                   -> Proxy val
+                   -> Get (ConcurrentMeta key val)
+    getConcurrentMeta' _ _ = B.get
+
 --------------------------------------------------------------------------------
 
 {-| A collection of files, each associated with a certain @fp@ handle.
@@ -202,7 +222,7 @@ lookupHandle fp = (getFileHandle <$>) . M.lookup fp
  -}
 newtype StoreT fp m a = StoreT
     { fromStoreT :: MaybeT (StateT (Files fp) m) a
-    } deriving (Applicative, Functor, Monad)
+    } deriving (Applicative, Functor, Monad, MonadIO)
 
 {-| Run the storage operations in the 'StoreT' monad, given a collection of
    open files.
@@ -369,6 +389,37 @@ instance (Applicative m, Monad m, MonadIO m) =>
             Just x -> return $ Just (x, pid)
             Nothing -> if pid == 0 then return Nothing else go h ps (pid - 1)
 
+instance (Applicative m, Monad m, MonadIO m) =>
+    ConcurrentMetaStoreM FilePath (StoreT FilePath m)
+  where
+    putConcurrentMeta fp i meta = do
+        handle   <- StoreT . MaybeT $ gets (lookupHandle fp)
+        pageSize <- maxPageSize
+        StoreT $ writePage handle i
+                           (PageConcurrentMeta meta)
+                           pageSize
+
+    openConcurrentMeta fps k v = do
+        fh1 <- StoreT . MaybeT $ gets (lookupHandle $ concurrentHandlesMetadata1 fps)
+        fh2 <- StoreT . MaybeT $ gets (lookupHandle $ concurrentHandlesMetadata2 fps)
+
+        pageSize <- maxPageSize
+        meta1 <- StoreT $ readConcurrentMetaNode fh1 k v 0 pageSize
+        meta2 <- StoreT $ readConcurrentMetaNode fh2 k v 0 pageSize
+        case (meta1, meta2) of
+            (Nothing, Nothing) -> return Nothing
+            (Just m , Nothing) -> do PageConcurrentMeta meta <- return m
+                                     return . Just $! coerce meta
+            (Nothing, Just m ) -> do PageConcurrentMeta meta <- return m
+                                     return . Just $! coerce meta
+            (Just m , Just n ) -> do
+                PageConcurrentMeta x <- return m
+                PageConcurrentMeta y <- return n
+                if concurrentMetaRevision x > concurrentMetaRevision y
+                    then return . Just $! coerce x
+                    else return . Just $! coerce y
+
+
 --------------------------------------------------------------------------------
 
 readAppendMetaNode :: (MonadIO m, Key key, Value val)
@@ -394,4 +445,17 @@ readPageReuseMetaNode h k v (PageId pid) size = liftIO $ do
     hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
     bs <- hGet h (fromIntegral size)
     return $ decodeMaybe (getPagePageReuseMeta k v) bs
+
+readConcurrentMetaNode :: (MonadIO m, Key key, Value val)
+                       => Handle
+                       -> Proxy key
+                       -> Proxy val
+                       -> PageId
+                       -> PageSize
+                       -> m (Maybe Page)
+readConcurrentMetaNode h k v (PageId pid) size = liftIO $ do
+    hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
+    bs <- hGet h (fromIntegral size)
+    return $ decodeMaybe (getPageConcurrentMeta k v) bs
+
 --------------------------------------------------------------------------------

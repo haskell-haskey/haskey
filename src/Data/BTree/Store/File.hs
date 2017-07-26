@@ -29,7 +29,7 @@ module Data.BTree.Store.File (
 , getPageNode
 , getPageAppendMeta
 ) where
-import Control.Applicative (Applicative, (<$>))
+import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.State.Class

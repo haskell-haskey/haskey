@@ -1,5 +1,7 @@
+{-# LANGUAGE ConstraintKinds #-}
 module Data.BTree.Utils.STM.Map where
 
+import Control.Applicative ((<$>))
 import Control.Concurrent.STM (STM)
 
 import qualified Focus as F

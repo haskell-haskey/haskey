@@ -36,6 +36,7 @@ module Data.BTree.Store.Binary (
 
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Identity
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
@@ -57,6 +58,7 @@ import qualified Data.Map as M
 import GHC.Generics (Generic)
 
 import Data.BTree.Alloc.Append
+import Data.BTree.Alloc.Concurrent
 import Data.BTree.Alloc.PageReuse
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
@@ -72,6 +74,8 @@ data Page = PageEmpty
       PageAppendMeta (AppendMeta key val)
     | forall key val.        (Key key, Value val) =>
       PagePageReuseMeta (PageReuseMeta key val)
+    | forall key val.        (Key key, Value val) =>
+      PageConcurrentMeta (ConcurrentMeta key val)
     deriving (Typeable)
 
 {-| Encode a page. -}
@@ -94,7 +98,8 @@ decode g = B.runGet g . fromStrict
 
 deriving instance Show Page
 
-data BPage = BPageEmpty | BPageNode | BPageAppendMeta | BPagePageReuseMeta
+data BPage = BPageEmpty | BPageNode
+           | BPageAppendMeta | BPagePageReuseMeta | BPageConcurrentMeta
            deriving (Eq, Generic, Show)
 instance Binary BPage where
 
@@ -104,6 +109,7 @@ putPage PageEmpty = B.put BPageEmpty
 putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
 putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
 putPage (PagePageReuseMeta m) = B.put BPagePageReuseMeta >> B.put m
+putPage (PageConcurrentMeta m) = B.put BPageConcurrentMeta >> B.put m
 
 {-| Decoder for empty pages. Will return a 'PageEmpty'. -}
 getEmptyPage :: Get Page
@@ -162,6 +168,21 @@ getPagePageReuseMeta k v = B.get >>= \case
                    -> Get (PageReuseMeta key val)
     getPageReuseMeta' _ _ = B.get
 
+{-| Decoder for a page containg 'ConcurrentMeta'. Will return a 'PageConcurrentMeta'. -}
+getPageConcurrentMeta :: (Key key, Value val)
+                  => Proxy key
+                  -> Proxy val
+                  -> Get Page
+getPageConcurrentMeta k v = B.get >>= \case
+    BPageConcurrentMeta -> PageConcurrentMeta <$> getConcurrentMeta' k v
+    x                   -> fail $ "unexpected " ++ show x
+  where
+    getConcurrentMeta' :: (Key key, Value val)
+                   => Proxy key
+                   -> Proxy val
+                   -> Get (ConcurrentMeta key val)
+    getConcurrentMeta' _ _ = B.get
+
 --------------------------------------------------------------------------------
 
 {-| A file containing a collection of pages. -}
@@ -178,7 +199,7 @@ type Files fp = Map fp File
  -}
 newtype StoreT fp m a = StoreT
     { fromStoreT :: MaybeT (StateT (Files fp) m) a
-    } deriving (Applicative, Functor, Monad)
+    } deriving (Applicative, Functor, Monad, MonadIO)
 
 {-| Run the storage operations in the 'StoreT' monad, given a collection of
    'File's.
@@ -210,18 +231,20 @@ evalStore :: StoreT String Identity a -> Maybe a
 evalStore = fst . runStore
 
 {-| Construct a store with an empty database with name of type @hnd@. -}
-emptyStore :: Ord hnd => hnd -> Files hnd
-emptyStore hnd = M.fromList [(hnd, M.empty)]
+emptyStore :: Files hnd
+emptyStore = M.empty
 
 --------------------------------------------------------------------------------
 
 instance (Ord fp, Applicative m, Monad m) =>
     StoreM fp (StoreT fp m)
   where
-    -- -- openStore fp = StoreT $ do
-    -- --     modify (M.insertWith (flip const) fp M.empty)
-    -- --     return fp
-    -- closeStore _ = return ()
+    openHandle fp = StoreT $
+        modify (M.insertWith (flip const) fp M.empty)
+
+    closeHandle fp = StoreT $
+        modify (M.delete fp)
+
     nodePageSize = return $ \h ->
         fromIntegral . BL.length . B.runPut . putPage . PageNode h
 
@@ -302,5 +325,30 @@ instance (Ord fp, Applicative m, Monad m) =>
             case decodeMaybe (getPagePageReuseMeta k v) bs of
                 Nothing -> if pid == 0 then return Nothing else go (pid - 1)
                 Just x -> return $ Just (x, pid)
+
+instance (Ord fp, Applicative m, Monad m) =>
+    ConcurrentMetaStoreM fp (StoreT fp m)
+  where
+    putConcurrentMeta h i meta = StoreT $
+        modify (M.update (Just . M.insert i (encode (PageConcurrentMeta meta))) h)
+
+    openConcurrentMeta hnds k v = do
+        Just bs1 <- StoreT $ gets (M.lookup (concurrentHandlesMetadata1 hnds) >=> M.lookup 0)
+        Just bs2 <- StoreT $ gets (M.lookup (concurrentHandlesMetadata2 hnds) >=> M.lookup 0)
+
+        let meta1 = decodeMaybe (getPageConcurrentMeta k v) bs1
+            meta2 = decodeMaybe (getPageConcurrentMeta k v) bs2
+        case (meta1, meta2) of
+            (Nothing, Nothing) -> return Nothing
+            (Just m , Nothing) -> do PageConcurrentMeta meta <- return m
+                                     return . Just $! coerce meta
+            (Nothing, Just m ) -> do PageConcurrentMeta meta <- return m
+                                     return . Just $! coerce meta
+            (Just m , Just n ) -> do
+                PageConcurrentMeta x <- return m
+                PageConcurrentMeta y <- return n
+                if concurrentMetaRevision x > concurrentMetaRevision y
+                    then return . Just $! coerce x
+                    else return . Just $! coerce y
 
 --------------------------------------------------------------------------------

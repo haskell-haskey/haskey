@@ -22,14 +22,10 @@ module Data.BTree.Alloc.PageReuse (
 , openPageReuseDb
 
   -- * Manipulation and transactions
-, Transaction
+, module Data.BTree.Alloc.Transaction
 , transact
 , transact_
 , transactReadOnly
-, commit
-, commit_
-, abort
-, abort_
 
   -- * Storage requirements
 , PageReuseMeta(..)
@@ -49,6 +45,7 @@ import qualified Data.Set as S
 import GHC.Generics (Generic)
 
 import Data.BTree.Alloc.Class
+import Data.BTree.Alloc.Transaction
 import Data.BTree.Impure.Delete
 import Data.BTree.Impure.Insert
 import Data.BTree.Impure.Lookup
@@ -323,27 +320,6 @@ createPageReuseDb hnd = do
         }
 
 --------------------------------------------------------------------------------
-
-{-| A committed or aborted transaction, with a return value of type @a@. -}
-data Transaction key val a =
-      Commit (Tree key val) a
-    | Abort a
-
-{-| Commit the new tree and return a computed value. -}
-commit :: AllocM n => a -> Tree key val -> n (Transaction key val a)
-commit v t = return $ Commit t v
-
-{-| Commit the new tree, without return a computed value. -}
-commit_ :: AllocM n => Tree key val -> n (Transaction key val ())
-commit_ = commit ()
-
-{-| Abort the transaction and return a computed value. -}
-abort :: AllocM n => a -> n (Transaction key val a)
-abort = return . Abort
-
-{-| Abort the transaction, without returning a computed value. -}
-abort_ :: AllocM n => n (Transaction key val ())
-abort_ = return $ Abort ()
 
 {-| Execute a write transaction, with a result. -}
 transact :: (PageReuseMetaStoreM hnd m, Key key, Value val)

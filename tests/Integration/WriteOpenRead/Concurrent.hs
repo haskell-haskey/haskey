@@ -145,7 +145,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 writeTransaction :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
                  => TestTransaction k v
                  -> ConcurrentDb hnd k v
-                 -> m (ConcurrentDb hnd k v)
+                 -> m ()
 writeTransaction (TestTransaction txType actions) =
     transaction
   where

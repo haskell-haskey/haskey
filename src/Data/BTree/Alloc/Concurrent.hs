@@ -66,13 +66,15 @@ import qualified Data.BTree.Utils.STM.Map as Map
 
 data CurrentMetaPage = Meta1 | Meta2
 
-{-| An active page allocator with concurrency and page reuse. -}
+{-| An active page allocator with concurrency and page reuse.
+
+   This can be shared among threads. -}
 data ConcurrentDb hnd k v = ConcurrentDb
     { concurrentDbHandles :: ConcurrentHandles hnd
     , concurrentDbWriterLock :: MVar ()
     , concurrentDbCurrentMeta :: TVar CurrentMetaPage
-    , concurrentDbMeta1 :: ConcurrentMeta k v
-    , concurrentDbMeta2 :: ConcurrentMeta k v
+    , concurrentDbMeta1 :: TVar (ConcurrentMeta k v)
+    , concurrentDbMeta2 :: TVar (ConcurrentMeta k v)
     , concurrentDbReaders :: Map TxId Integer
     }
 
@@ -302,11 +304,11 @@ openConcurrentHandles ConcurrentHandles{..} = do
  -}
 createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
                    => ConcurrentHandles hnd -> m (ConcurrentDb hnd k v)
-createConcurrentDb hnds =
-    -- Create empty database, and write meta pages
-    newConcurrentDb hnds meta0
-        >>= setCurrentMeta meta0
-        >>= setCurrentMeta meta0
+createConcurrentDb hnds = do
+    db <- newConcurrentDb hnds meta0
+    setCurrentMeta meta0 db
+    setCurrentMeta meta0 db
+    return db
   where
     meta0 = ConcurrentMeta { concurrentMetaRevision = 0
                            , concurrentMetaTree = Tree zeroHeight Nothing
@@ -343,12 +345,14 @@ newConcurrentDb hnds meta0 = do
     readers <- liftIO Map.newIO
     meta    <- liftIO $ newTVarIO Meta1
     lock    <- liftIO $ newMVar ()
+    meta1   <- liftIO $ newTVarIO meta0
+    meta2   <- liftIO $ newTVarIO meta0
     return $! ConcurrentDb
         { concurrentDbHandles = hnds
         , concurrentDbWriterLock = lock
         , concurrentDbCurrentMeta = meta
-        , concurrentDbMeta1 = meta0
-        , concurrentDbMeta2 = meta0
+        , concurrentDbMeta1 = meta1
+        , concurrentDbMeta2 = meta2
         , concurrentDbReaders = readers
         }
 
@@ -357,7 +361,7 @@ newConcurrentDb hnds meta0 = do
 {-| Execute a write transaction, with a result. -}
 transact :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
-         -> ConcurrentDb hnd key val -> m (ConcurrentDb hnd key val, a)
+         -> ConcurrentDb hnd key val -> m a
 transact act db
     | ConcurrentDb
       { concurrentDbHandles = hnds
@@ -383,7 +387,7 @@ transact act db
                          , writerReusablePagesOn = True }
     (tx, env) <- runConcurrentT (act $ concurrentMetaTree meta) wEnv
     case tx of
-        Abort v -> return (db, v)
+        Abort v -> return v
         Commit newTree v -> do
             -- Save the free'd pages to the free page database
             -- don't try to use pages from the free database when doing so
@@ -395,8 +399,8 @@ transact act db
                     , concurrentMetaTree     = newTree
                     , concurrentMetaFreeTree = freeTree'
                     }
-            db' <- setCurrentMeta newMeta db
-            return (db', v)
+            setCurrentMeta newMeta db
+            return v
   where
     withLock l action = do
         () <- liftIO (takeMVar l)
@@ -457,8 +461,8 @@ transact act db
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
           => (forall n. AllocM n => Tree key val -> n (Transaction key val ()))
-          -> ConcurrentDb hnd key val -> m (ConcurrentDb hnd key val)
-transact_ act db = fst <$> transact act db
+          -> ConcurrentDb hnd key val -> m ()
+transact_ act db = void $ transact act db
 
 {-| Execute a read-only transaction. -}
 transactReadOnly :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
@@ -490,13 +494,13 @@ getCurrentMeta :: (MonadIO m, Key k, Value v)
                => ConcurrentDb hnd k v -> m (ConcurrentMeta k v)
 getCurrentMeta db
     | ConcurrentDb { concurrentDbCurrentMeta = v } <- db
-    = liftIO (atomically $ readTVar v) >>= \case
-        Meta1 -> return $! concurrentDbMeta1 db
-        Meta2 -> return $! concurrentDbMeta2 db
+    = liftIO . atomically $ readTVar v >>= \case
+        Meta1 -> readTVar $ concurrentDbMeta1 db
+        Meta2 -> readTVar $ concurrentDbMeta2 db
 
 {-| Write the new metadata, and switch the pointer to the current one. -}
 setCurrentMeta :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
-               => ConcurrentMeta k v -> ConcurrentDb hnd k v -> m (ConcurrentDb hnd k v)
+               => ConcurrentMeta k v -> ConcurrentDb hnd k v -> m ()
 setCurrentMeta new db
     | ConcurrentDb
       { concurrentDbCurrentMeta = v
@@ -505,11 +509,11 @@ setCurrentMeta new db
     = liftIO (atomically $ readTVar v) >>= \case
         Meta1 -> do
             putConcurrentMeta (concurrentHandlesMetadata2 hnds) 0 new
-            liftIO . atomically $ writeTVar v Meta2
-            -- Race condition! what if another thread writes this variable?
-            return $! db { concurrentDbMeta2 = new }
+            liftIO . atomically $ do
+                writeTVar v Meta2
+                writeTVar (concurrentDbMeta2 db) new
         Meta2 -> do
             putConcurrentMeta (concurrentHandlesMetadata1 hnds) 0 new
-            liftIO . atomically $ writeTVar v Meta1
-            -- Race condition! what if another thread writes this variable?
-            return $! db { concurrentDbMeta1 = new }
+            liftIO . atomically $ do
+                writeTVar v Meta1
+                writeTVar (concurrentDbMeta1 db) new

@@ -300,7 +300,11 @@ createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
                    => ConcurrentHandles hnd -> m (ConcurrentDb hnd k v)
 createConcurrentDb hnds = do
     openConcurrentHandles hnds
+
+    -- Create empty database, and write meta pages
     newConcurrentDb hnds meta0
+        >>= setCurrentMeta meta0
+        >>= setCurrentMeta meta0
   where
     meta0 = ConcurrentMeta { concurrentMetaRevision = 0
                            , concurrentMetaTree = Tree zeroHeight Nothing
@@ -392,7 +396,7 @@ transact act db
                     , concurrentMetaTree     = newTree
                     , concurrentMetaFreeTree = freeTree'
                     }
-            db' <- setCurrentMeta db newMeta
+            db' <- setCurrentMeta newMeta db
             return (db', v)
   where
     withLock l action = do
@@ -493,8 +497,8 @@ getCurrentMeta db
 
 {-| Write the new metadata, and switch the pointer to the current one. -}
 setCurrentMeta :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
-               => ConcurrentDb hnd k v -> ConcurrentMeta k v -> m (ConcurrentDb hnd k v)
-setCurrentMeta db new
+               => ConcurrentMeta k v -> ConcurrentDb hnd k v -> m (ConcurrentDb hnd k v)
+setCurrentMeta new db
     | ConcurrentDb
       { concurrentDbCurrentMeta = v
       , concurrentDbHandles = hnds

@@ -140,7 +140,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     openAndWrite hnds tx = flip FS.execStoreT FS.emptyStore $ do
         db  <- open hnds
         db' <- writeTransaction tx db
-        closeConcurrentDb db
+        closeConcurrentDb db'
 
     open hnds = fromJust <$> openConcurrentDb hnds
 

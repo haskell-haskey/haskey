@@ -507,8 +507,10 @@ setCurrentMeta new db
         Meta1 -> do
             putConcurrentMeta (concurrentHandlesMetadata2 hnds) 0 new
             liftIO . atomically $ writeTVar v Meta2
+            -- Race condition! what if another thread writes this variable?
             return $! db { concurrentDbMeta2 = new }
         Meta2 -> do
             putConcurrentMeta (concurrentHandlesMetadata1 hnds) 0 new
             liftIO . atomically $ writeTVar v Meta1
+            -- Race condition! what if another thread writes this variable?
             return $! db { concurrentDbMeta1 = new }

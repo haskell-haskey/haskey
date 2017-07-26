@@ -121,8 +121,9 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     create :: ConcurrentHandles FilePath
            -> IO (Maybe (ConcurrentDb FilePath Integer Integer), FS.Files FilePath)
     create hnds = flip FS.runStoreT FS.emptyStore $ do
+        openConcurrentHandles hnds
         db <- createConcurrentDb hnds
-        closeConcurrentDb db
+        closeConcurrentHandles hnds
         return db
 
     openAndRead :: ConcurrentHandles FilePath
@@ -130,7 +131,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     openAndRead hnds = fromJust <$> FS.evalStoreT (do
         db <- open hnds
         v  <- readAll db
-        closeConcurrentDb db
+        closeConcurrentHandles hnds
         return v)
         (FS.emptyStore :: FS.Files FilePath)
 
@@ -139,10 +140,10 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                  -> IO (FS.Files FilePath)
     openAndWrite hnds tx = flip FS.execStoreT FS.emptyStore $ do
         db  <- open hnds
-        db' <- writeTransaction tx db
-        closeConcurrentDb db'
+        _   <- writeTransaction tx db
+        closeConcurrentHandles hnds
 
-    open hnds = fromJust <$> openConcurrentDb hnds
+    open hnds = fromJust <$> (openConcurrentHandles hnds >> openConcurrentDb hnds)
 
 --------------------------------------------------------------------------------
 

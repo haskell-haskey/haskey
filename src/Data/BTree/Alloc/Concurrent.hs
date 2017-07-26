@@ -15,9 +15,10 @@ module Data.BTree.Alloc.Concurrent (
 
   -- * Open, close and create databases
 , ConcurrentHandles(..)
+, openConcurrentHandles
+, closeConcurrentHandles
 , createConcurrentDb
 , openConcurrentDb
-, closeConcurrentDb
 
   -- * Manipulation and transactions
 , module Data.BTree.Alloc.Transaction
@@ -295,12 +296,13 @@ openConcurrentHandles ConcurrentHandles{..} = do
     openHandle concurrentHandlesMetadata1
     openHandle concurrentHandlesMetadata2
 
-{-| Open the necessary database handles, and create an empty database. -}
+{-| Open a new concurrent database, with the given handles.
+
+  The handles should already have been opened using 'openConcurrentHandles'.
+ -}
 createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
                    => ConcurrentHandles hnd -> m (ConcurrentDb hnd k v)
-createConcurrentDb hnds = do
-    openConcurrentHandles hnds
-
+createConcurrentDb hnds =
     -- Create empty database, and write meta pages
     newConcurrentDb hnds meta0
         >>= setCurrentMeta meta0
@@ -311,26 +313,23 @@ createConcurrentDb hnds = do
                            , concurrentMetaFreeTree = Tree zeroHeight Nothing
                            }
 
-{-| Open the necessary databse handles, and open an exisiting datbaase. -}
+{-| Open the an existing database, with the given handles.
+
+  The handles should already have been opened using 'openConcurrentHandles'.
+ -}
 openConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
                  => ConcurrentHandles hnd -> m (Maybe (ConcurrentDb hnd k v))
 openConcurrentDb hnds = do
-    openConcurrentHandles hnds
     m <- openConcurrentMeta hnds Proxy Proxy
     case m of
         Nothing -> return Nothing
         Just meta0 -> Just <$> newConcurrentDb hnds meta0
 
 {-| Close the handles of the database. -}
-closeConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
-                  => ConcurrentDb hnd k v
-                  -> m ()
-closeConcurrentDb db
-    | ConcurrentDb
-      { concurrentDbHandles = hnds
-      } <- db
-    , ConcurrentHandles{..} <- hnds
-    = do
+closeConcurrentHandles :: (MonadIO m, ConcurrentMetaStoreM hnd m)
+                       => ConcurrentHandles hnd
+                       -> m ()
+closeConcurrentHandles ConcurrentHandles{..} = do
     closeHandle concurrentHandlesMain
     closeHandle concurrentHandlesMetadata1
     closeHandle concurrentHandlesMetadata2

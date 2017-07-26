@@ -67,8 +67,8 @@ prop_memory_backend = forAll genTestSequence $ \(TestSequence txs) ->
                     ++ "\n    got:     " ++ show read'
 
     create :: (Maybe (PageReuseDb String Integer Integer), Files String)
-    create = runIdentity $ runStoreT (createPageReuseDb "Main")
-                                     (emptyStore "Main")
+    create = runIdentity $ runStoreT (openHandle "Main" >> createPageReuseDb "Main")
+                                     emptyStore
 
     openAndRead db = fromJust . runIdentity $ evalStoreT (open >>= readAll) db
     openAndWrite db tx = runIdentity $ execStoreT (open >>= writeTransaction tx) db

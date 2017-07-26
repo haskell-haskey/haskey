@@ -5,13 +5,11 @@ module Integration.WriteOpenRead.Concurrent where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
 import Control.Applicative ((<$>))
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Identity
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 
@@ -22,14 +20,12 @@ import qualified Data.Map as M
 
 import System.Directory (removeDirectory, removeFile, getTemporaryDirectory)
 import System.FilePath ((</>))
-import System.IO
 import System.IO.Temp (createTempDirectory)
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
 import Data.BTree.Primitives
-import Data.BTree.Store.Class
 import Data.BTree.Store.Binary
 import qualified Data.BTree.Impure as Tree
 import qualified Data.BTree.Store.File as FS
@@ -38,46 +34,45 @@ import Integration.WriteOpenRead.Transactions
 
 tests :: Test
 tests = testGroup "WriteOpenRead.Concurrent"
-    [ {-testProperty "memory backend" prop_memory_backend
-    , -}testProperty "file backend" (monadicIO prop_file_backend)
+    [ testProperty "memory backend" (monadicIO prop_memory_backend)
+    , testProperty "file backend" (monadicIO prop_file_backend)
     ]
 
-{-
-prop_memory_backend :: Property
-prop_memory_backend = forAll genTestSequence $ \(TestSequence txs) ->
-    let (_, idb) = create
-        result   = foldlM (\(db, m) tx -> writeReadTest db tx m)
-                          (idb, M.empty)
-                          txs
-    in case result of
-        Nothing -> False
-        Just _  -> True
+prop_memory_backend :: PropertyM IO ()
+prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
+    idb    <- run $ snd <$> create
+    result <- run . runMaybeT $ foldlM (\(db, m) tx -> writeReadTest db tx m)
+                                       (idb, M.empty)
+                                       txs
+    assert $ isJust result
   where
 
     writeReadTest :: Files String
                   -> TestTransaction Integer Integer
                   -> Map Integer Integer
-                  -> Maybe (Files String, Map Integer Integer)
-    writeReadTest db tx m =
-        let db'      = openAndWrite db tx
-            read'    = openAndRead db'
-            expected = testTransactionResult m tx
-        in if read' == M.toList expected
-            then Just (db', expected)
+                  -> MaybeT IO (Files String, Map Integer Integer)
+    writeReadTest db tx m = do
+        db'      <- openAndWrite db tx
+        read'    <- openAndRead db'
+        let expected = testTransactionResult m tx
+        if read' == M.toList expected
+            then return (db', expected)
             else error $ "error:"
                     ++ "\n    after:   " ++ show tx
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: (Maybe (ConcurrentDb String Integer Integer), Files String)
-    create = runIdentity $ runStoreT (createConcurrentDb defaultConcurrentHandles)
-                                     (emptyStore defaultConcurrentHandles)
+    create :: IO (Maybe (ConcurrentDb String Integer Integer), Files String)
+    create = flip runStoreT emptyStore $ do
+        openConcurrentHandles hnds
+        createConcurrentDb hnds
+      where
+        hnds = defaultConcurrentHandles
 
-    openAndRead db = fromJust . runIdentity $ evalStoreT (open >>= readAll) db
-    openAndWrite db tx = runIdentity $ execStoreT (open >>= writeTransaction tx) db
+    openAndRead db = fromJust <$> evalStoreT (open >>= readAll) db
+    openAndWrite db tx = execStoreT (open >>= writeTransaction tx) db
 
     open = fromJust <$> openConcurrentDb defaultConcurrentHandles
--}
 
 --------------------------------------------------------------------------------
 
@@ -173,5 +168,11 @@ readAll :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
 readAll = transactReadOnly Tree.toList
 
 defaultConcurrentHandles :: ConcurrentHandles String
-defaultConcurrentHandles = undefined
+defaultConcurrentHandles =
+    ConcurrentHandles {
+        concurrentHandlesMain      = "main.db"
+      , concurrentHandlesMetadata1 = "meta.md1"
+      , concurrentHandlesMetadata2 = "meta.md2"
+      }
+
 --------------------------------------------------------------------------------

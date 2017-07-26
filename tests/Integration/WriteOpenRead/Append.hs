@@ -68,8 +68,8 @@ prop_memory_backend = forAllShrink genTestSequence
                     ++ "\n    got:     " ++ show read'
 
     create :: (Maybe (AppendDb String Integer Integer), Files String)
-    create = runIdentity $ runStoreT (createAppendDb "Main")
-                                     (emptyStore "Main")
+    create = runIdentity $ runStoreT (openHandle "Main" >> createAppendDb "Main")
+                                     emptyStore
 
     openAndRead db = fromJust . runIdentity $ evalStoreT (open >>= readAll) db
     openAndWrite db tx = runIdentity $ execStoreT (open >>= writeTransaction tx) db

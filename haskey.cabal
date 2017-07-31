@@ -21,6 +21,9 @@ library
     Data.BTree.Alloc
     Data.BTree.Alloc.Class
     Data.BTree.Alloc.Concurrent
+    Data.BTree.Alloc.Concurrent.Database
+    Data.BTree.Alloc.Concurrent.Meta
+    Data.BTree.Alloc.Concurrent.Monad
     Data.BTree.Alloc.Transaction
     Data.BTree.Impure
     Data.BTree.Impure.Delete

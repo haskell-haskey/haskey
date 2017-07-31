@@ -293,39 +293,14 @@ instance (Applicative m, Monad m, MonadIO m) =>
                            (PageConcurrentMeta meta)
                            pageSize
 
-    openConcurrentMeta fps k v = do
-        fh1 <- StoreT . MaybeT $ gets (lookupHandle $ concurrentHandlesMetadata1 fps)
-        fh2 <- StoreT . MaybeT $ gets (lookupHandle $ concurrentHandlesMetadata2 fps)
-
+    readConcurrentMeta fp k v = do
+        fh <- StoreT . MaybeT $ gets (lookupHandle fp)
         pageSize <- maxPageSize
-        meta1 <- StoreT $ readConcurrentMetaNode fh1 k v 0 pageSize
-        meta2 <- StoreT $ readConcurrentMetaNode fh2 k v 0 pageSize
-        case (meta1, meta2) of
-            (Nothing, Nothing) -> return Nothing
-            (Just m , Nothing) -> do PageConcurrentMeta meta <- return m
-                                     return . Just $! coerce meta
-            (Nothing, Just m ) -> do PageConcurrentMeta meta <- return m
-                                     return . Just $! coerce meta
-            (Just m , Just n ) -> do
-                PageConcurrentMeta x <- return m
-                PageConcurrentMeta y <- return n
-                if concurrentMetaRevision x > concurrentMetaRevision y
-                    then return . Just $! coerce x
-                    else return . Just $! coerce y
 
-
---------------------------------------------------------------------------------
-
-readConcurrentMetaNode :: (MonadIO m, Key key, Value val)
-                       => Handle
-                       -> Proxy key
-                       -> Proxy val
-                       -> PageId
-                       -> PageSize
-                       -> m (Maybe Page)
-readConcurrentMetaNode h k v (PageId pid) size = liftIO $ do
-    hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
-    bs <- hGet h (fromIntegral size)
-    return $ decodeMaybe (getPageConcurrentMeta k v) bs
+        liftIO $ hSeek fh AbsoluteSeek 0
+        bs <- liftIO $ hGet fh (fromIntegral pageSize)
+        case decodeMaybe (getPageConcurrentMeta k v) bs of
+            Just (PageConcurrentMeta meta) -> return . Just $! coerce meta
+            _ -> return Nothing
 
 --------------------------------------------------------------------------------

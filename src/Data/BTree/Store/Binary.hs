@@ -34,7 +34,6 @@ module Data.BTree.Store.Binary (
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Identity
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
@@ -227,23 +226,10 @@ instance (Ord fp, Applicative m, Monad m) =>
     putConcurrentMeta h i meta = StoreT $
         modify (M.update (Just . M.insert i (encode (PageConcurrentMeta meta))) h)
 
-    openConcurrentMeta hnds k v = do
-        Just bs1 <- StoreT $ gets (M.lookup (concurrentHandlesMetadata1 hnds) >=> M.lookup 0)
-        Just bs2 <- StoreT $ gets (M.lookup (concurrentHandlesMetadata2 hnds) >=> M.lookup 0)
-
-        let meta1 = decodeMaybe (getPageConcurrentMeta k v) bs1
-            meta2 = decodeMaybe (getPageConcurrentMeta k v) bs2
-        case (meta1, meta2) of
-            (Nothing, Nothing) -> return Nothing
-            (Just m , Nothing) -> do PageConcurrentMeta meta <- return m
-                                     return . Just $! coerce meta
-            (Nothing, Just m ) -> do PageConcurrentMeta meta <- return m
-                                     return . Just $! coerce meta
-            (Just m , Just n ) -> do
-                PageConcurrentMeta x <- return m
-                PageConcurrentMeta y <- return n
-                if concurrentMetaRevision x > concurrentMetaRevision y
-                    then return . Just $! coerce x
-                    else return . Just $! coerce y
+    readConcurrentMeta hnd k v = do
+        Just bs <- StoreT $ gets (M.lookup hnd >=> M.lookup 0)
+        case decodeMaybe (getPageConcurrentMeta k v) bs of
+            Just (PageConcurrentMeta meta) -> return . Just $! coerce meta
+            _ -> return Nothing
 
 --------------------------------------------------------------------------------

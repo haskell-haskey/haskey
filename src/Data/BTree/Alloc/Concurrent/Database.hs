@@ -6,7 +6,7 @@ module Data.BTree.Alloc.Concurrent.Database where
 
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Monad (void)
+import Control.Monad (void, unless)
 import Control.Monad.IO.Class
 
 import Data.List (nub)
@@ -17,8 +17,10 @@ import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
 
 import Data.BTree.Alloc.Class
+import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.Meta
 import Data.BTree.Alloc.Concurrent.Monad
+import Data.BTree.Alloc.Concurrent.FreePages.Save
 import Data.BTree.Alloc.Transaction
 import Data.BTree.Impure
 import Data.BTree.Primitives
@@ -164,7 +166,7 @@ transact act db
                          , writerReaders = readers
                          , writerNewlyFreedPages = []
                          , writerAllocdPages = S.empty
-                         , writerFreePages = []
+                         , writerFreedDirtyPages = []
                          , writerFreeTree = concurrentMetaFreeTree meta
                          , writerReuseablePages = []
                          , writerReuseablePagesTxId = Nothing
@@ -175,7 +177,7 @@ transact act db
         Commit newTree v -> do
             -- Save the free'd pages to the free page database
             -- don't try to use pages from the free database when doing so
-            freeTree' <- saveFreePages (env { writerReusablePagesOn = False })
+            freeTree' <- saveFreePages' (env { writerReusablePagesOn = False })
 
             -- Commit
             let newMeta = ConcurrentMeta
@@ -192,55 +194,25 @@ transact act db
         liftIO (putMVar l ())
         return v
 
-    -- This function assumes that **inserting the new set of free pages** that
-    -- are free'd in this specific transaction, **will eventually not free any
-    -- pages itself** after sufficient iteration. Note that this is only
-    -- possible because we can reuse dirty pages in the same transaction. If
-    -- this is not the case, this function loops forever.
-    saveFreePages :: (MonadIO m, ConcurrentMetaStoreM hnd m)
-                  => WriterEnv hnd
-                  -> m (Tree TxId [PageId])
-    saveFreePages env = do
-        let freeEnv = env { writerNewlyFreedPages = [] }
-        (freeTree', env') <- runConcurrentT (insertFreePages env (writerFreeTree env)) freeEnv
-        case writerNewlyFreedPages env' of
-            [] -> return freeTree'
-            xs  -> let env'' = env' { writerNewlyFreedPages =
-                                        nub (xs ++ writerNewlyFreedPages env')
-                                    , writerFreeTree = freeTree' } in
-                   saveFreePages env'' -- Register newly free'd pages
+    saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM hnd m)
+                   => WriterEnv hnd
+                   -> m (Tree TxId [PageId])
+    saveFreePages' toFree = do
+        let env      = toFree { writerNewlyFreedPages = [] }
+            freeTree = writerFreeTree toFree
 
-    insertFreePages :: AllocM n
-                    => WriterEnv hnd
-                    -> Tree TxId [PageId]
-                    -> n (Tree TxId [PageId])
-    insertFreePages env t
-        -- No newly free'd pages in this tx, and no pages reused from free page db
-        | []      <- writerNewlyFreedPages env
-        , Nothing <- writerReuseablePagesTxId env
-        = return t
+        (freeTree', env') <- runConcurrentT (saveFreePages toFree freeTree) env
 
-        -- Only pages reused from free page db, no newly free'd pages in this tx
-        | []      <- writerNewlyFreedPages env
-        , Just k' <- writerReuseablePagesTxId env
-        , v'      <- writerReuseablePages env
-        = if null v' then deleteTree k' t else insertTree k' v' t
-
-        -- Only newly free'd pages in this tx, and no pages reused from free page db
-        | v       <- writerNewlyFreedPages env
-        , k       <- writerTxId env
-        , Nothing <- writerReuseablePagesTxId env
-        = insertTree k v t
-
-        -- Pages reused from free page db, and newly free'd pages in this tx
-        | v       <- writerNewlyFreedPages env
-        , k       <- writerTxId env
-        , v'      <- writerReuseablePages env
-        , Just k' <- writerReuseablePagesTxId env
-        = (if null v' then deleteTree k' t else insertTree k' v' t)
-        >>= insertTree k v
-
-        | otherwise = error "imposible"
+        -- Did we free any new pages? We have to put them in the free tree!
+        -- Did we free any new dirty pages? We have to put them in the free tree!
+        if null (writerNewlyFreedPages env') &&
+           writerFreedDirtyPages toFree == writerFreedDirtyPages env'
+           then return freeTree'
+           else do
+               let xs = writerNewlyFreedPages env' ++ writerNewlyFreedPages toFree
+               unless (nub xs == xs) $ error "fack"
+               saveFreePages' $ env' { writerNewlyFreedPages = xs
+                                     , writerFreeTree        = freeTree' }
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)

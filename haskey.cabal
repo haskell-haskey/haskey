@@ -22,6 +22,9 @@ library
     Data.BTree.Alloc.Class
     Data.BTree.Alloc.Concurrent
     Data.BTree.Alloc.Concurrent.Database
+    Data.BTree.Alloc.Concurrent.Environment
+    Data.BTree.Alloc.Concurrent.FreePages.Query
+    Data.BTree.Alloc.Concurrent.FreePages.Save
     Data.BTree.Alloc.Concurrent.Meta
     Data.BTree.Alloc.Concurrent.Monad
     Data.BTree.Alloc.Transaction

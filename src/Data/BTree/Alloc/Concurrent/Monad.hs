@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RankNTypes #-}
@@ -30,30 +31,17 @@ import qualified Data.BTree.Utils.STM.Map as Map
 --
 -- The monad has access to a 'ConcurrentMetaStoreM' back-end which manages can
 -- store and retreive the corresponding metadata.
-newtype ConcurrentT env m a = ConcurrentT
-  { fromConcurrentT :: forall hnd. ConcurrentMetaStoreM  hnd m =>
-      StateT (env hnd) m a
-  }
-
-instance Functor (ConcurrentT env m) where
-    fmap f (ConcurrentT m) = ConcurrentT (fmap f m)
-
-instance Applicative (ConcurrentT env m) where
-    pure a = ConcurrentT (pure a)
-    ConcurrentT f <*> ConcurrentT a = ConcurrentT (f <*> a)
-
-instance Monad (ConcurrentT env m) where
-    return = pure
-    ConcurrentT m >>= f = ConcurrentT (m >>= fromConcurrentT . f)
+newtype ConcurrentT env hnd m a = ConcurrentT { fromConcurrentT :: StateT (env hnd) m a }
+                                deriving (Functor, Applicative, Monad, MonadIO, MonadState (env hnd))
 
 -- | Run the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment. -}
-runConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env m a -> env hnd -> m (a, env hnd)
+runConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env hnd m a -> env hnd -> m (a, env hnd)
 runConcurrentT m = runStateT (fromConcurrentT m)
 
 -- | Evaluate the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment. -}
-evalConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env m a -> env hnd -> m a
+evalConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env hnd m a -> env hnd -> m a
 evalConcurrentT m env = fst <$> runConcurrentT m env
 
 newtype ReaderEnv hnd = ReaderEnv { readerHnd :: hnd }
@@ -82,7 +70,7 @@ data WriterEnv hnd = WriterEnv
                                      -- database for free pages.
     }
 
-instance MonadIO m => AllocM (ConcurrentT WriterEnv m) where
+instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEnv hnd m) where
     nodePageSize = ConcurrentT Store.nodePageSize
 
     maxPageSize = ConcurrentT Store.maxPageSize
@@ -94,7 +82,7 @@ instance MonadIO m => AllocM (ConcurrentT WriterEnv m) where
         putNodePage hnd height nid n
         return nid
       where
-        getNid :: MonadIO m => ConcurrentT WriterEnv m (NodeId height key val)
+        getNid :: (ConcurrentMetaStoreM hnd m, MonadIO m) => ConcurrentT WriterEnv hnd m (NodeId height key val)
         getNid = ConcurrentT (writerFreePages <$> get) >>= \case
             -- No dirty pages that are reuseable
             [] -> ConcurrentT (writerReuseablePages <$> get) >>= \case
@@ -121,7 +109,7 @@ instance MonadIO m => AllocM (ConcurrentT WriterEnv m) where
         -- | Try to get a free page from the free page database.
         --
         -- This function will also update the writer state.
-        nidFromFreeDb :: MonadIO m => ConcurrentT WriterEnv m (Maybe (NodeId height key val))
+        nidFromFreeDb :: (ConcurrentMetaStoreM hnd m, MonadIO m) => ConcurrentT WriterEnv hnd m (Maybe (NodeId height key val))
         nidFromFreeDb = ifM (ConcurrentT (not . writerReusablePagesOn <$> get)) (return Nothing) $ do
             tree    <- ConcurrentT $ writerFreeTree <$> get
             oldTxId <- ConcurrentT $ writerReuseablePagesTxId <$> get
@@ -183,12 +171,12 @@ instance MonadIO m => AllocM (ConcurrentT WriterEnv m) where
       where
         pid = nodeIdToPageId nid
 
-instance AllocReaderM (ConcurrentT WriterEnv m) where
+instance ConcurrentMetaStoreM hnd m => AllocReaderM (ConcurrentT WriterEnv hnd m) where
     readNode height nid = ConcurrentT $ do
         hnd <- writerHnd <$> get
         getNodePage hnd height Proxy Proxy nid
 
-instance AllocReaderM (ConcurrentT ReaderEnv m) where
+instance ConcurrentMetaStoreM hnd m => AllocReaderM (ConcurrentT ReaderEnv hnd m) where
     readNode height nid = ConcurrentT $ do
         hnd <- readerHnd <$> get
         getNodePage hnd height Proxy Proxy nid

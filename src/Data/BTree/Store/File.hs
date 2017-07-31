@@ -27,7 +27,6 @@ module Data.BTree.Store.File (
 , decode
 , getEmptyPage
 , getPageNode
-, getPageAppendMeta
 ) where
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad
@@ -54,9 +53,7 @@ import GHC.Generics (Generic)
 
 import System.IO
 
-import Data.BTree.Alloc.Append
 import Data.BTree.Alloc.Concurrent
-import Data.BTree.Alloc.PageReuse
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 import Data.BTree.Store.Class
@@ -68,10 +65,6 @@ data Page =
       PageEmpty
     | forall height key val. (Key key, Value val) =>
       PageNode (Height height) (Node height key val)
-    | forall key val.        (Key key, Value val) =>
-      PageAppendMeta (AppendMeta key val)
-    | forall key val.        (Key key, Value val) =>
-      PagePageReuseMeta (PageReuseMeta key val)
     | forall key val.        (Key key, Value val) =>
       PageConcurrentMeta (ConcurrentMeta key val)
     deriving (Typeable)
@@ -111,8 +104,7 @@ decode g = fromMaybe (error "decoding unexpectedly failed") . decodeMaybe g
 
 deriving instance Show Page
 
-data BPage = BPageEmpty | BPageNode
-           | BPageAppendMeta | BPagePageReuseMeta | BPageConcurrentMeta
+data BPage = BPageEmpty | BPageNode | BPageConcurrentMeta
            deriving (Eq, Generic, Show)
 instance Binary BPage where
 
@@ -120,8 +112,6 @@ instance Binary BPage where
 putPage :: Page -> Put
 putPage PageEmpty = B.put BPageEmpty
 putPage (PageNode h n) = B.put BPageNode >> B.put h >> putNode n
-putPage (PageAppendMeta m) = B.put BPageAppendMeta >> B.put m
-putPage (PagePageReuseMeta m) = B.put BPagePageReuseMeta >> B.put m
 putPage (PageConcurrentMeta m) = B.put BPageConcurrentMeta >> B.put m
 
 {-| Decoder for empty pages. Will return a 'PageEmpty'. -}
@@ -150,36 +140,6 @@ getPageNode h key val = B.get >>= \case
              -> Proxy val
              -> Get (Node h key val)
     getNode' h' _ _ = getNode h'
-
-{-| Decoder for a page containg 'AppendMeta'. Will return a 'PageAppendMeta'. -}
-getPageAppendMeta :: (Key key, Value val)
-                  => Proxy key
-                  -> Proxy val
-                  -> Get Page
-getPageAppendMeta k v = B.get >>= \case
-    BPageAppendMeta -> PageAppendMeta <$> getAppendMeta' k v
-    x               -> fail $ "unexpected " ++ show x
-  where
-    getAppendMeta' :: (Key key, Value val)
-                   => Proxy key
-                   -> Proxy val
-                   -> Get (AppendMeta key val)
-    getAppendMeta' _ _ = B.get
-
-{-| Decoder for a page containg 'PageReuseMeta'. Will return a 'PagePageReuseMeta'. -}
-getPagePageReuseMeta :: (Key key, Value val)
-                  => Proxy key
-                  -> Proxy val
-                  -> Get Page
-getPagePageReuseMeta k v = B.get >>= \case
-    BPagePageReuseMeta -> PagePageReuseMeta <$> getPageReuseMeta' k v
-    x               -> fail $ "unexpected " ++ show x
-  where
-    getPageReuseMeta' :: (Key key, Value val)
-                   => Proxy key
-                   -> Proxy val
-                   -> Get (PageReuseMeta key val)
-    getPageReuseMeta' _ _ = B.get
 
 {-| Decoder for a page containg 'ConcurrentMeta'. Will return a 'PageConcurrentMeta'. -}
 getPageConcurrentMeta :: (Key key, Value val)
@@ -217,8 +177,8 @@ lookupHandle fp = (getFileHandle <$>) . M.lookup fp
 {-| Monad in which on-disk storage operations can take place.
 
   Two important instances are 'StoreM' making it a storage back-end, and
-  'AppendMetaStoreM' making it a storage back-end compatible with the
-  append-only page allocator.
+  'ConcurrentMetaStoreM' making it a storage back-end compatible with the
+  concurrent page allocator.
  -}
 newtype StoreT fp m a = StoreT
     { fromStoreT :: MaybeT (StateT (Files fp) m) a
@@ -324,72 +284,6 @@ readPageNode h hgt k v (PageId pid) size = liftIO $ do
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadIO m) =>
-    AppendMetaStoreM FilePath (StoreT FilePath m)
-  where
-    getAppendMeta fp key val i = do
-        handle   <- StoreT . MaybeT $ gets (lookupHandle fp)
-        pageSize <- maxPageSize
-        Just (PageAppendMeta meta) <-
-            StoreT $ readAppendMetaNode handle
-                                        key val
-                                        i pageSize
-        return $! coerce meta
-
-    putAppendMeta fp i meta = do
-        handle   <- StoreT . MaybeT $ gets (lookupHandle fp)
-        pageSize <- maxPageSize
-        StoreT $ writePage handle i
-                           (PageAppendMeta meta)
-                           pageSize
-
-    openAppendMeta fp k v = do
-        (handle, numPages) <- StoreT . MaybeT $ gets (M.lookup fp)
-        pageSize <- maxPageSize
-        page <- StoreT $ go handle pageSize $ PageId (fromPageCount (numPages - 1))
-        case page of
-            Nothing -> return Nothing
-            Just x -> do
-                (PageAppendMeta meta, pid) <- return x
-                return $ Just (coerce meta, pid)
-      where
-        go h ps pid = readAppendMetaNode h k v pid ps >>= \case
-            Just x -> return $ Just (x, pid)
-            Nothing -> if pid == 0 then return Nothing else go h ps (pid - 1)
-
-instance (Applicative m, Monad m, MonadIO m) =>
-    PageReuseMetaStoreM FilePath (StoreT FilePath m)
-  where
-    getPageReuseMeta fp key val i = do
-        handle   <- StoreT . MaybeT $ gets (lookupHandle fp)
-        pageSize <- maxPageSize
-        Just (PagePageReuseMeta meta) <-
-            StoreT $ readPageReuseMetaNode handle
-                                        key val
-                                        i pageSize
-        return $! coerce meta
-
-    putPageReuseMeta fp i meta = do
-        handle   <- StoreT . MaybeT $ gets (lookupHandle fp)
-        pageSize <- maxPageSize
-        StoreT $ writePage handle i
-                           (PagePageReuseMeta meta)
-                           pageSize
-
-    openPageReuseMeta fp k v = do
-        (handle, numPages) <- StoreT . MaybeT $ gets (M.lookup fp)
-        pageSize <- maxPageSize
-        page <- StoreT $ go handle pageSize $ PageId (fromPageCount (numPages - 1))
-        case page of
-            Nothing -> return Nothing
-            Just x -> do
-                (PagePageReuseMeta meta, pid) <- return x
-                return $ Just (coerce meta, pid)
-      where
-        go h ps pid = readPageReuseMetaNode h k v pid ps >>= \case
-            Just x -> return $ Just (x, pid)
-            Nothing -> if pid == 0 then return Nothing else go h ps (pid - 1)
-
-instance (Applicative m, Monad m, MonadIO m) =>
     ConcurrentMetaStoreM FilePath (StoreT FilePath m)
   where
     putConcurrentMeta fp i meta = do
@@ -421,30 +315,6 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
 
 --------------------------------------------------------------------------------
-
-readAppendMetaNode :: (MonadIO m, Key key, Value val)
-                   => Handle
-                   -> Proxy key
-                   -> Proxy val
-                   -> PageId
-                   -> PageSize
-                   -> m (Maybe Page)
-readAppendMetaNode h k v (PageId pid) size = liftIO $ do
-    hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
-    bs <- hGet h (fromIntegral size)
-    return $ decodeMaybe (getPageAppendMeta k v) bs
-
-readPageReuseMetaNode :: (MonadIO m, Key key, Value val)
-                      => Handle
-                      -> Proxy key
-                      -> Proxy val
-                      -> PageId
-                      -> PageSize
-                      -> m (Maybe Page)
-readPageReuseMetaNode h k v (PageId pid) size = liftIO $ do
-    hSeek h AbsoluteSeek (fromIntegral $ pid * fromIntegral size)
-    bs <- hGet h (fromIntegral size)
-    return $ decodeMaybe (getPagePageReuseMeta k v) bs
 
 readConcurrentMetaNode :: (MonadIO m, Key key, Value val)
                        => Handle

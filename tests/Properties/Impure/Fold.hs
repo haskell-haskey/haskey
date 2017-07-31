@@ -12,7 +12,6 @@ import qualified Data.Map as M
 
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure.Insert
-import Data.BTree.Primitives
 import Data.BTree.Store.Binary
 import qualified Data.BTree.Impure.Fold as Tree
 
@@ -31,8 +30,8 @@ prop_foldable_toList_fromList kvs = do
         Just l -> assert $ l == M.toList (M.fromList kvs)
         Nothing -> assert False
   where
-    insertAll kvs = transact_ $
-        foldl (>=>) return (map (uncurry insertTree) kvs)
+    insertAll kvs' = transact_ $
+        foldl (>=>) return (map (uncurry insertTree) kvs')
         >=> commit_
 
     hnds = ConcurrentHandles {

@@ -19,10 +19,14 @@ extra-source-files:  README.md
 library
   exposed-modules:
     Data.BTree.Alloc
-    Data.BTree.Alloc.Append
     Data.BTree.Alloc.Class
     Data.BTree.Alloc.Concurrent
-    Data.BTree.Alloc.PageReuse
+    Data.BTree.Alloc.Concurrent.Database
+    Data.BTree.Alloc.Concurrent.Environment
+    Data.BTree.Alloc.Concurrent.FreePages.Query
+    Data.BTree.Alloc.Concurrent.FreePages.Save
+    Data.BTree.Alloc.Concurrent.Meta
+    Data.BTree.Alloc.Concurrent.Monad
     Data.BTree.Alloc.Transaction
     Data.BTree.Impure
     Data.BTree.Impure.Delete
@@ -71,6 +75,7 @@ library
     hashable                >=1.2  && <1.3,
     list-t                  >=0.2  && <2,
     mtl                     >=2.1  && <3,
+    semigroups              >=0.12 && <1,
     stm                     >=2.1  && <3,
     stm-containers          >=0.2  && <1,
     transformers            >=0.3  && <1,
@@ -85,7 +90,6 @@ test-suite haskey-properties
   main-is:             Properties.hs
   type:                exitcode-stdio-1.0
   other-modules:
-    Properties.Alloc.Append
     Properties.Impure.Fold
     Properties.Impure.Insert
     Properties.Impure.Structures
@@ -121,9 +125,7 @@ test-suite haskey-integration
   main-is:             Integration.hs
   type:                exitcode-stdio-1.0
   other-modules:
-    Integration.WriteOpenRead.Append
     Integration.WriteOpenRead.Concurrent
-    Integration.WriteOpenRead.PageReuse
     Integration.WriteOpenRead.Transactions
 
   build-depends:

@@ -17,6 +17,7 @@ module Data.BTree.Impure (
 
   -- * Lookup
 , lookupTree
+, lookupMinTree
 
   -- * Folds
 , foldr
@@ -33,7 +34,7 @@ import Data.BTree.Impure.Delete (deleteTree)
 import Data.BTree.Impure.Structures (Tree(..), Node(..))
 import Data.BTree.Impure.Fold (foldr, foldrM, foldrWithKey, foldrWithKeyM, foldMap, toList)
 import Data.BTree.Impure.Insert (insertTree, insertTreeMany)
-import Data.BTree.Impure.Lookup (lookupTree)
+import Data.BTree.Impure.Lookup (lookupTree, lookupMinTree)
 
 import Data.BTree.Primitives (zeroHeight)
 

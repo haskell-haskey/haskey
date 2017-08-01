@@ -2,7 +2,6 @@ module Main (main) where
 
 import Test.Framework (Test, defaultMain)
 
-import qualified Properties.Alloc.Append
 import qualified Properties.Impure.Fold
 import qualified Properties.Impure.Insert
 import qualified Properties.Impure.Structures
@@ -18,8 +17,7 @@ import qualified Properties.Store.File
 
 tests :: [Test]
 tests =
-    [ Properties.Alloc.Append.tests
-    , Properties.Impure.Fold.tests
+    [ Properties.Impure.Fold.tests
     , Properties.Impure.Insert.tests
     , Properties.Impure.Structures.tests
     , Properties.Primitives.Height.tests

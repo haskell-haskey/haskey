@@ -9,6 +9,7 @@
 -- concurrent readers and serialized writers.
 module Data.BTree.Alloc.Concurrent.Monad where
 
+import Control.Applicative (Applicative, (<$>))
 import Control.Monad.State
 
 import Data.Proxy (Proxy(..))

@@ -4,6 +4,7 @@
 -- | This module implements data structures and functions related to the database.
 module Data.BTree.Alloc.Concurrent.Database where
 
+import Control.Applicative ((<$>))
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Monad (void, unless)

@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Data.BTree.Alloc.Concurrent.FreePages.Query where
 
-import Control.Applicative ((<|>))
+import Control.Applicative ((<|>), (<$>))
 import Control.Concurrent.STM
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
@@ -38,7 +38,7 @@ getFreePageId = runMaybeT $ MaybeT getFreedDirtyPageId
 --
 -- Get a free'd dirty page, that is immediately suitable for reuse in the
 -- current transaction.
-getFreedDirtyPageId :: (MonadState (WriterEnv hnd) m)
+getFreedDirtyPageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe PageId)
 getFreedDirtyPageId = writerFreedDirtyPages <$> get >>= \case
     []          -> return Nothing
@@ -49,7 +49,7 @@ getFreedDirtyPageId = writerFreedDirtyPages <$> get >>= \case
 -- | Get a cached free page.
 --
 -- Get a free page from the free database cache stored in 'writerReuseablePages'.
-getCachedFreePageId :: (MonadState (WriterEnv hnd) m)
+getCachedFreePageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe PageId)
 getCachedFreePageId = writerReuseablePages <$> get >>= \case
     []          -> return Nothing
@@ -121,7 +121,7 @@ newtype Unchecked a = Unchecked a
 
 -- | Check the transaction ID of the free pages, if it's to old, return
 -- 'Nothing'.
-checkFreePages :: (MonadIO m, MonadState (WriterEnv hnd) m)
+checkFreePages :: (Functor m, MonadIO m, MonadState (WriterEnv hnd) m)
               => Unchecked (TxId, NonEmpty PageId)
               -> m (Maybe (TxId, NonEmpty PageId))
 checkFreePages (Unchecked v) = do

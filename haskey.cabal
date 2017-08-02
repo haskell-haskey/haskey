@@ -25,6 +25,7 @@ library
     Data.BTree.Alloc.Concurrent.Environment
     Data.BTree.Alloc.Concurrent.FreePages.Query
     Data.BTree.Alloc.Concurrent.FreePages.Save
+    Data.BTree.Alloc.Concurrent.FreePages.Tree
     Data.BTree.Alloc.Concurrent.Meta
     Data.BTree.Alloc.Concurrent.Monad
     Data.BTree.Alloc.Transaction
@@ -33,6 +34,7 @@ library
     Data.BTree.Impure.Fold
     Data.BTree.Impure.Insert
     Data.BTree.Impure.Lookup
+    Data.BTree.Impure.NonEmpty
     Data.BTree.Impure.Structures
     Data.BTree.Primitives
     Data.BTree.Primitives.Height

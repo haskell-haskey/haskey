@@ -194,7 +194,7 @@ instance (Ord fp, Applicative m, Monad m) =>
     nodePageSize = return $ \h ->
         fromIntegral . BL.length . B.runPut . putPage . PageNode h
 
-    maxPageSize = return 1024
+    maxPageSize = return 4096
 
     setSize fp (PageCount n) = StoreT $ do
         let emptyFile = M.fromList

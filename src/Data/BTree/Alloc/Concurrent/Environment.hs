@@ -5,7 +5,7 @@ import Data.Set (Set)
 
 import STMContainers.Map (Map)
 
-import Data.BTree.Impure
+import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Primitives
 
 newtype ReaderEnv hnd = ReaderEnv { readerHnd :: hnd }
@@ -21,7 +21,7 @@ data WriterEnv hnd = WriterEnv
                                          -- These pages can be reused in the same
                                          -- transaction if free'd later.
     , writerFreedDirtyPages :: ![PageId] -- ^ Pages free for immediate reuse.
-    , writerFreeTree :: !(Tree TxId [PageId]) -- ^ The root of the free tree,
+    , writerFreeTree :: !FreeTree -- ^ The root of the free tree,
                                             -- might change during a
                                             -- transaction.
     , writerReuseablePages :: ![PageId] -- ^ Pages queried from the free pages

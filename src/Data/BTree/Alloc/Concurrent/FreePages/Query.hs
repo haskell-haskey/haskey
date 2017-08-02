@@ -8,10 +8,13 @@ import Control.Monad.State
 import Control.Monad.Trans.Maybe
 
 import Data.List.NonEmpty (NonEmpty((:|)))
+import qualified Data.List.NonEmpty as NE
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
+import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Impure
+import Data.BTree.Impure.NonEmpty
 import Data.BTree.Primitives
 import Data.BTree.Utils.Monad (ifM)
 import qualified Data.BTree.Utils.STM.Map as Map
@@ -74,7 +77,7 @@ queryNewFreePageIds = ifM (not . writerReusablePagesOn <$> get) (return Nothing)
 
     -- Delete the previous used 'TxId' from the tree.
     modify' $ \env -> env { writerReusablePagesOn = False }
-    tree' <- maybe (return tree) (`deleteTree` tree) oldTxId
+    tree' <- maybe (return tree) (`deleteSubtree` tree) oldTxId
     modify' $ \env -> env { writerReusablePagesOn = True }
 
     -- Set the new free tree
@@ -92,29 +95,23 @@ queryNewFreePageIds = ifM (not . writerReusablePagesOn <$> get) (return Nothing)
             return (Just pid)
 
 -- | Lookup a list of free pages from the free page database, guaranteed to be old enough.
-lookupValidFreePageIds :: (MonadIO m, AllocM m, MonadState (WriterEnv hnd) m)
-                       => Tree TxId [PageId]
+lookupValidFreePageIds :: (MonadIO m, AllocReaderM m, MonadState (WriterEnv hnd) m)
+                       => FreeTree
                        -> m (Maybe (TxId, NonEmpty PageId))
 lookupValidFreePageIds tree = runMaybeT $
     MaybeT (lookupFreePageIds tree) >>= (MaybeT . checkFreePages)
 
 -- | Lookup a list of free pages from the free page database.
-lookupFreePageIds :: (AllocM m, MonadState (WriterEnv hnd) m)
-                  => Tree TxId [PageId]
+lookupFreePageIds :: (Functor m, AllocReaderM m, MonadState (WriterEnv hnd) m)
+                  => FreeTree
                   -> m (Maybe (Unchecked (TxId, NonEmpty PageId)))
 lookupFreePageIds tree = lookupMinTree tree >>= \case
     Nothing -> return Nothing
-    Just (txId, []) -> do
-        -- Empty list of free pages? Remote it from the free database and try
-        -- again.
-        modify' $ \env -> env { writerReusablePagesOn = False }
-        tree' <- txId `deleteTree` tree
-        modify' $ \env -> env { writerReusablePagesOn = True
-                              , writerFreeTree = tree' }
-        lookupFreePageIds tree'
-    Just (txId, pid:pageIds) ->
-        return . Just $! Unchecked (txId, pid :| pageIds)
-
+    Just (tx, subtree) -> do
+        pids <- subtreeToList subtree
+        return . Just $ Unchecked (tx, pids)
+  where
+    subtreeToList subtree = NE.map fst <$> nonEmptyToList subtree
 
 -- | Auxiliry type to ensure the transaction ID of free pages are checked.
 newtype Unchecked a = Unchecked a

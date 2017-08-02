@@ -34,6 +34,7 @@ library
     Data.BTree.Impure.Fold
     Data.BTree.Impure.Insert
     Data.BTree.Impure.Lookup
+    Data.BTree.Impure.NonEmpty
     Data.BTree.Impure.Structures
     Data.BTree.Primitives
     Data.BTree.Primitives.Height

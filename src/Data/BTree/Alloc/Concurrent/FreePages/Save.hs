@@ -2,6 +2,8 @@ module Data.BTree.Alloc.Concurrent.FreePages.Save where
 
 import Control.Monad ((>=>))
 
+import Data.List.NonEmpty (NonEmpty((:|)))
+
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.FreePages.Tree
@@ -25,7 +27,7 @@ saveNewlyAndDirtyFreedPages :: AllocM m
 saveNewlyAndDirtyFreedPages env tree =
     case writerNewlyFreedPages env {-++ writerFreedDirtyPages env-} of
         [] -> return tree
-        xs -> insertSubtree (writerTxId env) xs tree
+        x:xs -> insertSubtree (writerTxId env) (x :| xs) tree
 
 -- | Save the free apges from the free page cache in
 -- 'writerReuseablePages' using 'writerReuseablePagesTxId'.
@@ -38,4 +40,4 @@ saveCachedFreePages env tree = case writerReuseablePagesTxId env of
     Just k ->
         case writerReuseablePages env of
             [] -> deleteSubtree k tree
-            xs -> replaceSubtree k xs tree
+            x:xs -> replaceSubtree k (x :| xs) tree

@@ -9,6 +9,7 @@ module Data.BTree.Impure.NonEmpty (
   -- * Conversions
 , fromTree
 , toTree
+, nonEmptyToList
 
   -- * Construction
 , fromNonEmptyList
@@ -22,10 +23,11 @@ import Data.Binary
 import Data.Maybe (fromJust)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Map (Map)
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Class
-import Data.BTree.Impure (Tree(..), Node(..), insertTree, insertTreeMany, empty)
+import Data.BTree.Impure (Tree(..), Node(..), insertTree, insertTreeMany, empty, toList)
 import Data.BTree.Primitives
 
 -- | A non-empty variant of 'Tree'.
@@ -75,3 +77,9 @@ insertNonEmptyTreeMany :: (AllocM m, Key k, Value v)
                        -> NonEmptyTree k v
                        -> m (NonEmptyTree k v)
 insertNonEmptyTreeMany kvs tree = fromJust . fromTree <$> insertTreeMany kvs (toTree tree)
+
+-- | Convert a non-empty tree to a list of key-value pairs.
+nonEmptyToList :: (AllocReaderM m, Key k, Value v)
+               => NonEmptyTree k v
+               -> m (NonEmpty (k, v))
+nonEmptyToList tree = NE.fromList <$> toList (toTree tree)

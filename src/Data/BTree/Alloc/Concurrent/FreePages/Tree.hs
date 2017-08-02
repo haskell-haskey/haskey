@@ -6,12 +6,13 @@ module Data.BTree.Alloc.Concurrent.FreePages.Tree where
 import Control.Monad ((>=>))
 
 import Data.Foldable (traverse_)
-import qualified Data.Map as M
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NE
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure
+import Data.BTree.Impure.NonEmpty
 import Data.BTree.Primitives
-import qualified Data.BTree.Impure as Tree
 
 -- | The main tree structure of the free page database.
 --
@@ -21,12 +22,12 @@ type FreeTree = Tree TxId FreeSubtree
 -- | the subtree structure of the free page database.
 --
 -- Just a collection of free 'PageId's.
-type FreeSubtree = Tree PageId ()
+type FreeSubtree = NonEmptyTree PageId ()
 
 -- | Replace the subtree of a certain 'TxId'.
 replaceSubtree :: AllocM m
                => TxId
-               -> [PageId]
+               -> NonEmpty PageId
                -> FreeTree
                -> m FreeTree
 replaceSubtree tx pids = deleteSubtree tx >=> insertSubtree tx pids
@@ -40,13 +41,10 @@ deleteSubtree :: AllocM m
               -> m FreeTree
 deleteSubtree tx tree = lookupTree tx tree >>= \case
     Nothing -> return tree
-    Just subtree -> do
-        freeSubtree subtree
+    Just (NonEmptyTree h nid) -> do
+        freeAllNodes h nid
         deleteTree tx tree
   where
-    freeSubtree (Tree _ Nothing) = return ()
-    freeSubtree (Tree h (Just nid)) = freeAllNodes h nid
-
     freeAllNodes :: (AllocM m, Key key, Value val)
                  => Height h
                  -> NodeId h key val
@@ -61,9 +59,9 @@ deleteSubtree tx tree = lookupTree tx tree >>= \case
 -- | Insert a subtree for a certain 'TxId'.
 insertSubtree :: AllocM m
               => TxId
-              -> [PageId]
+              -> NonEmpty PageId
               -> FreeTree
               -> m FreeTree
 insertSubtree tx pids tree = do
-    subtree <- insertTreeMany (M.fromList $ zip pids (repeat ())) Tree.empty
+    subtree <- fromNonEmptyList (NE.zip pids (NE.repeat ()))
     insertTree tx subtree tree

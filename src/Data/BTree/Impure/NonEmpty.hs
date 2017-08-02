@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
 -- | Non empty wrapper around the impure 'Tree'.
@@ -20,9 +21,10 @@ module Data.BTree.Impure.NonEmpty (
 ) where
 
 import Data.Binary
-import Data.Maybe (fromJust)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Map (Map)
+import Data.Maybe (fromJust)
+import Data.Typeable (Typeable)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 
@@ -38,6 +40,7 @@ data NonEmptyTree key val where
                       --   'Just' a 'NodeId' pointer the root.
                       treeRootId :: NodeId height key val
                     } -> NonEmptyTree key val
+    deriving (Typeable)
 
 deriving instance (Show key, Show val) => Show (NonEmptyTree key val)
 

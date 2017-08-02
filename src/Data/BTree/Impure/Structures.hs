@@ -47,6 +47,7 @@ data Tree key val where
               --   'Just' a 'NodeId' pointer the root.
               treeRootId :: Maybe (NodeId height key val)
             } -> Tree key val
+    deriving (Typeable)
 
 {-| A node in a B+-tree.
 

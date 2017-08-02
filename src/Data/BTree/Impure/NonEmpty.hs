@@ -20,6 +20,8 @@ module Data.BTree.Impure.NonEmpty (
 , insertNonEmptyTreeMany
 ) where
 
+import Control.Applicative ((<$>), (<*>))
+
 import Data.Binary
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Map (Map)

@@ -11,6 +11,7 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
+import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Impure
 import Data.BTree.Primitives
 import Data.BTree.Utils.Monad (ifM)
@@ -74,7 +75,7 @@ queryNewFreePageIds = ifM (not . writerReusablePagesOn <$> get) (return Nothing)
 
     -- Delete the previous used 'TxId' from the tree.
     modify' $ \env -> env { writerReusablePagesOn = False }
-    tree' <- maybe (return tree) (`deleteTree` tree) oldTxId
+    tree' <- maybe (return tree) (`deleteSubtree` tree) oldTxId
     modify' $ \env -> env { writerReusablePagesOn = True }
 
     -- Set the new free tree
@@ -93,28 +94,24 @@ queryNewFreePageIds = ifM (not . writerReusablePagesOn <$> get) (return Nothing)
 
 -- | Lookup a list of free pages from the free page database, guaranteed to be old enough.
 lookupValidFreePageIds :: (MonadIO m, AllocM m, MonadState (WriterEnv hnd) m)
-                       => Tree TxId [PageId]
+                       => FreeTree
                        -> m (Maybe (TxId, NonEmpty PageId))
 lookupValidFreePageIds tree = runMaybeT $
     MaybeT (lookupFreePageIds tree) >>= (MaybeT . checkFreePages)
 
 -- | Lookup a list of free pages from the free page database.
 lookupFreePageIds :: (AllocM m, MonadState (WriterEnv hnd) m)
-                  => Tree TxId [PageId]
+                  => FreeTree
                   -> m (Maybe (Unchecked (TxId, NonEmpty PageId)))
 lookupFreePageIds tree = lookupMinTree tree >>= \case
     Nothing -> return Nothing
-    Just (txId, []) -> do
-        -- Empty list of free pages? Remote it from the free database and try
-        -- again.
-        modify' $ \env -> env { writerReusablePagesOn = False }
-        tree' <- txId `deleteTree` tree
-        modify' $ \env -> env { writerReusablePagesOn = True
-                              , writerFreeTree = tree' }
-        lookupFreePageIds tree'
-    Just (txId, pid:pageIds) ->
-        return . Just $! Unchecked (txId, pid :| pageIds)
-
+    Just (tx, subtree) -> do
+        pids <- subtreeToList subtree
+        return . Just $ Unchecked (tx, pids)
+  where
+    subtreeToList subtree = toList subtree >>= \case
+        []   -> error "empty"
+        x:xs -> return $ fst x :| map fst xs
 
 -- | Auxiliry type to ensure the transaction ID of free pages are checked.
 newtype Unchecked a = Unchecked a

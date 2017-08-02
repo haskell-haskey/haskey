@@ -7,10 +7,9 @@ module Data.BTree.Alloc.Concurrent.Database where
 import Control.Applicative ((<$>))
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Monad (void, unless)
+import Control.Monad (void)
 import Control.Monad.IO.Class
 
-import Data.List (nub)
 import Data.Proxy (Proxy(..))
 import qualified Data.Set as S
 
@@ -22,6 +21,7 @@ import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.Meta
 import Data.BTree.Alloc.Concurrent.Monad
 import Data.BTree.Alloc.Concurrent.FreePages.Save
+import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Alloc.Transaction
 import Data.BTree.Impure
 import Data.BTree.Primitives
@@ -197,7 +197,7 @@ transact act db
 
     saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM hnd m)
                    => WriterEnv hnd
-                   -> m (Tree TxId [PageId])
+                   -> m FreeTree
     saveFreePages' toFree = do
         let env      = toFree { writerNewlyFreedPages = [] }
             freeTree = writerFreeTree toFree
@@ -211,7 +211,6 @@ transact act db
            then return freeTree'
            else do
                let xs = writerNewlyFreedPages env' ++ writerNewlyFreedPages toFree
-               unless (nub xs == xs) $ error "fack"
                saveFreePages' $ env' { writerNewlyFreedPages = xs
                                      , writerFreeTree        = freeTree' }
 

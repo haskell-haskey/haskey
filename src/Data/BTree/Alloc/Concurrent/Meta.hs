@@ -10,6 +10,7 @@ import Data.Proxy (Proxy)
 
 import GHC.Generics (Generic)
 
+import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 import Data.BTree.Store
@@ -21,7 +22,7 @@ data CurrentMetaPage = Meta1 | Meta2
 data ConcurrentMeta k v = ConcurrentMeta {
     concurrentMetaRevision :: TxId
   , concurrentMetaTree :: Tree k v
-  , concurrentMetaFreeTree :: Tree TxId [PageId]
+  , concurrentMetaFreeTree :: FreeTree
   } deriving (Generic)
 
 deriving instance (Show k, Show v) => Show (ConcurrentMeta k v)

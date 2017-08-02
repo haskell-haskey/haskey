@@ -72,6 +72,8 @@ instance (Eq key, Eq val) => Eq (Node height key val) where
 deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
 
+instance (Value k, Value v) => Value (Tree k v) where
+
 --------------------------------------------------------------------------------
 
 instance Binary (Tree key val) where

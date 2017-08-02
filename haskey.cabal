@@ -47,11 +47,13 @@ library
     Data.BTree.Store.Binary
     Data.BTree.Store.Class
     Data.BTree.Store.File
+    Data.BTree.Store.Page
 
   other-modules:
     Data.BTree.Utils.List
     Data.BTree.Utils.Map
     Data.BTree.Utils.Monad
+    Data.BTree.Utils.Monad.Except
     Data.BTree.Utils.STM.Map
     Data.BTree.Utils.Vector
 
@@ -98,8 +100,6 @@ test-suite haskey-properties
     Properties.Primitives.Index
     Properties.Primitives.Leaf
     Properties.Pure
-    Properties.Store.Binary
-    Properties.Store.File
     Properties.Utils
 
   build-depends:

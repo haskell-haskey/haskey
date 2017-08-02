@@ -135,12 +135,12 @@ setCurrentMeta new db
       } <- db
     = liftIO (atomically $ readTVar v) >>= \case
         Meta1 -> do
-            putConcurrentMeta (concurrentHandlesMetadata2 hnds) 0 new
+            putConcurrentMeta (concurrentHandlesMetadata2 hnds) new
             liftIO . atomically $ do
                 writeTVar v Meta2
                 writeTVar (concurrentDbMeta2 db) new
         Meta2 -> do
-            putConcurrentMeta (concurrentHandlesMetadata1 hnds) 0 new
+            putConcurrentMeta (concurrentHandlesMetadata1 hnds) new
             liftIO . atomically $ do
                 writeTVar v Meta1
                 writeTVar (concurrentDbMeta1 db) new

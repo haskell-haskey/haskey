@@ -73,10 +73,12 @@ getFileHandle = fst
 getFilePageCount :: (Handle, PageCount) -> PageCount
 getFilePageCount = snd
 
-lookupFile :: (Ord fp, Show fp, MonadError String m) => fp -> Files fp -> m (Handle, PageCount)
+lookupFile :: (Ord fp, Show fp, MonadError String m)
+           => fp -> Files fp -> m (Handle, PageCount)
 lookupFile fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
 
-lookupHandle :: (Ord fp, Show fp, MonadError String m) => fp -> Files fp -> m Handle
+lookupHandle :: (Ord fp, Show fp, Functor m, MonadError String m)
+             => fp -> Files fp -> m Handle
 lookupHandle fp m = getFileHandle <$> lookupFile fp m
 
 -- | Monad in which on-disk storage operations can take place.

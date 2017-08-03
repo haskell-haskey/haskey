@@ -21,7 +21,7 @@ module Data.BTree.Store.Binary (
 , emptyStore
 ) where
 
-import Control.Applicative (Applicative)
+import Control.Applicative (Applicative, (<$>))
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Class
@@ -54,7 +54,7 @@ lookupFile :: (Ord fp, Show fp, MonadError String m)
            => fp -> Files fp -> m File
 lookupFile fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
 
-lookupPage :: (Ord fp, Show fp, MonadError String m)
+lookupPage :: (Ord fp, Show fp, Functor m, MonadError String m)
            => fp -> PageId -> Files fp -> m ByteString
 lookupPage fp pid m = M.lookup pid <$> lookupFile fp m
                   >>= justErrM ("no page " ++ show pid ++

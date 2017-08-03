@@ -9,6 +9,7 @@
 -- pages.
 module Data.BTree.Store.Page where
 
+import Control.Applicative ((<$>))
 import Control.Monad.Except (MonadError, throwError)
 
 import Data.Binary (Binary(..), Put, Get)

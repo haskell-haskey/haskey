@@ -100,7 +100,7 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
     nodePageSize = return $ \h ->
         fromIntegral . BS.length . encode . NodePage h
 
-    maxPageSize = return 512
+    maxPageSize = return 128
 
     setSize fp (PageCount n) = do
         let emptyFile = M.fromList

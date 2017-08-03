@@ -66,9 +66,14 @@ encode = toStrict . runPut . putPage
 -- | Decode a page with a specific decoder, or return the error.
 decode :: SGet t -> ByteString -> Either String (Page t)
 decode (SGet t g) bs = case runGetOrFail g (fromStrict bs) of
-    Left  (_, _, err) -> Left $ "could not decode " ++ show (pageType t) ++
-                                ": " ++ show err
-    Right (_, _, v)   -> Right v
+    Left  err       -> Left $ err' err
+    Right (_, _, v) -> Right v
+  where
+    err' (bs', offset, err) =
+        "could not decode " ++ show (pageType t) ++ ": " ++ err ++
+        "at pos " ++ show offset ++ ", remaining bytes: " ++ show bs' ++
+        ", full body: " ++ show bs
+
 
 -- | Monadic wrapper around 'decode'
 decodeM :: MonadError String m => SGet t -> ByteString -> m (Page t)

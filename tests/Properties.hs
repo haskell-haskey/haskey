@@ -10,6 +10,7 @@ import qualified Properties.Primitives.Ids
 import qualified Properties.Primitives.Index
 import qualified Properties.Primitives.Leaf
 import qualified Properties.Pure
+import qualified Properties.Store.Page
 
 --------------------------------------------------------------------------------
 
@@ -23,6 +24,7 @@ tests =
     , Properties.Primitives.Index.tests
     , Properties.Primitives.Leaf.tests
     , Properties.Pure.tests
+    , Properties.Store.Page.tests
     ]
 
 main :: IO ()

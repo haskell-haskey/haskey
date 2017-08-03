@@ -32,6 +32,11 @@ data PageType = TypeEmpty
               | TypeConcurrentMeta
               deriving (Eq, Generic, Show)
 
+data SPageType t where
+    STypeEmpty           :: SPageType 'TypeEmpty
+    STypeNode            :: SPageType 'TypeNode
+    STypeConcurrentMeta  :: SPageType 'TypeConcurrentMeta
+
 instance Binary PageType where
 
 -- | A decoded page, of a certain type @t@ of kind 'PageType'.
@@ -45,18 +50,28 @@ data Page (t :: PageType) where
                        => ConcurrentMeta k v
                        -> Page 'TypeConcurrentMeta
 
+-- | A decoder with its type.
+data SGet t = SGet (SPageType t) (Get (Page t))
+
+-- | Get the type of a 'Page'.
+pageType :: SPageType t -> PageType
+pageType STypeEmpty          = TypeEmpty
+pageType STypeNode           = TypeNode
+pageType STypeConcurrentMeta = TypeConcurrentMeta
+
 -- | Encode a page to a lazy byte string.
 encode :: Page t -> ByteString
 encode = toStrict . runPut . putPage
 
 -- | Decode a page with a specific decoder, or return the error.
-decode :: Get a -> ByteString -> Either String a
-decode g bs = case runGetOrFail g (fromStrict bs) of
-    Left  (_, _, err) -> Left err
+decode :: SGet t -> ByteString -> Either String (Page t)
+decode (SGet t g) bs = case runGetOrFail g (fromStrict bs) of
+    Left  (_, _, err) -> Left $ "could not decode " ++ show (pageType t) ++
+                                ": " ++ show err
     Right (_, _, v)   -> Right v
 
 -- | Monadic wrapper around 'decode'
-decodeM :: MonadError String m => Get a -> ByteString -> m a
+decodeM :: MonadError String m => SGet t -> ByteString -> m (Page t)
 decodeM g bs = case decode g bs of
     Left err -> throwError err
     Right v -> return v
@@ -68,8 +83,8 @@ putPage (NodePage h n)         = put TypeNode >> put h >> putNode n
 putPage (ConcurrentMetaPage m) = put TypeConcurrentMeta >> put m
 
 -- | Decoder for an empty page.
-emptyPage :: Get (Page 'TypeEmpty)
-emptyPage = get >>= \case
+emptyPage :: SGet 'TypeEmpty
+emptyPage = SGet STypeEmpty $ get >>= \case
     TypeEmpty -> return EmptyPage
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeEmpty"
 
@@ -78,8 +93,8 @@ nodePage :: (Key k, Value v)
          => Height h
          -> Proxy k
          -> Proxy v
-         -> Get (Page 'TypeNode)
-nodePage h k v = get >>= \case
+         -> SGet 'TypeNode
+nodePage h k v = SGet STypeNode $ get >>= \case
     TypeNode -> do
         h' <- get
         if fromHeight h == fromHeight h'
@@ -95,8 +110,8 @@ nodePage h k v = get >>= \case
 concurrentMetaPage :: (Key k, Value v)
                    => Proxy k
                    -> Proxy v
-                   -> Get (Page 'TypeConcurrentMeta)
-concurrentMetaPage k v = get >>= \ case
+                   -> SGet 'TypeConcurrentMeta
+concurrentMetaPage k v = SGet STypeConcurrentMeta $ get >>= \ case
     TypeConcurrentMeta -> ConcurrentMetaPage <$> get' k v
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeConcurrentMeta"
   where

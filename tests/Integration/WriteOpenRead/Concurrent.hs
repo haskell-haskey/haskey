@@ -19,7 +19,8 @@ import Data.Map (Map)
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Map as M
 
-import System.Directory (removeDirectory, removeFile, getTemporaryDirectory)
+import System.Directory (removeDirectory, removeFile,
+                         getTemporaryDirectory, doesDirectoryExist)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
 
@@ -82,7 +83,9 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
 prop_file_backend :: PropertyM IO ()
 prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
-    tmpDir <- run getTemporaryDirectory
+    exists <- run $ doesDirectoryExist "/var/run/shm"
+    tmpDir <- if exists then return "/var/run/shm"
+                        else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
     let hnds = ConcurrentHandles {
         concurrentHandlesMain      = fp </> "main.db"
@@ -138,12 +141,10 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                  -> FS.Files FilePath
                  -> TestTransaction Integer Integer
                  -> IO (FS.Files FilePath)
-    openAndWrite db files tx = FS.runStoreT (writeTransaction tx db >> return ()) files
+    openAndWrite db files tx = FS.runStoreT (void $ writeTransaction tx db) files
         >>= \case
             (Left err, _)    -> error $ "while writing: " ++ show err
             (Right _, files') -> return files'
-
-    open hnds = fromJust <$> (openConcurrentHandles hnds >> openConcurrentDb hnds)
 
 --------------------------------------------------------------------------------
 

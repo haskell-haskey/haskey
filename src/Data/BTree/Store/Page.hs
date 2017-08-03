@@ -15,7 +15,8 @@ import Control.Monad.Except (MonadError, throwError)
 import Data.Binary (Binary(..), Put, Get)
 import Data.Binary.Get (runGetOrFail)
 import Data.Binary.Put (runPut)
-import Data.ByteString.Lazy (ByteString)
+import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (fromStrict, toStrict)
 import Data.Proxy
 
 import GHC.Generics (Generic)
@@ -46,11 +47,11 @@ data Page (t :: PageType) where
 
 -- | Encode a page to a lazy byte string.
 encode :: Page t -> ByteString
-encode = runPut . putPage
+encode = toStrict . runPut . putPage
 
 -- | Decode a page with a specific decoder, or return the error.
 decode :: Get a -> ByteString -> Either String a
-decode g bs = case runGetOrFail g bs of
+decode g bs = case runGetOrFail g (fromStrict bs) of
     Left  (_, _, err) -> Left err
     Right (_, _, v)   -> Right v
 

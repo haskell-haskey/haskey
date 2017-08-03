@@ -14,8 +14,8 @@ saveFreePages :: AllocM m
               => WriterEnv hnd
               -> FreeTree
               -> m FreeTree
-saveFreePages env = return {-saveNewlyAndDirtyFreedPages env
-                >=> saveCachedFreePages env-}
+saveFreePages env = saveNewlyAndDirtyFreedPages env
+                >=> saveCachedFreePages env
 
 -- | Save the newly free pages and the freed dirty pages of the current
 -- transaction, as stored by 'writerNewlyFreedPages' and

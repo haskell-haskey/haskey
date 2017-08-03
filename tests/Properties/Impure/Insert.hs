@@ -7,8 +7,8 @@ import Test.QuickCheck.Monadic
 
 import Control.Monad ((>=>))
 
+import Data.Either (isRight)
 import Data.Int
-import Data.Maybe (isJust)
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Concurrent
@@ -25,7 +25,7 @@ prop_insertTreeMany :: [(Int64, Integer)] -> [(Int64, Integer)] -> PropertyM IO 
 prop_insertTreeMany xs ys = do
     ty1' <- ty1
     ty2' <- ty2
-    assert $ ty1' == ty2' && isJust ty1'
+    assert $ ty1' == ty2' && isRight ty1'
   where
     tx  = do
         db <- createConcurrentDb hnds

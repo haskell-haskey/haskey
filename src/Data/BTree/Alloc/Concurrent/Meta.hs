@@ -36,7 +36,6 @@ class StoreM hnd m => ConcurrentMetaStoreM hnd m where
     -- | Write the meta-data structure to a certain page.
     putConcurrentMeta :: (Key k, Value v)
                       => hnd
-                      -> PageId
                       -> ConcurrentMeta k v
                       -> m ()
 

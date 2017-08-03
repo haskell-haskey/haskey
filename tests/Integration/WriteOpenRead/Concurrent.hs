@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 module Integration.WriteOpenRead.Concurrent where
 
@@ -62,14 +63,17 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: IO (Maybe (ConcurrentDb String Integer Integer), Files String)
+    create :: IO (Either String (ConcurrentDb String Integer Integer), Files String)
     create = flip runStoreT emptyStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
       where
         hnds = defaultConcurrentHandles
 
-    openAndRead db = fromJust <$> evalStoreT (open >>= readAll) db
+    openAndRead db = evalStoreT (open >>= readAll) db >>= \case
+        Left err -> error err
+        Right v -> return v
+
     openAndWrite db tx = execStoreT (open >>= writeTransaction tx) db
 
     open = fromJust <$> openConcurrentDb defaultConcurrentHandles
@@ -114,7 +118,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    got:     " ++ show read'
 
     create :: ConcurrentHandles FilePath
-           -> IO (Maybe (ConcurrentDb FilePath Integer Integer), FS.Files FilePath)
+           -> IO (Either String (ConcurrentDb FilePath Integer Integer), FS.Files FilePath)
     create hnds = flip FS.runStoreT FS.emptyStore $ do
         openConcurrentHandles hnds
         db <- createConcurrentDb hnds
@@ -123,12 +127,15 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
     openAndRead :: ConcurrentHandles FilePath
                 -> IO [(Integer, Integer)]
-    openAndRead hnds = fromJust <$> FS.evalStoreT (do
+    openAndRead hnds = FS.evalStoreT (do
         db <- open hnds
         v  <- readAll db
         closeConcurrentHandles hnds
         return v)
         (FS.emptyStore :: FS.Files FilePath)
+        >>= \case
+            Left err -> error err
+            Right v -> return v
 
     openAndWrite :: ConcurrentHandles FilePath
                  -> TestTransaction Integer Integer

@@ -27,8 +27,8 @@ prop_foldable_toList_fromList kvs = do
         insertAll kvs db
         transactReadOnly Tree.toList db
     case v of
-        Just l -> assert $ l == M.toList (M.fromList kvs)
-        Nothing -> assert False
+        Right l -> assert $ l == M.toList (M.fromList kvs)
+        Left _ -> assert False
   where
     insertAll kvs' = transact_ $
         foldl (>=>) return (map (uncurry insertTree) kvs')

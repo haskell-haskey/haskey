@@ -158,8 +158,7 @@ transact act db
     , ConcurrentHandles
       { concurrentHandlesMain = hnd
       } <- hnds
-    = withLock lock $
-    do
+    = withLock lock $ do
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1
     let wEnv = WriterEnv { writerHnd = hnd
@@ -234,7 +233,7 @@ transactReadOnly act db
       } <- hnds
     = do
     meta <- liftIO . atomically $ do
-        meta <-getCurrentMeta db
+        meta <- getCurrentMeta db
         Map.alter (concurrentMetaRevision meta) addOne readers
         return meta
     v <- evalConcurrentT (act $ concurrentMetaTree meta) (ReaderEnv hnd)

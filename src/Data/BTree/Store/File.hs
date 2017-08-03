@@ -65,21 +65,12 @@ encodeAndPad size page
 --
 -- Each file is a 'Handle' opened in 'System.IO.ReadWriteMode' and contains a
 -- collection of physical pages.
-type Files fp = Map fp (Handle, PageCount)
+type Files fp = Map fp Handle
 
-getFileHandle :: (Handle, PageCount) -> Handle
-getFileHandle = fst
-
-getFilePageCount :: (Handle, PageCount) -> PageCount
-getFilePageCount = snd
-
-lookupFile :: (Ord fp, Show fp, MonadError String m)
-           => fp -> Files fp -> m (Handle, PageCount)
-lookupFile fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
 
 lookupHandle :: (Ord fp, Show fp, Functor m, MonadError String m)
              => fp -> Files fp -> m Handle
-lookupHandle fp m = getFileHandle <$> lookupFile fp m
+lookupHandle fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
 
 -- | Monad in which on-disk storage operations can take place.
 --
@@ -116,15 +107,9 @@ instance (Applicative m, Monad m, MonadIO m) =>
   where
     openHandle fp = do
         alreadyOpen <- M.member fp <$> get
-        pageSize    <- maxPageSize
         unless alreadyOpen $ do
-            -- Open the file in rw mode
             fh <- liftIO $ openFile fp ReadWriteMode
-
-            -- Calculate the number of pages
-            fs     <- liftIO $ hFileSize fh
-            let pc = fs `quot` fromIntegral pageSize
-            modify $ M.insert fp (fh, fromIntegral pc)
+            modify $ M.insert fp fh
 
     closeHandle fp = do
         fh <- get >>= lookupHandle fp
@@ -137,13 +122,15 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
     maxPageSize = return 512
 
-    getSize fp = do
-        f <- get >>= lookupFile fp
-        return (getFilePageCount f)
+    newPageId fp = do
+        fh <- get >>= lookupHandle fp
+        fs <- liftIO $ hFileSize fh
+        ps <- fromIntegral <$> maxPageSize
 
-    setSize fp pc = do
-        h <- get >>= lookupHandle fp
-        modify (M.insert fp (h, pc))
+        let n = fs `div` ps
+        case fs `rem` ps of
+            0 -> return (fromIntegral n)
+            _ -> return (fromIntegral n + 1)
 
     getNodePage fp height key val nid = do
         h    <- get >>= lookupHandle fp

@@ -102,13 +102,9 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
 
     maxPageSize = return 128
 
-    setSize fp (PageCount n) = do
-        let emptyFile = M.fromList
-                        [ (PageId i, encode EmptyPage)
-                        | i <- [0..n-1]
-                        ]
-            res file  = M.intersection (M.union file emptyFile) emptyFile
-        modify (M.update (Just . res) fp)
+    newPageId hnd = do
+        m <- get >>= lookupFile hnd
+        return $ fromIntegral (M.size m)
 
     getNodePage hnd h key val nid = do
         bs <- get >>= lookupPage hnd (nodeIdToPageId nid)
@@ -121,10 +117,6 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
         modify $ M.update (Just . M.insert (nodeIdToPageId nid) pg) hnd
       where
         pg = encode $ NodePage height node
-
-    getSize hnd = do
-        m <- get >>= lookupFile hnd
-        return $ fromIntegral (M.size m)
 
 --------------------------------------------------------------------------------
 

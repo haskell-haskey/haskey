@@ -56,12 +56,11 @@ instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEn
         return nid
       where
         getNid = getFreeNodeId >>= \case
-            Just nid -> return nid
-            Nothing -> do
+            --Just nid -> error "got free node id"
+            _ -> do
                 hnd <- writerHnd <$> get
-                pc  <- lift $ getSize hnd
-                lift $ setSize hnd (pc + 1)
-                return $! NodeId (fromPageCount pc)
+                pid <- lift $ newPageId hnd
+                return $! pageIdToNodeId pid
 
     writeNode nid height n = ConcurrentT $ do
         hnd <- writerHnd <$> get

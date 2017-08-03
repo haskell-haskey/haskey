@@ -90,10 +90,12 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
       , concurrentHandlesMetadata2 = fp </> "meta.md2"
       }
 
-    _      <- run $ create hnds
-    result <- run . runMaybeT $ foldM (writeReadTest hnds)
+    (Right db, files) <- run $ create hnds
+    result <- run . runMaybeT $ foldM (writeReadTest db files)
                                       M.empty
                                       txs
+
+    _ <- FS.runStoreT (closeConcurrentHandles hnds) files
 
     run $ removeFile (concurrentHandlesMain hnds)
     run $ removeFile (concurrentHandlesMetadata1 hnds)
@@ -102,13 +104,14 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
     assert $ isJust result
   where
-    writeReadTest :: ConcurrentHandles FilePath
+    writeReadTest :: ConcurrentDb FilePath Integer Integer
+                  -> FS.Files FilePath
                   -> Map Integer Integer
                   -> TestTransaction Integer Integer
                   -> MaybeT IO (Map Integer Integer)
-    writeReadTest hnds m tx = do
-        _     <- lift $ openAndWrite hnds tx
-        read' <- lift $ openAndRead hnds
+    writeReadTest db files m tx = do
+        _     <- lift $ openAndWrite db files tx
+        read' <- lift $ openAndRead db files
         let expected = testTransactionResult m tx
         if read' == M.toList expected
             then return expected
@@ -121,29 +124,24 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
            -> IO (Either String (ConcurrentDb FilePath Integer Integer), FS.Files FilePath)
     create hnds = flip FS.runStoreT FS.emptyStore $ do
         openConcurrentHandles hnds
-        db <- createConcurrentDb hnds
-        closeConcurrentHandles hnds
-        return db
+        createConcurrentDb hnds
 
-    openAndRead :: ConcurrentHandles FilePath
+    openAndRead :: ConcurrentDb FilePath Integer Integer
+                -> FS.Files FilePath
                 -> IO [(Integer, Integer)]
-    openAndRead hnds = FS.evalStoreT (do
-        db <- open hnds
-        v  <- readAll db
-        closeConcurrentHandles hnds
-        return v)
-        (FS.emptyStore :: FS.Files FilePath)
+    openAndRead db files = FS.evalStoreT (readAll db) files
         >>= \case
             Left err -> error err
             Right v -> return v
 
-    openAndWrite :: ConcurrentHandles FilePath
+    openAndWrite :: ConcurrentDb FilePath Integer Integer
+                 -> FS.Files FilePath
                  -> TestTransaction Integer Integer
                  -> IO (FS.Files FilePath)
-    openAndWrite hnds tx = flip FS.execStoreT FS.emptyStore $ do
-        db  <- open hnds
-        _   <- writeTransaction tx db
-        closeConcurrentHandles hnds
+    openAndWrite db files tx = FS.runStoreT (writeTransaction tx db >> return ()) files
+        >>= \case
+            (Left err, _)    -> error $ "while writing: " ++ show err
+            (Right _, files') -> return files'
 
     open hnds = fromJust <$> (openConcurrentHandles hnds >> openConcurrentDb hnds)
 

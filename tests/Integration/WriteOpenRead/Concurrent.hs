@@ -8,7 +8,6 @@ import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck.Monadic
 
-import Control.Applicative ((<$>))
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
@@ -16,7 +15,7 @@ import Control.Monad.Trans.Maybe
 
 import Data.Foldable (foldlM)
 import Data.Map (Map)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (isJust)
 import qualified Data.Map as M
 
 import System.Directory (removeDirectory, removeFile,
@@ -42,23 +41,24 @@ tests = testGroup "WriteOpenRead.Concurrent"
 
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
-    idb    <- run $ snd <$> create
-    result <- run . runMaybeT $ foldlM (\(db, m) tx -> writeReadTest db tx m)
-                                       (idb, M.empty)
+    (Right db, files) <- run create
+    result <- run . runMaybeT $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
+                                       (files, M.empty)
                                        txs
     assert $ isJust result
   where
 
-    writeReadTest :: Files String
+    writeReadTest :: ConcurrentDb String Integer Integer
+                  -> Files String
                   -> TestTransaction Integer Integer
                   -> Map Integer Integer
                   -> MaybeT IO (Files String, Map Integer Integer)
-    writeReadTest db tx m = do
-        db'      <- openAndWrite db tx
-        read'    <- openAndRead db'
+    writeReadTest db files tx m = do
+        files'   <- openAndWrite db files tx
+        read'    <- openAndRead db files'
         let expected = testTransactionResult m tx
         if read' == M.toList expected
-            then return (db', expected)
+            then return (files', expected)
             else error $ "error:"
                     ++ "\n    after:   " ++ show tx
                     ++ "\n    expectd: " ++ show (M.toList expected)
@@ -71,13 +71,14 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
       where
         hnds = defaultConcurrentHandles
 
-    openAndRead db = evalStoreT (open >>= readAll) db >>= \case
+    openAndRead db files = evalStoreT (readAll db) files >>= \case
         Left err -> error err
         Right v -> return v
 
-    openAndWrite db tx = execStoreT (open >>= writeTransaction tx) db
-
-    open = fromJust <$> openConcurrentDb defaultConcurrentHandles
+    openAndWrite db files tx = runStoreT (writeTransaction tx db) files
+        >>= \case
+            (Left err, _) -> error $ "while writing: " ++ show err
+            (Right _, files') -> return files'
 
 --------------------------------------------------------------------------------
 

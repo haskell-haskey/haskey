@@ -105,7 +105,7 @@ nodePage h k v = SGet STypeNode $ get >>= \case
         if fromHeight h == fromHeight h'
             then NodePage h <$> get' h k v
             else fail $ "expected height " ++ show h ++ " but got "
-                     ++ show h ++ " while decoding TypeNode"
+                     ++ show h' ++ " while decoding TypeNode"
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeNode"
   where
     get' :: (Key k, Value v)

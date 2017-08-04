@@ -65,17 +65,17 @@ newWriter hnd tx readers freeTree = WriterEnv {
 
 -- | Wrapper around 'PageId' indicating it is newly free'd and cannot be reused
 -- in the same transaction.
-newtype NewlyFreed = NewlyFreed PageId deriving (Eq, Ord)
+newtype NewlyFreed = NewlyFreed PageId deriving (Eq, Ord, Show)
 
 -- | Wrapper around 'PageId' indicating it is a dirty page.
-newtype Dirty = Dirty PageId deriving (Eq, Ord)
+newtype Dirty = Dirty PageId deriving (Eq, Ord, Show)
 
 -- | Wrapper around 'PageId' indicating the page is dirty and free for reuse.
-newtype DirtyFree = DirtyFree PageId deriving (Eq, Ord)
+newtype DirtyFree = DirtyFree PageId deriving (Eq, Ord, Show)
 
 -- | Wrapper around 'PageId' inidcating it was fetched from the free database
 -- and is ready for reuse.
-newtype Free = Free PageId
+newtype Free = Free PageId deriving (Eq, Ord, Show)
 
 -- | Try to free a page, given a set of dirty pages.
 --

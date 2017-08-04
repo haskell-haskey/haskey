@@ -13,7 +13,6 @@ import Control.Applicative (Applicative, (<$>))
 import Control.Monad.State
 
 import Data.Proxy (Proxy(..))
-import qualified Data.Set as S
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
@@ -48,11 +47,11 @@ instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEn
 
     maxPageSize = ConcurrentT Store.maxPageSize
 
-    allocNode height n = getNid >>= \nid -> ConcurrentT $ do
+    allocNode height n = do
         hnd <- writerHnd <$> get
-        modify' $ \env -> env { writerAllocdPages =
-            S.insert (nodeIdToPageId nid) (writerAllocdPages env) }
-        putNodePage hnd height nid n
+        nid <- getNid
+        touchPage (nodeIdToPageId nid)
+        lift $ putNodePage hnd height nid n
         return nid
       where
         getNid = getFreeNodeId >>= \case
@@ -62,12 +61,7 @@ instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEn
                 pid <- lift $ newPageId hnd
                 return $! pageIdToNodeId pid
 
-    freeNode _ nid = ConcurrentT $ modify' $ \env ->
-        if S.member pid (writerAllocdPages env)
-            then env { writerFreedDirtyPages = pid : writerFreedDirtyPages env }
-            else env { writerNewlyFreedPages = pid : writerNewlyFreedPages env }
-      where
-        pid = nodeIdToPageId nid
+    freeNode _ nid = freePage (nodeIdToPageId nid)
 
 instance ConcurrentMetaStoreM hnd m => AllocReaderM (ConcurrentT WriterEnv hnd m) where
     readNode height nid = ConcurrentT $ do

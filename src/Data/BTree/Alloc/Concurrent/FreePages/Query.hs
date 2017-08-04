@@ -44,8 +44,8 @@ getFreePageId = runMaybeT $ MaybeT getFreedDirtyPageId
 getFreedDirtyPageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe PageId)
 getFreedDirtyPageId = writerFreedDirtyPages <$> get >>= \case
-    []          -> return Nothing
-    pid:pageIds -> do
+    []                      -> return Nothing
+    DirtyFree pid : pageIds -> do
         modify' $ \env -> env { writerFreedDirtyPages = pageIds }
         return (Just pid)
 
@@ -55,8 +55,8 @@ getFreedDirtyPageId = writerFreedDirtyPages <$> get >>= \case
 getCachedFreePageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe PageId)
 getCachedFreePageId = writerReuseablePages <$> get >>= \case
-    []          -> return Nothing
-    pid:pageIds -> do
+    []                 -> return Nothing
+    Free pid : pageIds -> do
         modify' $ \env -> env { writerReuseablePages = pageIds }
         return (Just pid)
 
@@ -90,7 +90,7 @@ queryNewFreePageIds = ifM (not . writerReusablePagesOn <$> get) (return Nothing)
                                   , writerReuseablePagesTxId = Nothing }
             return Nothing
         Just (txId, pid :| pageIds) -> do
-            modify' $ \ env -> env { writerReuseablePages = pageIds
+            modify' $ \ env -> env { writerReuseablePages = map Free pageIds
                                    , writerReuseablePagesTxId = Just txId }
             return (Just pid)
 

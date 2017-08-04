@@ -11,7 +11,6 @@ import Control.Monad (void)
 import Control.Monad.IO.Class
 
 import Data.Proxy (Proxy(..))
-import qualified Data.Set as S
 
 import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
@@ -159,19 +158,14 @@ transact act db
       { concurrentHandlesMain = hnd
       } <- hnds
     = withLock lock $ do
+
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1
-    let wEnv = WriterEnv { writerHnd = hnd
-                         , writerTxId = newRevision
-                         , writerReaders = readers
-                         , writerNewlyFreedPages = []
-                         , writerAllocdPages = S.empty
-                         , writerFreedDirtyPages = []
-                         , writerFreeTree = concurrentMetaFreeTree meta
-                         , writerReuseablePages = []
-                         , writerReuseablePagesTxId = Nothing
-                         , writerReusablePagesOn = True }
-    (tx, env) <- runConcurrentT (act $ concurrentMetaTree meta) wEnv
+    (tx, env) <- runConcurrentT (act $ concurrentMetaTree meta) $
+                    newWriter hnd
+                              newRevision
+                              readers
+                              (concurrentMetaFreeTree meta)
     case tx of
         Abort v -> return v
         Commit newTree v -> do
@@ -197,21 +191,15 @@ transact act db
     saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM hnd m)
                    => WriterEnv hnd
                    -> m FreeTree
-    saveFreePages' toFree = do
-        let env      = toFree { writerNewlyFreedPages = [] }
-            freeTree = writerFreeTree toFree
-
-        (freeTree', env') <- runConcurrentT (saveFreePages toFree freeTree) env
+    saveFreePages' env = do
+        (freeTree', env') <- runConcurrentT (saveFreePages env) env
 
         -- Did we free any new pages? We have to put them in the free tree!
         -- Did we free any new dirty pages? We have to put them in the free tree!
-        if null (writerNewlyFreedPages env') &&
-           writerFreedDirtyPages toFree == writerFreedDirtyPages env'
+        if writerNewlyFreedPages env == writerNewlyFreedPages env' &&
+           writerFreedDirtyPages env == writerFreedDirtyPages env'
            then return freeTree'
-           else do
-               let xs = writerNewlyFreedPages env' ++ writerNewlyFreedPages toFree
-               saveFreePages' $ env' { writerNewlyFreedPages = xs
-                                     , writerFreeTree        = freeTree' }
+           else saveFreePages' $ env' { writerFreeTree = freeTree' }
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)

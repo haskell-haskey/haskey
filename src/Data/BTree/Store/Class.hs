@@ -33,11 +33,8 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
     {-| The maximum page size the allocator can handle. -}
     maxPageSize  :: m PageSize
 
-    {-| Directly set the amount of available physical pages. -}
-    setSize      :: hnd -> PageCount -> m ()
-
-    {-| Get the amount of physical available pages. -}
-    getSize      :: hnd -> m PageCount
+    {-| Get a new unused fresh 'PageId' from the end of the file. -}
+    newPageId    :: hnd -> m PageId
 
     {-| Read a page and return the actual node and the transaction id when the
        node was written. -}
@@ -62,8 +59,7 @@ instance StoreM hnd m => StoreM hnd (StateT s m) where
     closeHandle  = lift.             closeHandle
     nodePageSize = lift              nodePageSize
     maxPageSize  = lift              maxPageSize
-    setSize      = (lift.).          setSize
-    getSize      = lift.             getSize
+    newPageId    = lift.             newPageId
     getNodePage  = ((((lift.).).).). getNodePage
     putNodePage  = (((lift.).).).    putNodePage
 
@@ -72,8 +68,7 @@ instance StoreM hnd m => StoreM hnd (ReaderT s m) where
     closeHandle  = lift.             closeHandle
     nodePageSize = lift              nodePageSize
     maxPageSize  = lift              maxPageSize
-    setSize      = (lift.).          setSize
-    getSize      = lift.             getSize
+    newPageId    = lift.             newPageId
     getNodePage  = ((((lift.).).).). getNodePage
     putNodePage  = (((lift.).).).    putNodePage
 

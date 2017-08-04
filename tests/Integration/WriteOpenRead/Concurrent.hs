@@ -16,10 +16,12 @@ import Control.Monad.Trans.Maybe
 
 import Data.Foldable (foldlM)
 import Data.Map (Map)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (isJust)
 import qualified Data.Map as M
 
-import System.Directory (removeDirectory, removeFile, getTemporaryDirectory)
+import System.Directory (removeDirectory, removeFile,
+                         getTemporaryDirectory, doesDirectoryExist,
+                         writable, getPermissions)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
 
@@ -41,23 +43,24 @@ tests = testGroup "WriteOpenRead.Concurrent"
 
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
-    idb    <- run $ snd <$> create
-    result <- run . runMaybeT $ foldlM (\(db, m) tx -> writeReadTest db tx m)
-                                       (idb, M.empty)
+    (Right db, files) <- run create
+    result <- run . runMaybeT $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
+                                       (files, M.empty)
                                        txs
     assert $ isJust result
   where
 
-    writeReadTest :: Files String
+    writeReadTest :: ConcurrentDb String Integer Integer
+                  -> Files String
                   -> TestTransaction Integer Integer
                   -> Map Integer Integer
                   -> MaybeT IO (Files String, Map Integer Integer)
-    writeReadTest db tx m = do
-        db'      <- openAndWrite db tx
-        read'    <- openAndRead db'
+    writeReadTest db files tx m = do
+        files'   <- openAndWrite db files tx
+        read'    <- openAndRead db files'
         let expected = testTransactionResult m tx
         if read' == M.toList expected
-            then return (db', expected)
+            then return (files', expected)
             else error $ "error:"
                     ++ "\n    after:   " ++ show tx
                     ++ "\n    expectd: " ++ show (M.toList expected)
@@ -70,19 +73,24 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
       where
         hnds = defaultConcurrentHandles
 
-    openAndRead db = evalStoreT (open >>= readAll) db >>= \case
+    openAndRead db files = evalStoreT (readAll db) files >>= \case
         Left err -> error err
         Right v -> return v
 
-    openAndWrite db tx = execStoreT (open >>= writeTransaction tx) db
-
-    open = fromJust <$> openConcurrentDb defaultConcurrentHandles
+    openAndWrite db files tx = runStoreT (writeTransaction tx db) files
+        >>= \case
+            (Left err, _) -> error $ "while writing: " ++ show err
+            (Right _, files') -> return files'
 
 --------------------------------------------------------------------------------
 
 prop_file_backend :: PropertyM IO ()
 prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
-    tmpDir <- run getTemporaryDirectory
+    exists <- run $ doesDirectoryExist "/var/run/shm"
+    w      <- if exists then run $ writable <$> getPermissions "/var/run/shm"
+                        else return False
+    tmpDir <- if w then return "/var/run/shm"
+                   else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
     let hnds = ConcurrentHandles {
         concurrentHandlesMain      = fp </> "main.db"
@@ -90,10 +98,12 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
       , concurrentHandlesMetadata2 = fp </> "meta.md2"
       }
 
-    _      <- run $ create hnds
-    result <- run . runMaybeT $ foldM (writeReadTest hnds)
+    (Right db, files) <- run $ create hnds
+    result <- run . runMaybeT $ foldM (writeReadTest db files)
                                       M.empty
                                       txs
+
+    _ <- FS.runStoreT (closeConcurrentHandles hnds) files
 
     run $ removeFile (concurrentHandlesMain hnds)
     run $ removeFile (concurrentHandlesMetadata1 hnds)
@@ -102,13 +112,14 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
     assert $ isJust result
   where
-    writeReadTest :: ConcurrentHandles FilePath
+    writeReadTest :: ConcurrentDb FilePath Integer Integer
+                  -> FS.Files FilePath
                   -> Map Integer Integer
                   -> TestTransaction Integer Integer
                   -> MaybeT IO (Map Integer Integer)
-    writeReadTest hnds m tx = do
-        _     <- lift $ openAndWrite hnds tx
-        read' <- lift $ openAndRead hnds
+    writeReadTest db files m tx = do
+        _     <- lift $ openAndWrite db files tx
+        read' <- lift $ openAndRead db files
         let expected = testTransactionResult m tx
         if read' == M.toList expected
             then return expected
@@ -121,31 +132,24 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
            -> IO (Either String (ConcurrentDb FilePath Integer Integer), FS.Files FilePath)
     create hnds = flip FS.runStoreT FS.emptyStore $ do
         openConcurrentHandles hnds
-        db <- createConcurrentDb hnds
-        closeConcurrentHandles hnds
-        return db
+        createConcurrentDb hnds
 
-    openAndRead :: ConcurrentHandles FilePath
+    openAndRead :: ConcurrentDb FilePath Integer Integer
+                -> FS.Files FilePath
                 -> IO [(Integer, Integer)]
-    openAndRead hnds = FS.evalStoreT (do
-        db <- open hnds
-        v  <- readAll db
-        closeConcurrentHandles hnds
-        return v)
-        (FS.emptyStore :: FS.Files FilePath)
+    openAndRead db files = FS.evalStoreT (readAll db) files
         >>= \case
             Left err -> error err
             Right v -> return v
 
-    openAndWrite :: ConcurrentHandles FilePath
+    openAndWrite :: ConcurrentDb FilePath Integer Integer
+                 -> FS.Files FilePath
                  -> TestTransaction Integer Integer
                  -> IO (FS.Files FilePath)
-    openAndWrite hnds tx = flip FS.execStoreT FS.emptyStore $ do
-        db  <- open hnds
-        _   <- writeTransaction tx db
-        closeConcurrentHandles hnds
-
-    open hnds = fromJust <$> (openConcurrentHandles hnds >> openConcurrentDb hnds)
+    openAndWrite db files tx = FS.runStoreT (void $ writeTransaction tx db) files
+        >>= \case
+            (Left err, _)    -> error $ "while writing: " ++ show err
+            (Right _, files') -> return files'
 
 --------------------------------------------------------------------------------
 

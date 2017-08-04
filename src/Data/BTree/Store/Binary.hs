@@ -27,12 +27,10 @@ import Control.Monad.Except
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
-import Data.Binary (Get)
 import Data.ByteString (ByteString)
-import Data.ByteString.Lazy (fromStrict, toStrict)
 import Data.Coerce
 import Data.Map (Map)
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString as BS
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Concurrent
@@ -100,21 +98,17 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
         modify $ M.delete fp
 
     nodePageSize = return $ \h ->
-        fromIntegral . BL.length . encode . NodePage h
+        fromIntegral . BS.length . encode . NodePage h
 
-    maxPageSize = return 4096
+    maxPageSize = return 128
 
-    setSize fp (PageCount n) = do
-        let emptyFile = M.fromList
-                        [ (PageId i, encodeStrict EmptyPage)
-                        | i <- [0..n-1]
-                        ]
-            res file  = M.intersection (M.union file emptyFile) emptyFile
-        modify (M.update (Just . res) fp)
+    newPageId hnd = do
+        m <- get >>= lookupFile hnd
+        return $ fromIntegral (M.size m)
 
     getNodePage hnd h key val nid = do
         bs <- get >>= lookupPage hnd (nodeIdToPageId nid)
-        decodeStrictM (nodePage h key val) bs >>= \case
+        decodeM (nodePage h key val) bs >>= \case
             NodePage heightSrc n ->
                 justErrM "could not cast node page" $
                     castNode heightSrc h n
@@ -122,11 +116,7 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
     putNodePage hnd height nid node =
         modify $ M.update (Just . M.insert (nodeIdToPageId nid) pg) hnd
       where
-        pg = encodeStrict $ NodePage height node
-
-    getSize hnd = do
-        m <- get >>= lookupFile hnd
-        return $ fromIntegral (M.size m)
+        pg = encode $ NodePage height node
 
 --------------------------------------------------------------------------------
 
@@ -136,20 +126,12 @@ instance (Ord fp, Show fp, Applicative m, Monad m) =>
     putConcurrentMeta h meta =
         modify $ M.update (Just . M.insert 0 pg) h
       where
-        pg = encodeStrict $ ConcurrentMetaPage meta
+        pg = encode $ ConcurrentMetaPage meta
 
     readConcurrentMeta hnd k v = do
         Just bs <- StoreT $ gets (M.lookup hnd >=> M.lookup 0)
-        case decodeStrictM (concurrentMetaPage k v) bs of
+        case decodeM (concurrentMetaPage k v) bs of
             Right (ConcurrentMetaPage meta) -> return . Just $! coerce meta
             Left err -> throwError err
-
---------------------------------------------------------------------------------
-
-encodeStrict :: Page t -> ByteString
-encodeStrict = toStrict . encode
-
-decodeStrictM :: MonadError String m => Get a -> ByteString -> m a
-decodeStrictM g = decodeM g . fromStrict
 
 --------------------------------------------------------------------------------

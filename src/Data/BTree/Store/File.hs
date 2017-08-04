@@ -28,11 +28,11 @@ import Control.Monad.Except
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
-import Data.ByteString.Lazy (ByteString)
+import Data.ByteString (ByteString)
 import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Monoid ((<>))
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString as BS
 import qualified Data.Map as M
 
 import System.IO
@@ -52,11 +52,11 @@ import Data.BTree.Utils.Monad.Except (justErrM)
 encodeAndPad :: PageSize -> Page t -> Maybe ByteString
 encodeAndPad size page
     | Just n <- padding = Just $
-        enc <> BL.replicate n 0
+        enc <> BS.replicate n 0
     | otherwise = Nothing
   where
     enc = encode page
-    padding | n <- fromIntegral size - BL.length enc, n >= 0 = Just n
+    padding | n <- fromIntegral size - BS.length enc, n >= 0 = Just n
             | otherwise = Nothing
 
 --------------------------------------------------------------------------------
@@ -65,21 +65,12 @@ encodeAndPad size page
 --
 -- Each file is a 'Handle' opened in 'System.IO.ReadWriteMode' and contains a
 -- collection of physical pages.
-type Files fp = Map fp (Handle, PageCount)
+type Files fp = Map fp Handle
 
-getFileHandle :: (Handle, PageCount) -> Handle
-getFileHandle = fst
-
-getFilePageCount :: (Handle, PageCount) -> PageCount
-getFilePageCount = snd
-
-lookupFile :: (Ord fp, Show fp, MonadError String m)
-           => fp -> Files fp -> m (Handle, PageCount)
-lookupFile fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
 
 lookupHandle :: (Ord fp, Show fp, Functor m, MonadError String m)
              => fp -> Files fp -> m Handle
-lookupHandle fp m = getFileHandle <$> lookupFile fp m
+lookupHandle fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
 
 -- | Monad in which on-disk storage operations can take place.
 --
@@ -116,15 +107,9 @@ instance (Applicative m, Monad m, MonadIO m) =>
   where
     openHandle fp = do
         alreadyOpen <- M.member fp <$> get
-        pageSize    <- maxPageSize
         unless alreadyOpen $ do
-            -- Open the file in rw mode
             fh <- liftIO $ openFile fp ReadWriteMode
-
-            -- Calculate the number of pages
-            fs     <- liftIO $ hFileSize fh
-            let pc = fs `quot` fromIntegral pageSize
-            modify $ M.insert fp (fh, fromIntegral pc)
+            modify $ M.insert fp fh
 
     closeHandle fp = do
         fh <- get >>= lookupHandle fp
@@ -133,17 +118,19 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
     nodePageSize =
         return $ \h ->
-            fromIntegral . BL.length . encode . NodePage h
+            fromIntegral . BS.length . encode . NodePage h
 
-    maxPageSize = return 4096
+    maxPageSize = return 128
 
-    getSize fp = do
-        f <- get >>= lookupFile fp
-        return (getFilePageCount f)
+    newPageId fp = do
+        fh <- get >>= lookupHandle fp
+        fs <- liftIO $ hFileSize fh
+        ps <- fromIntegral <$> maxPageSize
 
-    setSize fp pc = do
-        h <- get >>= lookupHandle fp
-        modify (M.insert fp (h, pc))
+        let n = fs `div` ps
+        case fs `rem` ps of
+            0 -> return (fromIntegral n)
+            _ -> return (fromIntegral n + 1)
 
     getNodePage fp height key val nid = do
         h    <- get >>= lookupHandle fp
@@ -153,7 +140,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
             offset     = fromIntegral $ pid * fromIntegral size
 
         liftIO $ hSeek h AbsoluteSeek offset
-        bs <- liftIO $ BL.hGet h (fromIntegral size)
+        bs <- liftIO $ BS.hGet h (fromIntegral size)
         n  <- decodeM (nodePage height key val) bs
 
         case n of
@@ -171,7 +158,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
         liftIO $ hSeek h AbsoluteSeek offset
         bs <- justErrM "putNodePage: page too large" $ encodeAndPad size page
-        liftIO $ BL.hPut h bs
+        liftIO $ BS.hPut h bs
 
 --------------------------------------------------------------------------------
 
@@ -183,14 +170,14 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
         let page = ConcurrentMetaPage meta
             bs   = encode page
-        liftIO $ hSetFileSize h (fromIntegral $ BL.length bs)
+        liftIO $ hSetFileSize h (fromIntegral $ BS.length bs)
         liftIO $ hSeek h AbsoluteSeek 0
-        liftIO $ BL.hPut h bs
+        liftIO $ BS.hPut h bs
 
     readConcurrentMeta fp k v = do
         fh       <- get >>=  lookupHandle fp
         liftIO $ hSeek fh AbsoluteSeek 0
-        bs <- liftIO $ BL.hGetContents fh
+        bs <- liftIO $ BS.hGetContents fh
         decodeM (concurrentMetaPage k v) bs >>= \case
             ConcurrentMetaPage meta -> return $ Just (coerce meta)
 

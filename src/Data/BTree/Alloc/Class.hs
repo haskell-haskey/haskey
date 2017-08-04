@@ -34,13 +34,6 @@ class AllocReaderM m => AllocM m where
                  -> Node height key val
                  -> m (NodeId height key val)
 
-    {-| Write the a node to an existing page.  -}
-    writeNode    :: (Key key, Value val)
-                 => NodeId height key val
-                 -> Height height
-                 -> Node height key val
-                 -> m (NodeId height key val)
-
     {-| Free the page belonging to the node. -}
     freeNode     ::  Height height
                  ->  NodeId height key val

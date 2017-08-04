@@ -62,11 +62,6 @@ instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEn
                 pid <- lift $ newPageId hnd
                 return $! pageIdToNodeId pid
 
-    writeNode nid height n = ConcurrentT $ do
-        hnd <- writerHnd <$> get
-        putNodePage hnd height nid n
-        return nid
-
     freeNode _ nid = ConcurrentT $ modify' $ \env ->
         if S.member pid (writerAllocdPages env)
             then env { writerFreedDirtyPages = pid : writerFreedDirtyPages env }

@@ -8,6 +8,7 @@ import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck.Monadic
 
+import Control.Applicative ((<$>))
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
@@ -19,7 +20,8 @@ import Data.Maybe (isJust)
 import qualified Data.Map as M
 
 import System.Directory (removeDirectory, removeFile,
-                         getTemporaryDirectory, doesDirectoryExist)
+                         getTemporaryDirectory, doesDirectoryExist,
+                         writable, getPermissions)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
 
@@ -85,8 +87,10 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 prop_file_backend :: PropertyM IO ()
 prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     exists <- run $ doesDirectoryExist "/var/run/shm"
-    tmpDir <- if exists then return "/var/run/shm"
-                        else run getTemporaryDirectory
+    w      <- if exists then run $ writable <$> getPermissions "/var/run/shm"
+                        else return False
+    tmpDir <- if w then return "/var/run/shm"
+                   else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
     let hnds = ConcurrentHandles {
         concurrentHandlesMain      = fp </> "main.db"

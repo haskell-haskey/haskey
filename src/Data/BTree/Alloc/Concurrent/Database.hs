@@ -11,6 +11,7 @@ import Control.Monad (void)
 import Control.Monad.IO.Class
 
 import Data.Proxy (Proxy(..))
+import qualified Data.Set as S
 
 import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
@@ -171,7 +172,7 @@ transact act db
         Commit newTree v -> do
             -- Save the free'd pages to the free page database
             -- don't try to use pages from the free database when doing so
-            freeTree' <- saveFreePages' (env { writerReusablePagesOn = False })
+            freeTree' <- saveFreePages' True Nothing $ env { writerReusablePagesOn = False }
 
             -- Commit
             let newMeta = ConcurrentMeta
@@ -189,10 +190,16 @@ transact act db
         return v
 
     saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM hnd m)
-                   => WriterEnv hnd
+                   => Bool
+                   -> Maybe [DirtyFree]
+                   -> WriterEnv hnd
                    -> m FreeTree
-    saveFreePages' env = do
-        (freeTree', env') <- runConcurrentT (saveFreePages env) env
+    saveFreePages' dirtyPagesOn oldDirtyFree env = do
+        (freeTree', env') <- runConcurrentT (saveFreePages env) $
+            env { writerFreedDirtyPagesOn = dirtyPagesOn }
+
+        let newEnv = env' { writerFreeTree = freeTree' }
+        let oldDirtyFree' = Just $ writerFreedDirtyPages env
 
         -- Did we free any new pages? We have to put them in the free tree!
         -- Did we free any new dirty pages? We have to put them in the free tree!
@@ -200,7 +207,14 @@ transact act db
            writerFreedDirtyPages env == writerFreedDirtyPages env' &&
            writerReusablePages   env == writerReusablePages  env'
            then return freeTree'
-           else saveFreePages' $ env' { writerFreeTree = freeTree' }
+           else let isPerm x y = S.fromList x == S.fromList y in
+                if maybe False (writerFreedDirtyPages env' `isPerm`) oldDirtyFree
+                then -- Same state twice?? We are writing (dirty page id x) to
+                     -- (page id x) making it not dirty anymore, getting us in
+                     -- an endless loop. Try allocating a fresh page to break the
+                     -- loop!
+                     saveFreePages' False oldDirtyFree' newEnv
+                else saveFreePages' True  oldDirtyFree' newEnv
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)

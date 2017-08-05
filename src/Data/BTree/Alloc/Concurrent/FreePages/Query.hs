@@ -37,11 +37,12 @@ getFreePageId = runMaybeT $ (DirtyFreePage <$> MaybeT getFreedDirtyPageId)
 -- current transaction.
 getFreedDirtyPageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe DirtyFree)
-getFreedDirtyPageId = writerFreedDirtyPages <$> get >>= \case
-    []                      -> return Nothing
-    pid : pageIds -> do
-        modify' $ \env -> env { writerFreedDirtyPages = pageIds }
-        return (Just pid)
+getFreedDirtyPageId = ifM (not . writerFreedDirtyPagesOn <$> get) (return Nothing) $
+    writerFreedDirtyPages <$> get >>= \case
+        []            -> return Nothing
+        pid : pageIds -> do
+            modify' $ \env -> env { writerFreedDirtyPages = pageIds }
+            return (Just pid)
 
 -- | Get a cached free page.
 --
@@ -49,7 +50,7 @@ getFreedDirtyPageId = writerFreedDirtyPages <$> get >>= \case
 getCachedFreePageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe OldFree)
 getCachedFreePageId = writerReusablePages <$> get >>= \case
-    []                 -> return Nothing
+    []            -> return Nothing
     pid : pageIds -> do
         modify' $ \env -> env { writerReusablePages = pageIds }
         return (Just pid)

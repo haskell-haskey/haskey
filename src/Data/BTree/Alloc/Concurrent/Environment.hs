@@ -31,7 +31,10 @@ data WriterEnv hnd = WriterEnv
 
     , writerFreedDirtyPages :: ![DirtyFree]
     -- ^ Pages free for immediate reuse.
-    --
+
+    , writerFreedDirtyPagesOn :: Bool
+    -- ^ Whether or not it is allowed to use pages from
+    -- 'writerFreedDirtyPages'.
 
     , writerFreeTree :: !FreeTree
     -- ^ The root of the free tree, might change during a transaction.
@@ -61,6 +64,7 @@ newWriter hnd tx readers freeTree = WriterEnv {
   , writerNewlyFreedPages = []
   , writerDirtyPages = S.empty
   , writerFreedDirtyPages = []
+  , writerFreedDirtyPagesOn = True
   , writerFreeTree = freeTree
   , writerDirtyReusablePages = S.empty
   , writerReusablePages = []

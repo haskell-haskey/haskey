@@ -25,7 +25,7 @@ import qualified Data.BTree.Utils.STM.Map as Map
 -- First try to get one from the in-memory dirty pages. Then try to get one
 -- from the in-memory free page cache stored in 'writerReusablePages'. If that
 -- one is empty, actually query one from the free database.
-getFreePageId :: (AllocM m, MonadIO m, MonadState (WriterEnv hnd) m)
+getFreePageId :: (Functor m, AllocM m, MonadIO m, MonadState (WriterEnv hnd) m)
               => m (Maybe SomeFreePage)
 getFreePageId = runMaybeT $ (DirtyFreePage <$> MaybeT getFreedDirtyPageId)
                         <|> (OldFreePage   <$> MaybeT getCachedFreePageId)

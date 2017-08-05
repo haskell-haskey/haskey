@@ -1,9 +1,9 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 -- | Environments of a read or write transaction.
 module Data.BTree.Alloc.Concurrent.Environment where
 
+import Control.Applicative ((<$>))
 import Control.Monad.State
 
 import Data.Set (Set)
@@ -109,7 +109,7 @@ getSomeFreePageId (OldFreePage   (OldFree   pid)) = pid
 --
 -- If the page was dirty, a 'DirtyFree' page is added to the environment, if
 -- not a 'NewlyFreed' page is added to the environment.
-freePage :: MonadState (WriterEnv hnd) m => PageId -> m ()
+freePage :: (Functor m, MonadState (WriterEnv hnd) m) => PageId -> m ()
 freePage pid = do
     dirty'        <- dirty pid
     dirtyOldFree' <- dirtyOldFree pid
@@ -124,7 +124,7 @@ freePage pid = do
             \e -> e { writerNewlyFreedPages = NewlyFreed p : writerNewlyFreedPages e }
 
 -- | Get a 'Dirty' page, by first proving it is in fact dirty.
-dirty :: MonadState (WriterEnv hnd) m => PageId -> m (Maybe Dirty)
+dirty :: (Functor m, MonadState (WriterEnv hnd) m) => PageId -> m (Maybe Dirty)
 dirty pid = (page . writerDirtyPages) <$> get
   where
     page dirty'
@@ -132,7 +132,7 @@ dirty pid = (page . writerDirtyPages) <$> get
         | otherwise                   = Nothing
 
 -- | Get a 'DirtyOldFree' page, by first proving it is in fact a dirty old free page.
-dirtyOldFree :: MonadState (WriterEnv hnd) m => PageId -> m (Maybe DirtyOldFree)
+dirtyOldFree :: (Functor m, MonadState (WriterEnv hnd) m) => PageId -> m (Maybe DirtyOldFree)
 dirtyOldFree pid = (page . writerDirtyReusablePages) <$> get
   where
     page dirty'

@@ -120,7 +120,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
         return $ \h ->
             fromIntegral . BS.length . encode . NodePage h
 
-    maxPageSize = return 128
+    maxPageSize = return 256
 
     newPageId fp = do
         fh <- get >>= lookupHandle fp

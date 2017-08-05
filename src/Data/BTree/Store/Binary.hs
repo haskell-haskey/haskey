@@ -100,7 +100,7 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
     nodePageSize = return $ \h ->
         fromIntegral . BS.length . encode . NodePage h
 
-    maxPageSize = return 128
+    maxPageSize = return 256
 
     newPageId hnd = do
         m <- get >>= lookupFile hnd

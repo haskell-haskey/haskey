@@ -49,17 +49,19 @@ instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEn
 
     allocNode height n = do
         hnd <- writerHnd <$> get
-        nid <- getNid
-        touchPage (nodeIdToPageId nid)
+        pid <- getPid
+        touchPage pid
+
+        let nid = pageIdToNodeId (getSomeFreePageId pid)
         lift $ putNodePage hnd height nid n
         return nid
       where
-        getNid = getFreeNodeId >>= \case
-            Just nid -> return nid
+        getPid = getFreePageId >>= \case
+            Just pid -> return pid
             Nothing -> do
                 hnd <- writerHnd <$> get
                 pid <- lift $ newPageId hnd
-                return $! pageIdToNodeId pid
+                return (FreshFreePage (Fresh pid))
 
     freeNode _ nid = freePage (nodeIdToPageId nid)
 

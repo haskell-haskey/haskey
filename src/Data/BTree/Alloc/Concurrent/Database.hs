@@ -198,7 +198,7 @@ transact act db
         -- Did we free any new dirty pages? We have to put them in the free tree!
         if writerNewlyFreedPages env == writerNewlyFreedPages env' &&
            writerFreedDirtyPages env == writerFreedDirtyPages env' &&
-           writerReuseablePages  env == writerReuseablePages  env'
+           writerReusablePages   env == writerReusablePages  env'
            then return freeTree'
            else saveFreePages' $ env' { writerFreeTree = freeTree' }
 

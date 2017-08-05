@@ -32,16 +32,16 @@ saveNewlyAndDirtyFreedPages env tree =
     freedDirty = map (\(DirtyFree  pid) -> pid) $ writerFreedDirtyPages env
 
 -- | Save the free apges from the free page cache in
--- 'writerReuseablePages' using 'writerReuseablePagesTxId'.
+-- 'writerReusablePages' using 'writerReuseablePagesTxId'.
 saveCachedFreePages :: AllocM m
                     => WriterEnv hnd
                     -> FreeTree
                     -> m FreeTree
-saveCachedFreePages env tree = case writerReuseablePagesTxId env of
+saveCachedFreePages env tree = case writerReusablePagesTxId env of
     Nothing -> return tree
     Just k ->
         case freePages of
             [] -> deleteSubtree k tree
             x:xs -> replaceSubtree k (x :| xs) tree
   where
-    freePages = map (\(Free pid) -> pid) $ writerReuseablePages env
+    freePages = map (\(OldFree pid) -> pid) $ writerReusablePages env

@@ -2,42 +2,24 @@ module Properties.Impure.Fold where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
 
 import Control.Monad ((>=>))
 
 import Data.Int
 import qualified Data.Map as M
 
-import Data.BTree.Alloc.Concurrent
+import Data.BTree.Alloc.Debug
 import Data.BTree.Impure.Insert
-import Data.BTree.Store.Binary
-import qualified Data.BTree.Impure.Fold as Tree
+import qualified Data.BTree.Impure as Tree
 
 tests :: Test
 tests = testGroup "Impure.Fold"
-    [ testProperty "foldable toList fromList" (monadicIO $ forAllM arbitrary prop_foldable_toList_fromList)
+    [ testProperty "foldable toList fromList" prop_foldable_toList_fromList
     ]
 
-prop_foldable_toList_fromList :: [(Int64, Integer)] -> PropertyM IO ()
-prop_foldable_toList_fromList kvs = do
-    v <- evalStore $ do
-        db <- createConcurrentDb hnds
-        insertAll kvs db
-        transactReadOnly Tree.toList db
-    case v of
-        Right l -> assert $ l == M.toList (M.fromList kvs)
-        Left _ -> assert False
-  where
-    insertAll kvs' = transact_ $
-        foldl (>=>) return (map (uncurry insertTree) kvs')
-        >=> commit_
-
-    hnds = ConcurrentHandles {
-        concurrentHandlesMain = "main"
-      , concurrentHandlesMetadata1 = "meta1"
-      , concurrentHandlesMetadata2 = "meta2"
-      }
-
-    evalStore action = evalStoreT (openConcurrentHandles hnds >> action) emptyStore
+prop_foldable_toList_fromList :: [(Int64, Integer)] -> Bool
+prop_foldable_toList_fromList kvs
+    | (v, _) <- runDebug emptyPages $
+        foldl (>=>) return (map (uncurry insertTree) kvs) Tree.empty
+         >>= Tree.toList
+    = v == M.toList (M.fromList kvs)

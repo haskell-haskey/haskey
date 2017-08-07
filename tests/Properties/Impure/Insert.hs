@@ -2,52 +2,34 @@ module Properties.Impure.Insert where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
 
 import Control.Monad ((>=>))
 
-import Data.Either (isRight)
 import Data.Int
 import qualified Data.Map as M
 
-import Data.BTree.Alloc.Concurrent
+import Data.BTree.Alloc.Debug
 import Data.BTree.Impure.Insert
-import Data.BTree.Store.Binary
-import qualified Data.BTree.Impure.Fold as Tree
+import qualified Data.BTree.Impure as Tree
 
 tests :: Test
 tests = testGroup "Impure.Insert"
-    [ testProperty "insertTreeMany" (monadicIO $ forAllM arbitrary $ uncurry prop_insertTreeMany)
+    [ testProperty "insertTreeMany" prop_insertTreeMany
     ]
 
-prop_insertTreeMany :: [(Int64, Integer)] -> [(Int64, Integer)] -> PropertyM IO ()
-prop_insertTreeMany xs ys = do
-    ty1' <- ty1
-    ty2' <- ty2
-    assert $ ty1' == ty2' && isRight ty1'
+prop_insertTreeMany :: [(Int64, Integer)] -> [(Int64, Integer)] -> Bool
+prop_insertTreeMany xs ys = ty1 == ty2
   where
-    tx  = do
-        db <- createConcurrentDb hnds
-        insertAll xs db
-        return db
-    ty1 = evalStore $ do
-        db <- tx
-        insertAll ys db
-        transactReadOnly Tree.toList db
-    ty2 = evalStore $ do
-        db <- tx
-        transact_ (insertTreeMany (M.fromList ys) >=> commit_) db
-        transactReadOnly Tree.toList db
+    tx  = insertAll xs Tree.empty
 
-    insertAll kvs = transact_ $
-        foldl (>=>) return (map (uncurry insertTree) kvs)
-        >=> commit_
+    ty1 = evalDebug emptyPages $
+              tx
+              >>= insertAll ys
+              >>= Tree.toList
 
-    hnds = ConcurrentHandles {
-        concurrentHandlesMain = "main"
-      , concurrentHandlesMetadata1 = "meta1"
-      , concurrentHandlesMetadata2 = "meta2"
-      }
+    ty2 = evalDebug emptyPages $
+              tx
+              >>= insertTreeMany (M.fromList ys)
+              >>= Tree.toList
 
-    evalStore action = evalStoreT (openConcurrentHandles hnds >> action) emptyStore
+    insertAll kvs = foldl (>=>) return (map (uncurry insertTree) kvs)

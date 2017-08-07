@@ -4,11 +4,13 @@ module Data.BTree.Impure.Fold where
 
 import Prelude hiding (foldr, foldl)
 
+import Data.Map (Map)
 import Data.Monoid (Monoid, (<>), mempty)
 import qualified Data.Map as M
 import qualified Data.Foldable as F
 
 import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Overflow
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 
@@ -41,10 +43,15 @@ foldrIdWithKeyM f x h nid = readNode h nid >>= foldrNodeWithKeyM f x h
 
 foldrNodeWithKeyM :: (AllocReaderM m, Key k, Value a)
            => (k -> a -> b -> m b) -> b -> Height h -> Node h k a -> m b
-foldrNodeWithKeyM f x _ (Leaf items) = M.foldlWithKey f' return items x
-  where f' m k a z = f k a z >>= m
+foldrNodeWithKeyM f x _ (Leaf items) =
+    fromLeafItems items >>= foldrLeafItemsWithKeyM f x
 foldrNodeWithKeyM f x h (Idx idx) =
     F.foldrM (\nid x' -> foldrIdWithKeyM f x' (decrHeight h) nid) x idx
+
+foldrLeafItemsWithKeyM :: (AllocReaderM m, Key k, Value a)
+    => (k -> a -> b -> m b) -> b -> Map k a -> m b
+foldrLeafItemsWithKeyM f x items = M.foldlWithKey f' return items x
+  where f' m k a z = f k a z >>= m
 
 --------------------------------------------------------------------------------
 

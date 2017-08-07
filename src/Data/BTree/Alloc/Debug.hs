@@ -30,7 +30,7 @@ getSomeVal (SomeVal v) = unsafeCoerce v
 
 data Pages = Pages {
     pagesNodes :: Map PageId SomeNode
-  , pagesOverflow :: Map (TxId, Word64) SomeVal
+  , pagesOverflow :: Map Word64 SomeVal
   }
 
 emptyPages :: Pages
@@ -53,8 +53,8 @@ instance Monad m => AllocReaderM (DebugT m) where
         n <- gets (\pgs -> pagesNodes pgs ! nodeIdToPageId nid)
         return $ getSomeNode n
 
-    readOverflow tx c = do
-        v <- gets (\pgs -> pagesOverflow pgs ! (tx, c))
+    readOverflow _ c = do
+        v <- gets (\pgs -> pagesOverflow pgs ! c)
         return $ getSomeVal v
 
 instance Monad m => AllocM (DebugT m) where
@@ -71,9 +71,11 @@ instance Monad m => AllocM (DebugT m) where
 
     freeNode _ _ = return ()
 
-    allocOverflow tx c v = do
+    allocOverflow v = do
         let v' = SomeVal v
-        modify' $ \pgs -> pgs { pagesOverflow = M.insert (tx, c) v' (pagesOverflow pgs) }
+        c <- fromIntegral <$> gets (M.size . pagesOverflow)
+        modify' $ \pgs -> pgs { pagesOverflow = M.insert c v' (pagesOverflow pgs) }
+        return (0, c)
 
-    freeOverflow tx c =
-        modify' $ \pgs -> pgs { pagesOverflow = M.delete (tx, c) (pagesOverflow pgs) }
+    freeOverflow _ c =
+        modify' $ \pgs -> pgs { pagesOverflow = M.delete c (pagesOverflow pgs) }

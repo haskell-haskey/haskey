@@ -9,6 +9,7 @@ import Data.Traversable (traverse)
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Overflow
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 
@@ -37,7 +38,7 @@ splitIndex h index = do
    because it does not contain enough elements (underflow).
  -}
 splitLeaf :: (AllocM m, Key key, Value val) =>
-    Map key val ->
+    LeafItems key val ->
     m (Index key (Node 'Z key val))
 splitLeaf items = do
     m <- maxPageSize
@@ -72,8 +73,9 @@ insertRec k v = fetch
                 newChildIdx <- fetch (decrHeight hgt) childId
                 newChildren <- splitIndex hgt (putIdx ctx newChildIdx)
                 traverse (allocNode hgt) newChildren
-            Leaf items ->
-                traverse (allocNode hgt) =<< splitLeaf (M.insert k v items)
+            Leaf items -> do
+                v' <- toLeafValue v
+                traverse (allocNode hgt) =<< splitLeaf (M.insert k v' items)
 
 insertRecMany :: forall m height key val. (AllocM m, Key key, Value val)
     => Height height
@@ -91,8 +93,9 @@ insertRecMany h kvs nid
             newIndex    <- dist `bindIndexM` uncurry (insertRecMany (decrHeight h))
             newChildren <- splitIndex h newIndex
             traverse (allocNode h) newChildren
-        Leaf items ->
-            traverse (allocNode h) =<< splitLeaf (M.union kvs items)
+        Leaf items -> do
+            kvs' <- toLeafItems kvs
+            traverse (allocNode h) =<< splitLeaf (M.union kvs' items)
 
 --------------------------------------------------------------------------------
 
@@ -128,8 +131,9 @@ insertTree key val tree
       { treeRootId = Nothing
       } <- tree
     = do  -- Allocate new root node
+          leafItems' <- toLeafItems $ M.singleton key val
           newRootId <- allocNode zeroHeight Leaf
-              { leafItems = M.singleton key val
+              { leafItems = leafItems'
               }
           return $! Tree
               { treeHeight = zeroHeight
@@ -151,7 +155,8 @@ insertTreeMany kvs tree
         fixUp height newRootIdx
     | Tree { treeRootId = Nothing } <- tree
     = do
-        idx <- traverse (allocNode zeroHeight) =<< splitLeaf kvs
+        kvs' <- toLeafItems kvs
+        idx <- traverse (allocNode zeroHeight) =<< splitLeaf kvs'
         fixUp zeroHeight $! idx
 
 {-| Fix up the root node of a tree.

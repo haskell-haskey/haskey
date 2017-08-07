@@ -55,10 +55,8 @@ class AllocReaderM m => AllocM m where
 
     {-| Allocate a new overflow page, and write the value to the page. -}
     allocOverflow :: (Value val)
-                  => TxId
-                  -> Word64
-                  -> val
-                  -> m ()
+                  => val
+                  -> m (TxId, Word64)
 
     {-| Free an overflow page. -}
     freeOverflow :: TxId -> Word64 -> m ()
@@ -76,7 +74,7 @@ class AllocReaderM m => AllocM m where
       where
         pred f n = f zeroHeight (Leaf $ kvs n)
         kvs n = M.fromList
-            [(ZeroEncoded n i, ZeroEncoded n i) | i <- [1..4]]
+            [(ZeroEncoded n i, RawValue $ ZeroEncoded n i) | i <- [1..4]]
 
     -- | Get the maximum value size
     --
@@ -92,7 +90,7 @@ class AllocReaderM m => AllocM m where
       where
         pred key f n = f zeroHeight (Leaf $ kvs key n)
         kvs key n = M.fromList
-            [(ZeroEncoded key i, ZeroEncoded n i) | i <- [1..4]]
+            [(ZeroEncoded key i, RawValue $ ZeroEncoded n i) | i <- [1..4]]
 
 --------------------------------------------------------------------------------
 

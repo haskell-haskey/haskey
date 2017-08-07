@@ -25,6 +25,12 @@ class (Applicative m, Monad m) => AllocReaderM m where
              ->  NodeId height key val
              ->  m (Node height key val)
 
+    {-| Read an overflow page. -}
+    readOverflow :: (Value val)
+                 => TxId
+                 -> Word64
+                 -> m val
+
 {-| A page allocator that can write physical pages. -}
 class AllocReaderM m => AllocM m where
     {-| A function that calculates the hypothetical size of a node, if it were
@@ -46,6 +52,16 @@ class AllocReaderM m => AllocM m where
     freeNode     ::  Height height
                  ->  NodeId height key val
                  ->  m ()
+
+    {-| Allocate a new overflow page, and write the value to the page. -}
+    allocOverflow :: (Value val)
+                  => TxId
+                  -> Word64
+                  -> val
+                  -> m ()
+
+    {-| Free an overflow page. -}
+    freeOverflow :: TxId -> Word64 -> m ()
 
     -- | Get the maximum key size
     --

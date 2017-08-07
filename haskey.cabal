@@ -28,6 +28,7 @@ library
     Data.BTree.Alloc.Concurrent.FreePages.Tree
     Data.BTree.Alloc.Concurrent.Meta
     Data.BTree.Alloc.Concurrent.Monad
+    Data.BTree.Alloc.Debug
     Data.BTree.Alloc.Transaction
     Data.BTree.Impure
     Data.BTree.Impure.Delete

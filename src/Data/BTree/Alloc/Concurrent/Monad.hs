@@ -81,6 +81,10 @@ instance
 
     freeNode _ nid = freePage (nodeIdToPageId nid)
 
+    allocOverflow = undefined
+
+    freeOverflow = undefined
+
 instance
     ConcurrentMetaStoreM m
     => AllocReaderM (ConcurrentT WriterEnv ConcurrentHandles m)
@@ -89,6 +93,8 @@ instance
         hnd <- concurrentHandlesMain . writerHnds <$> get
         getNodePage hnd height Proxy Proxy nid
 
+    readOverflow = undefined
+
 instance
     ConcurrentMetaStoreM m
     => AllocReaderM (ConcurrentT ReaderEnv ConcurrentHandles m)
@@ -96,3 +102,5 @@ instance
     readNode height nid = ConcurrentT $ do
         hnd <- concurrentHandlesMain . readerHnds <$> get
         getNodePage hnd height Proxy Proxy nid
+
+    readOverflow = undefined

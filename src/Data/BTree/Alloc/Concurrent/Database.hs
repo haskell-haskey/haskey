@@ -172,7 +172,7 @@ transact act db
         Commit newTree v -> do
             -- Save the free'd pages to the free page database
             -- don't try to use pages from the free database when doing so
-            freeTree' <- saveFreePages' True Nothing $ env { writerReusablePagesOn = False }
+            freeTree' <- saveFreePages' 0 True Nothing $ env { writerReusablePagesOn = False }
 
             -- Commit
             let newMeta = ConcurrentMeta
@@ -190,11 +190,15 @@ transact act db
         return v
 
     saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM hnd m)
-                   => Bool
+                   => Int
+                   -> Bool
                    -> Maybe [DirtyFree]
                    -> WriterEnv hnd
                    -> m FreeTree
-    saveFreePages' dirtyPagesOn oldDirtyFree env = do
+    saveFreePages' paranoid dirtyPagesOn oldDirtyFree env
+        | paranoid >= 100 = error "paranoid: looping!"
+        | otherwise
+        = do
         (freeTree', env') <- runConcurrentT (saveFreePages env) $
             env { writerFreedDirtyPagesOn = dirtyPagesOn }
 
@@ -213,8 +217,8 @@ transact act db
                      -- (page id x) making it not dirty anymore, getting us in
                      -- an endless loop. Try allocating a fresh page to break the
                      -- loop!
-                     saveFreePages' False oldDirtyFree' newEnv
-                else saveFreePages' True  oldDirtyFree' newEnv
+                     saveFreePages' (paranoid + 1) False oldDirtyFree' newEnv
+                else saveFreePages' (paranoid + 1) True  oldDirtyFree' newEnv
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)

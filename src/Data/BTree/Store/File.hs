@@ -163,7 +163,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadIO m) =>
-    ConcurrentMetaStoreM FilePath (StoreT FilePath m)
+    ConcurrentMetaStoreM (StoreT FilePath m)
   where
     putConcurrentMeta fp meta = do
         h <- get >>= lookupHandle fp

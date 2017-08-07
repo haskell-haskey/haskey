@@ -14,10 +14,10 @@ import STMContainers.Map (Map)
 import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Primitives
 
-newtype ReaderEnv hnd = ReaderEnv { readerHnd :: hnd }
+newtype ReaderEnv hnds = ReaderEnv { readerHnds :: hnds }
 
-data WriterEnv hnd = WriterEnv
-    { writerHnd :: !hnd
+data WriterEnv hnds = WriterEnv
+    { writerHnds :: !hnds
     , writerTxId :: !TxId
     , writerReaders :: Map TxId Integer
 
@@ -58,7 +58,7 @@ data WriterEnv hnd = WriterEnv
 -- | Create a new writer.
 newWriter :: hnd -> TxId -> Map TxId Integer -> FreeTree -> WriterEnv hnd
 newWriter hnd tx readers freeTree = WriterEnv {
-    writerHnd = hnd
+    writerHnds = hnd
   , writerTxId = tx
   , writerReaders = readers
   , writerNewlyFreedPages = []

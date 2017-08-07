@@ -22,6 +22,13 @@ import Data.BTree.Primitives
 import Data.BTree.Store
 import qualified Data.BTree.Store.Class as Store
 
+-- | All necessary database handles.
+data ConcurrentHandles = ConcurrentHandles {
+    concurrentHandlesMain :: FilePath
+  , concurrentHandlesMetadata1 :: FilePath
+  , concurrentHandlesMetadata2 :: FilePath
+  } deriving (Show)
+
 -- | Monad in which page allocations can take place.
 --
 -- The monad has access to a 'ConcurrentMetaStoreM' back-end which manages can
@@ -34,21 +41,30 @@ instance MonadTrans (ConcurrentT env hnd) where
 
 -- | Run the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment. -}
-runConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env hnd m a -> env hnd -> m (a, env hnd)
+runConcurrentT :: ConcurrentMetaStoreM m
+               => ConcurrentT env ConcurrentHandles m a
+               -> env ConcurrentHandles
+               -> m (a, env ConcurrentHandles)
 runConcurrentT m = runStateT (fromConcurrentT m)
 
 -- | Evaluate the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment. -}
-evalConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env hnd m a -> env hnd -> m a
+evalConcurrentT :: ConcurrentMetaStoreM m
+                => ConcurrentT env ConcurrentHandles m a
+                -> env ConcurrentHandles ->
+                m a
 evalConcurrentT m env = fst <$> runConcurrentT m env
 
-instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEnv hnd m) where
+instance
+    (ConcurrentMetaStoreM m, MonadIO m)
+    => AllocM (ConcurrentT WriterEnv ConcurrentHandles m)
+  where
     nodePageSize = ConcurrentT Store.nodePageSize
 
     maxPageSize = ConcurrentT Store.maxPageSize
 
     allocNode height n = do
-        hnd <- writerHnd <$> get
+        hnd <- concurrentHandlesMain . writerHnds <$> get
         pid <- getPid
         touchPage pid
 
@@ -59,18 +75,24 @@ instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEn
         getPid = getFreePageId >>= \case
             Just pid -> return pid
             Nothing -> do
-                hnd <- writerHnd <$> get
+                hnd <- concurrentHandlesMain . writerHnds <$> get
                 pid <- lift $ newPageId hnd
                 return (FreshFreePage (Fresh pid))
 
     freeNode _ nid = freePage (nodeIdToPageId nid)
 
-instance ConcurrentMetaStoreM hnd m => AllocReaderM (ConcurrentT WriterEnv hnd m) where
+instance
+    ConcurrentMetaStoreM m
+    => AllocReaderM (ConcurrentT WriterEnv ConcurrentHandles m)
+  where
     readNode height nid = ConcurrentT $ do
-        hnd <- writerHnd <$> get
+        hnd <- concurrentHandlesMain . writerHnds <$> get
         getNodePage hnd height Proxy Proxy nid
 
-instance ConcurrentMetaStoreM hnd m => AllocReaderM (ConcurrentT ReaderEnv hnd m) where
+instance
+    ConcurrentMetaStoreM m
+    => AllocReaderM (ConcurrentT ReaderEnv ConcurrentHandles m)
+  where
     readNode height nid = ConcurrentT $ do
-        hnd <- readerHnd <$> get
+        hnd <- concurrentHandlesMain . readerHnds <$> get
         getNodePage hnd height Proxy Proxy nid

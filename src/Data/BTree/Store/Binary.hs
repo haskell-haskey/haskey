@@ -120,8 +120,8 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
 
 --------------------------------------------------------------------------------
 
-instance (Ord fp, Show fp, Applicative m, Monad m) =>
-    ConcurrentMetaStoreM fp (StoreT fp m)
+instance (Applicative m, Monad m) =>
+    ConcurrentMetaStoreM (StoreT FilePath m)
   where
     putConcurrentMeta h meta =
         modify $ M.update (Just . M.insert 0 pg) h

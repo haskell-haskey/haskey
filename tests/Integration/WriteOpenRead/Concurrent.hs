@@ -50,7 +50,7 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     assert $ isJust result
   where
 
-    writeReadTest :: ConcurrentDb String Integer Integer
+    writeReadTest :: ConcurrentDb Integer Integer
                   -> Files String
                   -> TestTransaction Integer Integer
                   -> Map Integer Integer
@@ -66,7 +66,7 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: IO (Either String (ConcurrentDb String Integer Integer), Files String)
+    create :: IO (Either String (ConcurrentDb Integer Integer), Files String)
     create = flip runStoreT emptyStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
@@ -112,7 +112,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
     assert $ isJust result
   where
-    writeReadTest :: ConcurrentDb FilePath Integer Integer
+    writeReadTest :: ConcurrentDb Integer Integer
                   -> FS.Files FilePath
                   -> Map Integer Integer
                   -> TestTransaction Integer Integer
@@ -128,13 +128,13 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: ConcurrentHandles FilePath
-           -> IO (Either String (ConcurrentDb FilePath Integer Integer), FS.Files FilePath)
+    create :: ConcurrentHandles
+           -> IO (Either String (ConcurrentDb Integer Integer), FS.Files FilePath)
     create hnds = flip FS.runStoreT FS.emptyStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
 
-    openAndRead :: ConcurrentDb FilePath Integer Integer
+    openAndRead :: ConcurrentDb Integer Integer
                 -> FS.Files FilePath
                 -> IO [(Integer, Integer)]
     openAndRead db files = FS.evalStoreT (readAll db) files
@@ -142,7 +142,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
             Left err -> error err
             Right v -> return v
 
-    openAndWrite :: ConcurrentDb FilePath Integer Integer
+    openAndWrite :: ConcurrentDb Integer Integer
                  -> FS.Files FilePath
                  -> TestTransaction Integer Integer
                  -> IO (FS.Files FilePath)
@@ -153,9 +153,9 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
 --------------------------------------------------------------------------------
 
-writeTransaction :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
+writeTransaction :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
                  => TestTransaction k v
-                 -> ConcurrentDb hnd k v
+                 -> ConcurrentDb k v
                  -> m ()
 writeTransaction (TestTransaction txType actions) =
     transaction
@@ -173,12 +173,12 @@ writeTransaction (TestTransaction txType actions) =
         | TxAbort  <- txType = const abort_
         | TxCommit <- txType = commit_
 
-readAll :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
-        => ConcurrentDb hnd k v
+readAll :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
+        => ConcurrentDb k v
         -> m [(k, v)]
 readAll = transactReadOnly Tree.toList
 
-defaultConcurrentHandles :: ConcurrentHandles String
+defaultConcurrentHandles :: ConcurrentHandles
 defaultConcurrentHandles =
     ConcurrentHandles {
         concurrentHandlesMain      = "main.db"

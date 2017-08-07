@@ -31,8 +31,8 @@ import qualified Data.BTree.Utils.STM.Map as Map
 -- | An active concurrent database.
 --
 -- This can be shared amongst threads.
-data ConcurrentDb hnd k v = ConcurrentDb
-    { concurrentDbHandles :: ConcurrentHandles hnd
+data ConcurrentDb k v = ConcurrentDb
+    { concurrentDbHandles :: ConcurrentHandles
     , concurrentDbWriterLock :: MVar ()
     , concurrentDbCurrentMeta :: TVar CurrentMetaPage
     , concurrentDbMeta1 :: TVar (ConcurrentMeta k v)
@@ -40,16 +40,9 @@ data ConcurrentDb hnd k v = ConcurrentDb
     , concurrentDbReaders :: Map TxId Integer
     }
 
--- | All necessary database handles.
-data ConcurrentHandles hnd = ConcurrentHandles {
-    concurrentHandlesMain :: hnd
-  , concurrentHandlesMetadata1 :: hnd
-  , concurrentHandlesMetadata2 :: hnd
-  } deriving (Show)
-
 -- | Open all concurrent handles.
-openConcurrentHandles :: ConcurrentMetaStoreM hnd m
-                      => ConcurrentHandles hnd -> m ()
+openConcurrentHandles :: ConcurrentMetaStoreM m
+                      => ConcurrentHandles -> m ()
 openConcurrentHandles ConcurrentHandles{..} = do
     openHandle concurrentHandlesMain
     openHandle concurrentHandlesMetadata1
@@ -58,8 +51,8 @@ openConcurrentHandles ConcurrentHandles{..} = do
 -- | Open a new concurrent database, with the given handles.
 --
 -- The handles should already have been opened using 'openConcurrentHandles'.
-createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
-                   => ConcurrentHandles hnd -> m (ConcurrentDb hnd k v)
+createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM m)
+                   => ConcurrentHandles -> m (ConcurrentDb k v)
 createConcurrentDb hnds = do
     db <- newConcurrentDb hnds meta0
     setCurrentMeta meta0 db
@@ -74,8 +67,8 @@ createConcurrentDb hnds = do
 -- | Open the an existing database, with the given handles.
 --
 -- The handles should already have been opened using 'openConcurrentHandles'.
-openConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM hnd m)
-                 => ConcurrentHandles hnd -> m (Maybe (ConcurrentDb hnd k v))
+openConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM m)
+                 => ConcurrentHandles -> m (Maybe (ConcurrentDb k v))
 openConcurrentDb hnds@ConcurrentHandles{..} = do
     m1 <- readConcurrentMeta concurrentHandlesMetadata1 Proxy Proxy
     m2 <- readConcurrentMeta concurrentHandlesMetadata2 Proxy Proxy
@@ -88,8 +81,8 @@ openConcurrentDb hnds@ConcurrentHandles{..} = do
                                   else Just <$> newConcurrentDb hnds y
 
 -- | Close the handles of the database.
-closeConcurrentHandles :: (MonadIO m, ConcurrentMetaStoreM hnd m)
-                       => ConcurrentHandles hnd
+closeConcurrentHandles :: (MonadIO m, ConcurrentMetaStoreM m)
+                       => ConcurrentHandles
                        -> m ()
 closeConcurrentHandles ConcurrentHandles{..} = do
     closeHandle concurrentHandlesMain
@@ -98,9 +91,9 @@ closeConcurrentHandles ConcurrentHandles{..} = do
 
 -- | Create a new concurrent database with handles and metadata provided.
 newConcurrentDb :: (Key k, Value v, MonadIO m)
-                => ConcurrentHandles hnd
+                => ConcurrentHandles
                 -> ConcurrentMeta k v
-                -> m (ConcurrentDb hnd k v)
+                -> m (ConcurrentDb k v)
 newConcurrentDb hnds meta0 = do
     readers <- liftIO Map.newIO
     meta    <- liftIO $ newTVarIO Meta1
@@ -118,7 +111,7 @@ newConcurrentDb hnds meta0 = do
 
 -- | Get the current meta data.
 getCurrentMeta :: (Key k, Value v)
-               => ConcurrentDb hnd k v -> STM (ConcurrentMeta k v)
+               => ConcurrentDb k v -> STM (ConcurrentMeta k v)
 getCurrentMeta db
     | ConcurrentDb { concurrentDbCurrentMeta = v } <- db
     = readTVar v >>= \case
@@ -126,8 +119,8 @@ getCurrentMeta db
         Meta2 -> readTVar $ concurrentDbMeta2 db
 
 -- | Write the new metadata, and switch the pointer to the current one.
-setCurrentMeta :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key k, Value v)
-               => ConcurrentMeta k v -> ConcurrentDb hnd k v -> m ()
+setCurrentMeta :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
+               => ConcurrentMeta k v -> ConcurrentDb k v -> m ()
 setCurrentMeta new db
     | ConcurrentDb
       { concurrentDbCurrentMeta = v
@@ -146,24 +139,21 @@ setCurrentMeta new db
                 writeTVar (concurrentDbMeta1 db) new
 
 {-| Execute a write transaction, with a result. -}
-transact :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
+transact :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
-         -> ConcurrentDb hnd key val -> m a
+         -> ConcurrentDb key val -> m a
 transact act db
     | ConcurrentDb
       { concurrentDbHandles = hnds
       , concurrentDbWriterLock = lock
       , concurrentDbReaders = readers
       } <- db
-    , ConcurrentHandles
-      { concurrentHandlesMain = hnd
-      } <- hnds
     = withLock lock $ do
 
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1
     (tx, env) <- runConcurrentT (act $ concurrentMetaTree meta) $
-                    newWriter hnd
+                    newWriter hnds
                               newRevision
                               readers
                               (concurrentMetaFreeTree meta)
@@ -189,11 +179,11 @@ transact act db
         liftIO (putMVar l ())
         return v
 
-    saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM hnd m)
+    saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
                    => Int
                    -> Bool
                    -> Maybe [DirtyFree]
-                   -> WriterEnv hnd
+                   -> WriterEnv ConcurrentHandles
                    -> m FreeTree
     saveFreePages' paranoid dirtyPagesOn oldDirtyFree env
         | paranoid >= 100 = error "paranoid: looping!"
@@ -221,29 +211,26 @@ transact act db
                 else saveFreePages' (paranoid + 1) True  oldDirtyFree' newEnv
 
 {-| Execute a write transaction, without a result. -}
-transact_ :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
+transact_ :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
           => (forall n. AllocM n => Tree key val -> n (Transaction key val ()))
-          -> ConcurrentDb hnd key val -> m ()
+          -> ConcurrentDb key val -> m ()
 transact_ act db = void $ transact act db
 
 {-| Execute a read-only transaction. -}
-transactReadOnly :: (MonadIO m, ConcurrentMetaStoreM hnd m, Key key, Value val)
+transactReadOnly :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
                  => (forall n. AllocReaderM n => Tree key val -> n a)
-                 -> ConcurrentDb hnd key val -> m a
+                 -> ConcurrentDb key val -> m a
 transactReadOnly act db
     | ConcurrentDb
       { concurrentDbHandles = hnds
       , concurrentDbReaders = readers
       } <- db
-    , ConcurrentHandles
-      { concurrentHandlesMain = hnd
-      } <- hnds
     = do
     meta <- liftIO . atomically $ do
         meta <- getCurrentMeta db
         Map.alter (concurrentMetaRevision meta) addOne readers
         return meta
-    v <- evalConcurrentT (act $ concurrentMetaTree meta) (ReaderEnv hnd)
+    v <- evalConcurrentT (act $ concurrentMetaTree meta) (ReaderEnv hnds)
     liftIO . atomically $ Map.alter (concurrentMetaRevision meta) subOne readers
     return v
   where

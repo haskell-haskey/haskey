@@ -53,7 +53,7 @@ instance Monad m => AllocReaderM (DebugT m) where
         n <- gets (\pgs -> pagesNodes pgs ! nodeIdToPageId nid)
         return $ getSomeNode n
 
-    readOverflow _ c = do
+    readOverflow (_, c) = do
         v <- gets (\pgs -> pagesOverflow pgs ! c)
         return $ getSomeVal v
 
@@ -77,5 +77,5 @@ instance Monad m => AllocM (DebugT m) where
         modify' $ \pgs -> pgs { pagesOverflow = M.insert c v' (pagesOverflow pgs) }
         return (0, c)
 
-    freeOverflow _ c =
+    freeOverflow (_, c) =
         modify' $ \pgs -> pgs { pagesOverflow = M.delete c (pagesOverflow pgs) }

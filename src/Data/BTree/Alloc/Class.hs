@@ -27,8 +27,7 @@ class (Applicative m, Monad m) => AllocReaderM m where
 
     {-| Read an overflow page. -}
     readOverflow :: (Value val)
-                 => TxId
-                 -> Word64
+                 => OverflowId
                  -> m val
 
 {-| A page allocator that can write physical pages. -}
@@ -56,10 +55,10 @@ class AllocReaderM m => AllocM m where
     {-| Allocate a new overflow page, and write the value to the page. -}
     allocOverflow :: (Value val)
                   => val
-                  -> m (TxId, Word64)
+                  -> m OverflowId
 
     {-| Free an overflow page. -}
-    freeOverflow :: TxId -> Word64 -> m ()
+    freeOverflow :: OverflowId -> m ()
 
     -- | Get the maximum key size
     --

@@ -53,7 +53,7 @@ data Tree key val where
             } -> Tree key val
     deriving (Typeable)
 
-data LeafValue v = RawValue v | OverflowValue (TxId, Word64)
+data LeafValue v = RawValue v | OverflowValue OverflowId
                  deriving (Eq, Generic, Show)
 
 instance Binary v => Binary (LeafValue v) where

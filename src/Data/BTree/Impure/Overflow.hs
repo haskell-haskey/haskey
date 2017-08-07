@@ -24,7 +24,7 @@ fromLeafValue :: (AllocReaderM m, Value v)
               => LeafValue v
               -> m v
 fromLeafValue (RawValue v) = return v
-fromLeafValue (OverflowValue (tx, c)) = readOverflow tx c
+fromLeafValue (OverflowValue oid) = readOverflow oid
 
 
 toLeafItems :: (AllocM m, Value v) => Map k v -> m (LeafItems k v)

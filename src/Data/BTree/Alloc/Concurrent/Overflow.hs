@@ -5,11 +5,13 @@
 module Data.BTree.Alloc.Concurrent.Overflow where
 
 import Control.Applicative ((<$>))
+import Control.Concurrent.STM
 import Control.Monad.State
 
 import Data.Bits (shiftR)
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Maybe (fromMaybe)
 import Data.Word (Word8)
 import qualified Data.List.NonEmpty as NE
 
@@ -22,6 +24,7 @@ import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Impure
 import Data.BTree.Impure.NonEmpty
 import Data.BTree.Primitives
+import qualified Data.BTree.Utils.STM.Map as Map
 
 getNewOverflowId :: (Functor m, MonadState (WriterEnv hnd) m)
                  => m OverflowId
@@ -80,5 +83,31 @@ deleteOverflowIds tx tree = lookupTree tx tree >>= \case
             let subHgt = decrHeight h
             traverse_ (freeAllNodes subHgt) idx
             freeNode h nid
+
+--------------------------------------------------------------------------------
+
+deleteOutdatedOverflowIds :: (Functor m, AllocM m, MonadIO m,
+                              MonadState (WriterEnv hnd) m)
+                          => OverflowTree
+                          -> m (Maybe OverflowTree)
+deleteOutdatedOverflowIds tree = do
+    defaultTx <- writerTxId <$> get
+    readers   <- writerReaders <$> get
+    oldest    <- liftIO . atomically $
+        fromMaybe defaultTx <$> Map.lookupMinKey readers
+
+    lookupMinTree tree >>= \case
+        Nothing -> return Nothing
+        Just (tx, _) -> if tx >= oldest
+            then return Nothing
+            else Just <$> go oldest tx tree
+  where
+    go oldest tx t = do
+        t' <- deleteOverflowIds tx t
+        lookupMinTree t' >>= \case
+            Nothing -> return t'
+            Just (tx', _) -> if tx' >= oldest
+                then return t'
+                else go oldest tx' t'
 
 --------------------------------------------------------------------------------

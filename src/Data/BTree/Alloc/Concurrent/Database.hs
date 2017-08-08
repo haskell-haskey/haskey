@@ -146,11 +146,37 @@ transact :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
          -> ConcurrentDb key val -> m a
 transact act db = withRLock' (concurrentDbWriterLock db) $ do
-    --cleanup
+    cleanup
     transactNow act db
   where
     cleanup :: (MonadIO m, ConcurrentMetaStoreM m) => m ()
-    cleanup = undefined
+    cleanup
+        | ConcurrentDb
+          { concurrentDbHandles = hnds
+          , concurrentDbReaders = readers
+          } <- db
+        = do
+        meta <- liftIO . atomically $ getCurrentMeta db
+        let newRevision = concurrentMetaRevision meta + 1
+        let tree = concurrentMetaOverflowTree meta
+        (v, env) <- runConcurrentT (deleteOutdatedOverflowIds tree) $
+                            newWriter hnds
+                                      newRevision
+                                      readers
+                                      (concurrentMetaFreeTree meta)
+        case v of
+            Nothing -> return ()
+            Just tree' -> do
+                -- Save the free'd pages to the free page database
+                freeTree' <- saveFreePages' 0 True Nothing env
+
+                -- Commit
+                let newMeta = meta {
+                      concurrentMetaRevision     = newRevision
+                    , concurrentMetaFreeTree     = freeTree'
+                    , concurrentMetaOverflowTree = tree'
+                    }
+                setCurrentMeta newMeta db
 
 {-| Execute a write transaction, without cleaning up old overflow pages. -}
 transactNow :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
@@ -180,8 +206,7 @@ transactNow act db
                 (concurrentMetaOverflowTree meta)
 
             -- Save the free'd pages to the free page database
-            -- don't try to use pages from the free database when doing so
-            freeTree' <- saveFreePages' 0 True Nothing $ env' { writerReusablePagesOn = False }
+            freeTree' <- saveFreePages' 0 True Nothing env'
 
             -- Commit
             let newMeta = ConcurrentMeta
@@ -205,36 +230,37 @@ transactNow act db
                                   (x :| xs)
                                   tree
 
-    saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
-                   => Int
-                   -> Bool
-                   -> Maybe [DirtyFree]
-                   -> WriterEnv ConcurrentHandles
-                   -> m FreeTree
-    saveFreePages' paranoid dirtyPagesOn oldDirtyFree env
-        | paranoid >= 100 = error "paranoid: looping!"
-        | otherwise
-        = do
-        (freeTree', env') <- runConcurrentT (saveFreePages env) $
-            env { writerFreedDirtyPagesOn = dirtyPagesOn }
+saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
+               => Int
+               -> Bool
+               -> Maybe [DirtyFree]
+               -> WriterEnv ConcurrentHandles
+               -> m FreeTree
+saveFreePages' paranoid dirtyPagesOn oldDirtyFree env
+    | paranoid >= 100 = error "paranoid: looping!"
+    | otherwise
+    = do
+    (freeTree', env') <- runConcurrentT (saveFreePages env) $
+        env { writerFreedDirtyPagesOn = dirtyPagesOn
+            , writerReusablePagesOn = False }
 
-        let newEnv = env' { writerFreeTree = freeTree' }
-        let oldDirtyFree' = Just $ writerFreedDirtyPages env
+    let newEnv = env' { writerFreeTree = freeTree' }
+    let oldDirtyFree' = Just $ writerFreedDirtyPages env
 
-        -- Did we free any new pages? We have to put them in the free tree!
-        -- Did we free any new dirty pages? We have to put them in the free tree!
-        if writerNewlyFreedPages env == writerNewlyFreedPages env' &&
-           writerFreedDirtyPages env == writerFreedDirtyPages env' &&
-           writerReusablePages   env == writerReusablePages  env'
-           then return freeTree'
-           else let isPerm x y = S.fromList x == S.fromList y in
-                if maybe False (writerFreedDirtyPages env' `isPerm`) oldDirtyFree
-                then -- Same state twice?? We are writing (dirty page id x) to
-                     -- (page id x) making it not dirty anymore, getting us in
-                     -- an endless loop. Try allocating a fresh page to break the
-                     -- loop!
-                     saveFreePages' (paranoid + 1) False oldDirtyFree' newEnv
-                else saveFreePages' (paranoid + 1) True  oldDirtyFree' newEnv
+    -- Did we free any new pages? We have to put them in the free tree!
+    -- Did we free any new dirty pages? We have to put them in the free tree!
+    if writerNewlyFreedPages env == writerNewlyFreedPages env' &&
+       writerFreedDirtyPages env == writerFreedDirtyPages env' &&
+       writerReusablePages   env == writerReusablePages  env'
+       then return freeTree'
+       else let isPerm x y = S.fromList x == S.fromList y in
+            if maybe False (writerFreedDirtyPages env' `isPerm`) oldDirtyFree
+            then -- Same state twice?? We are writing (dirty page id x) to
+                 -- (page id x) making it not dirty anymore, getting us in
+                 -- an endless loop. Try allocating a fresh page to break the
+                 -- loop!
+                 saveFreePages' (paranoid + 1) False oldDirtyFree' newEnv
+            else saveFreePages' (paranoid + 1) True  oldDirtyFree' newEnv
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)

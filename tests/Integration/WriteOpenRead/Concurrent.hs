@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -6,6 +7,7 @@ module Integration.WriteOpenRead.Concurrent where
 
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
+import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
 import Control.Applicative ((<$>))
@@ -14,12 +16,16 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 
+import Data.Binary (Binary(..))
 import Data.Foldable (foldlM)
 import Data.Map (Map)
 import Data.Maybe (isJust)
+import Data.Word (Word8)
 import qualified Data.Map as M
 
-import System.Directory (removeDirectory, removeFile,
+import GHC.Generics (Generic)
+
+import System.Directory (removeDirectoryRecursive,
                          getTemporaryDirectory, doesDirectoryExist,
                          writable, getPermissions)
 import System.FilePath ((</>))
@@ -50,11 +56,11 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     assert $ isJust result
   where
 
-    writeReadTest :: ConcurrentDb Integer Integer
+    writeReadTest :: ConcurrentDb Integer TestValue
                   -> Files String
-                  -> TestTransaction Integer Integer
-                  -> Map Integer Integer
-                  -> MaybeT IO (Files String, Map Integer Integer)
+                  -> TestTransaction Integer TestValue
+                  -> Map Integer TestValue
+                  -> MaybeT IO (Files String, Map Integer TestValue)
     writeReadTest db files tx m = do
         files'   <- openAndWrite db files tx
         read'    <- openAndRead db files'
@@ -66,7 +72,7 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: IO (Either String (ConcurrentDb Integer Integer), Files String)
+    create :: IO (Either String (ConcurrentDb Integer TestValue), Files String)
     create = flip runStoreT emptyStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
@@ -106,18 +112,15 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
     _ <- FS.runStoreT (closeConcurrentHandles hnds) files
 
-    run $ removeFile (concurrentHandlesMain hnds)
-    run $ removeFile (concurrentHandlesMetadata1 hnds)
-    run $ removeFile (concurrentHandlesMetadata2 hnds)
-    run $ removeDirectory fp
+    run $ removeDirectoryRecursive fp
 
     assert $ isJust result
   where
-    writeReadTest :: ConcurrentDb Integer Integer
+    writeReadTest :: ConcurrentDb Integer TestValue
                   -> FS.Files FilePath
-                  -> Map Integer Integer
-                  -> TestTransaction Integer Integer
-                  -> MaybeT IO (Map Integer Integer)
+                  -> Map Integer TestValue
+                  -> TestTransaction Integer TestValue
+                  -> MaybeT IO (Map Integer TestValue)
     writeReadTest db files m tx = do
         _     <- lift $ openAndWrite db files tx
         read' <- lift $ openAndRead db files
@@ -130,22 +133,22 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    got:     " ++ show read'
 
     create :: ConcurrentHandles
-           -> IO (Either String (ConcurrentDb Integer Integer), FS.Files FilePath)
+           -> IO (Either String (ConcurrentDb Integer TestValue), FS.Files FilePath)
     create hnds = flip FS.runStoreT FS.emptyStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
 
-    openAndRead :: ConcurrentDb Integer Integer
+    openAndRead :: ConcurrentDb Integer TestValue
                 -> FS.Files FilePath
-                -> IO [(Integer, Integer)]
+                -> IO [(Integer, TestValue)]
     openAndRead db files = FS.evalStoreT (readAll db) files
         >>= \case
             Left err -> error err
             Right v -> return v
 
-    openAndWrite :: ConcurrentDb Integer Integer
+    openAndWrite :: ConcurrentDb Integer TestValue
                  -> FS.Files FilePath
-                 -> TestTransaction Integer Integer
+                 -> TestTransaction Integer TestValue
                  -> IO (FS.Files FilePath)
     openAndWrite db files tx = FS.runStoreT (void $ writeTransaction tx db) files
         >>= \case
@@ -187,5 +190,23 @@ defaultConcurrentHandles =
       , concurrentHandlesMetadata2   = "meta.md2"
       , concurrentHandlesOverflowDir = "overflow"
       }
+
+--------------------------------------------------------------------------------
+
+-- | Value used for testing.
+--
+-- This value will overflow 20% of the time.
+newtype TestValue = TestValue (Either Integer [Word8])
+                  deriving (Eq, Generic, Show)
+
+instance Binary TestValue where
+instance Value TestValue where
+
+instance Arbitrary TestValue where
+    arbitrary =
+        TestValue <$> frequency [(80, Left <$> small), (20, Right <$> big)]
+      where
+        small = arbitrary
+        big = arbitrary
 
 --------------------------------------------------------------------------------

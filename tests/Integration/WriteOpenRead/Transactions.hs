@@ -58,11 +58,12 @@ doAction m action
     | Replace k v <- action = M.insert k v m
     | Delete  k   <- action = M.delete k m
 
-genTestTransaction :: (Ord k, Arbitrary k, Arbitrary v) => TransactionSetup -> Gen (TestTransaction k v)
-genTestTransaction TransactionSetup{..} = sized $ \n -> do
+genTestTransaction :: (Ord k, Arbitrary k, Arbitrary v) => Map k v -> TransactionSetup -> Gen (TestTransaction k v, Map k v)
+genTestTransaction db TransactionSetup{..} = sized $ \n -> do
     k            <- choose (0, n)
-    (_, actions) <- execStateT (replicateM k next) (M.empty, [])
-    TestTransaction <$> genTxType <*> pure (reverse actions)
+    (m, actions) <- execStateT (replicateM k next) (db, [])
+    tx           <- TestTransaction <$> genTxType <*> pure (reverse actions)
+    return (tx, m)
   where
     genAction :: (Ord k, Arbitrary k, Arbitrary v)
               => Map k v
@@ -92,7 +93,17 @@ shrinkTestTransaction (TestTransaction _ []) = []
 shrinkTestTransaction (TestTransaction t actions) = map (TestTransaction t) (init (inits actions))
 
 genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => Gen (TestSequence k v)
-genTestSequence = TestSequence <$> listOf (genTransactionSetup >>= genTestTransaction)
+genTestSequence = sized $ \n -> do
+    k <- choose (0, n)
+    (_, txs) <- execStateT (replicateM k next) (M.empty, [])
+    return $ TestSequence (reverse txs)
+  where
+    next :: (Ord k, Arbitrary k, Arbitrary v)
+         => StateT (Map k v, [TestTransaction k v]) Gen ()
+    next = do
+        (m, txs) <- get
+        (tx, m') <- lift $ genTransactionSetup >>= genTestTransaction m
+        put (m', tx:txs)
 
 shrinkTestSequence :: (Ord k, Arbitrary k, Arbitrary v)
                    => TestSequence k v

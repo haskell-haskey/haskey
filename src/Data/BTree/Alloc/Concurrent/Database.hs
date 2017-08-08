@@ -5,7 +5,6 @@
 module Data.BTree.Alloc.Concurrent.Database where
 
 import Control.Applicative ((<$>))
-import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Monad (void)
 import Control.Monad.IO.Class
@@ -28,6 +27,7 @@ import Data.BTree.Alloc.Transaction
 import Data.BTree.Impure
 import Data.BTree.Primitives
 import Data.BTree.Store
+import Data.BTree.Utils.RLock
 import qualified Data.BTree.Utils.STM.Map as Map
 
 -- | An active concurrent database.
@@ -35,7 +35,7 @@ import qualified Data.BTree.Utils.STM.Map as Map
 -- This can be shared amongst threads.
 data ConcurrentDb k v = ConcurrentDb
     { concurrentDbHandles :: ConcurrentHandles
-    , concurrentDbWriterLock :: MVar ()
+    , concurrentDbWriterLock :: RLock
     , concurrentDbCurrentMeta :: TVar CurrentMetaPage
     , concurrentDbMeta1 :: TVar (ConcurrentMeta k v)
     , concurrentDbMeta2 :: TVar (ConcurrentMeta k v)
@@ -100,7 +100,7 @@ newConcurrentDb :: (Key k, Value v, MonadIO m)
 newConcurrentDb hnds meta0 = do
     readers <- liftIO Map.newIO
     meta    <- liftIO $ newTVarIO Meta1
-    lock    <- liftIO $ newMVar ()
+    lock    <- liftIO   newRLock
     meta1   <- liftIO $ newTVarIO meta0
     meta2   <- liftIO $ newTVarIO meta0
     return $! ConcurrentDb
@@ -145,13 +145,24 @@ setCurrentMeta new db
 transact :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
          -> ConcurrentDb key val -> m a
-transact act db
+transact act db = withRLock' (concurrentDbWriterLock db) $ do
+    --cleanup
+    transactNow act db
+  where
+    cleanup :: (MonadIO m, ConcurrentMetaStoreM m) => m ()
+    cleanup = undefined
+
+{-| Execute a write transaction, without cleaning up old overflow pages. -}
+transactNow :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
+            => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
+            -> ConcurrentDb key val -> m a
+transactNow act db
     | ConcurrentDb
       { concurrentDbHandles = hnds
       , concurrentDbWriterLock = lock
       , concurrentDbReaders = readers
       } <- db
-    = withLock lock $ do
+    = withRLock' lock $ do
 
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1
@@ -182,12 +193,6 @@ transact act db
             setCurrentMeta newMeta db
             return v
   where
-    withLock l action = do
-        () <- liftIO (takeMVar l)
-        v  <- action
-        liftIO (putMVar l ())
-        return v
-
     saveOverflowIds :: (MonadIO m, ConcurrentMetaStoreM m)
                     => WriterEnv ConcurrentHandles
                     -> OverflowTree

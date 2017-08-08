@@ -59,6 +59,7 @@ library
     Data.BTree.Utils.Map
     Data.BTree.Utils.Monad
     Data.BTree.Utils.Monad.Except
+    Data.BTree.Utils.RLock
     Data.BTree.Utils.STM.Map
     Data.BTree.Utils.Vector
 

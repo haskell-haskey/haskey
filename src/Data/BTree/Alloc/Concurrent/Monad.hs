@@ -28,6 +28,7 @@ data ConcurrentHandles = ConcurrentHandles {
     concurrentHandlesMain :: FilePath
   , concurrentHandlesMetadata1 :: FilePath
   , concurrentHandlesMetadata2 :: FilePath
+  , concurrentHandlesOverflowDir :: FilePath
   } deriving (Show)
 
 -- | Monad in which page allocations can take place.
@@ -83,18 +84,21 @@ instance
     freeNode _ nid = freePage (nodeIdToPageId nid)
 
     allocOverflow v = do
+        root <- concurrentHandlesOverflowDir . writerHnds <$> get
         oid <- getNewOverflowId
         touchOverflow oid
 
-        let hnd = getOverflowHandle oid
+        let hnd = getOverflowHandle root oid
         lift $ openHandle hnd
         lift $ putOverflow hnd v
         lift $ closeHandle hnd
         return oid
 
     freeOverflow oid = overflowType oid >>= \case
-        Left (DirtyOverflow i) -> lift $ removeHandle (getOverflowHandle i)
         Right i -> removeOldOverflow i
+        Left (DirtyOverflow i) -> do
+            root <- concurrentHandlesOverflowDir . writerHnds <$> get
+            lift $ removeHandle (getOverflowHandle root i)
 
 instance
     ConcurrentMetaStoreM m
@@ -104,7 +108,9 @@ instance
         hnd <- concurrentHandlesMain . writerHnds <$> get
         lift $ getNodePage hnd height Proxy Proxy nid
 
-    readOverflow = readOverflow'
+    readOverflow i = do
+        root <- concurrentHandlesOverflowDir . writerHnds <$> get
+        readOverflow' root i
 
 instance
     ConcurrentMetaStoreM m
@@ -114,12 +120,14 @@ instance
         hnd <- concurrentHandlesMain . readerHnds <$> get
         lift $ getNodePage hnd height Proxy Proxy nid
 
-    readOverflow = readOverflow'
+    readOverflow i = do
+        root <- concurrentHandlesOverflowDir . readerHnds <$> get
+        readOverflow' root i
 
 readOverflow' :: (ConcurrentMetaStoreM m, Value v)
-              => OverflowId -> ConcurrentT env hnd m v
-readOverflow' oid = do
-    let hnd = getOverflowHandle oid
+              => FilePath -> OverflowId -> ConcurrentT env hnd m v
+readOverflow' root oid = do
+    let hnd = getOverflowHandle root oid
     lift $ openHandle hnd
     v <- lift $ getOverflow hnd Proxy
     lift $ closeHandle hnd

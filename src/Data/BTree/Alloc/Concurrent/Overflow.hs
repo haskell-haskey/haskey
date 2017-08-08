@@ -23,8 +23,9 @@ getNewOverflowId = do
     modify' $ \e -> e { writerOverflowCounter = 1 + writerOverflowCounter e }
     return (tx, c)
 
-getOverflowHandle :: OverflowId -> FilePath
-getOverflowHandle (TxId tx, c) = lsb1 </> lsb2 </> showHex' tx <.> showHex' c <.> "overflow"
+getOverflowHandle :: FilePath -> OverflowId -> FilePath
+getOverflowHandle root (TxId tx, c) =
+    root </> lsb1 </> lsb2 </> showHex' tx <.> showHex' c <.> "overflow"
   where
     lsb1 = showHex' (fromIntegral tx :: Word8)
     lsb2 = showHex' (fromIntegral (tx `shiftR` 8) :: Word8)

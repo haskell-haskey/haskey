@@ -93,9 +93,10 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                    else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
     let hnds = ConcurrentHandles {
-        concurrentHandlesMain      = fp </> "main.db"
-      , concurrentHandlesMetadata1 = fp </> "meta.md1"
-      , concurrentHandlesMetadata2 = fp </> "meta.md2"
+        concurrentHandlesMain        = fp </> "main.db"
+      , concurrentHandlesMetadata1   = fp </> "meta.md1"
+      , concurrentHandlesMetadata2   = fp </> "meta.md2"
+      , concurrentHandlesOverflowDir = fp </> "overflow"
       }
 
     (Right db, files) <- run $ create hnds
@@ -181,9 +182,10 @@ readAll = transactReadOnly Tree.toList
 defaultConcurrentHandles :: ConcurrentHandles
 defaultConcurrentHandles =
     ConcurrentHandles {
-        concurrentHandlesMain      = "main.db"
-      , concurrentHandlesMetadata1 = "meta.md1"
-      , concurrentHandlesMetadata2 = "meta.md2"
+        concurrentHandlesMain        = "main.db"
+      , concurrentHandlesMetadata1   = "meta.md1"
+      , concurrentHandlesMetadata2   = "meta.md2"
+      , concurrentHandlesOverflowDir = "overflow"
       }
 
 --------------------------------------------------------------------------------

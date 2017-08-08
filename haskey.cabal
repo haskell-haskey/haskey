@@ -28,6 +28,7 @@ library
     Data.BTree.Alloc.Concurrent.FreePages.Tree
     Data.BTree.Alloc.Concurrent.Meta
     Data.BTree.Alloc.Concurrent.Monad
+    Data.BTree.Alloc.Concurrent.Overflow
     Data.BTree.Alloc.Debug
     Data.BTree.Alloc.Transaction
     Data.BTree.Impure
@@ -77,6 +78,8 @@ library
     binary                  >=0.6  && <0.9 || >0.9 && <1,
     bytestring              >=0.10 && <1,
     containers              >=0.5  && <1,
+    directory               >=1.2  && <2,
+    filepath                >=1.4  && <2,
     focus                   >=0.1.2 && <0.2,
     hashable                >=1.2  && <1.3,
     list-t                  >=0.2  && <2,

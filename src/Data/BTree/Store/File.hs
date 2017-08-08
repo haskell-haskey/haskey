@@ -35,6 +35,8 @@ import Data.Monoid ((<>))
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 
+import System.Directory (createDirectoryIfMissing, removeFile)
+import System.FilePath (takeDirectory)
 import System.IO
 
 import Data.BTree.Alloc.Concurrent
@@ -108,6 +110,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
     openHandle fp = do
         alreadyOpen <- M.member fp <$> get
         unless alreadyOpen $ do
+            liftIO $ createDirectoryIfMissing True (takeDirectory fp)
             fh <- liftIO $ openFile fp ReadWriteMode
             modify $ M.insert fp fh
 
@@ -115,6 +118,9 @@ instance (Applicative m, Monad m, MonadIO m) =>
         fh <- get >>= lookupHandle fp
         liftIO $ hClose fh
         modify (M.delete fp)
+
+    removeHandle fp =
+        liftIO $ removeFile fp
 
     nodePageSize =
         return $ \h ->
@@ -159,6 +165,22 @@ instance (Applicative m, Monad m, MonadIO m) =>
         liftIO $ hSeek h AbsoluteSeek offset
         bs <- justErrM "putNodePage: page too large" $ encodeAndPad size page
         liftIO $ BS.hPut h bs
+
+    getOverflow fp val = do
+        h <- get >>= lookupHandle fp
+        liftIO $ hSeek h AbsoluteSeek 0
+        bs <- liftIO $ BS.hGetContents h
+        n <- decodeM (overflowPage val) bs
+        case n of
+            OverflowPage v ->
+                justErrM "could not cast overflow value" $
+                    castValue v
+
+
+    putOverflow fp val = do
+        h <- get >>= lookupHandle fp
+        liftIO $ hSeek h AbsoluteSeek 0
+        liftIO $ BS.hPut h (encode $ OverflowPage val)
 
 --------------------------------------------------------------------------------
 

@@ -18,6 +18,7 @@ import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.FreePages.Query
 import Data.BTree.Alloc.Concurrent.Meta
+import Data.BTree.Alloc.Concurrent.Overflow
 import Data.BTree.Primitives
 import Data.BTree.Store
 import qualified Data.BTree.Store.Class as Store
@@ -81,26 +82,46 @@ instance
 
     freeNode _ nid = freePage (nodeIdToPageId nid)
 
-    allocOverflow = undefined
+    allocOverflow v = do
+        oid <- getNewOverflowId
+        touchOverflow oid
 
-    freeOverflow = undefined
+        let hnd = getOverflowHandle oid
+        lift $ openHandle hnd
+        lift $ putOverflow hnd v
+        lift $ closeHandle hnd
+        return oid
+
+    freeOverflow oid = overflowType oid >>= \case
+        Left (DirtyOverflow i) -> lift $ removeHandle (getOverflowHandle i)
+        Right i -> removeOldOverflow i
 
 instance
     ConcurrentMetaStoreM m
     => AllocReaderM (ConcurrentT WriterEnv ConcurrentHandles m)
   where
-    readNode height nid = ConcurrentT $ do
+    readNode height nid = do
         hnd <- concurrentHandlesMain . writerHnds <$> get
-        getNodePage hnd height Proxy Proxy nid
+        lift $ getNodePage hnd height Proxy Proxy nid
 
-    readOverflow = undefined
+    readOverflow = readOverflow'
 
 instance
     ConcurrentMetaStoreM m
     => AllocReaderM (ConcurrentT ReaderEnv ConcurrentHandles m)
   where
-    readNode height nid = ConcurrentT $ do
+    readNode height nid = do
         hnd <- concurrentHandlesMain . readerHnds <$> get
-        getNodePage hnd height Proxy Proxy nid
+        lift $ getNodePage hnd height Proxy Proxy nid
 
-    readOverflow = undefined
+    readOverflow = readOverflow'
+
+readOverflow' :: (ConcurrentMetaStoreM m, Value v)
+              => OverflowId -> ConcurrentT env hnd m v
+readOverflow' oid = do
+    let hnd = getOverflowHandle oid
+    lift $ openHandle hnd
+    v <- lift $ getOverflow hnd Proxy
+    lift $ closeHandle hnd
+    return v
+

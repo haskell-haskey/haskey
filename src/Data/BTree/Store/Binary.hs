@@ -94,7 +94,9 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
     openHandle fp =
         modify $ M.insertWith (flip const) fp M.empty
 
-    closeHandle fp =
+    closeHandle _ = return ()
+
+    removeHandle fp =
         modify $ M.delete fp
 
     nodePageSize = return $ \h ->
@@ -117,6 +119,10 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
         modify $ M.update (Just . M.insert (nodeIdToPageId nid) pg) hnd
       where
         pg = encode $ NodePage height node
+
+    getOverflow = undefined
+
+    putOverflow = undefined
 
 --------------------------------------------------------------------------------
 

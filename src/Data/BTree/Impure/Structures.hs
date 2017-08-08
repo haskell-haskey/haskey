@@ -21,6 +21,7 @@ module Data.BTree.Impure.Structures (
   -- * Casting
 , castNode
 , castNode'
+, castValue
 ) where
 
 import Control.Applicative ((<$>), (<*>))
@@ -28,8 +29,7 @@ import Control.Applicative ((<$>), (<*>))
 import Data.Binary (Binary(..), Put, Get)
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
-import Data.Typeable (Typeable, typeRep)
-import Data.Word (Word64)
+import Data.Typeable (Typeable, typeRep, cast)
 
 import GHC.Generics (Generic)
 
@@ -145,3 +145,10 @@ castNode' h n
     | otherwise                         = Right (unsafeCoerce n)
 
 --------------------------------------------------------------------------------
+
+-- | Cast a value to a different type.
+--
+-- Essentially this is just a drop-in replacement for
+-- 'Data.Typeable.cast'.
+castValue :: (Typeable v1, Typeable v2) => v1 -> Maybe v2
+castValue = cast

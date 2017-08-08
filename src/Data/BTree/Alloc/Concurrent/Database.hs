@@ -11,6 +11,7 @@ import Control.Monad (void)
 import Control.Monad.IO.Class
 
 import Data.Proxy (Proxy(..))
+import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Set as S
 
 import STMContainers.Map (Map)
@@ -18,10 +19,11 @@ import qualified STMContainers.Map as Map
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
-import Data.BTree.Alloc.Concurrent.Meta
-import Data.BTree.Alloc.Concurrent.Monad
 import Data.BTree.Alloc.Concurrent.FreePages.Save
 import Data.BTree.Alloc.Concurrent.FreePages.Tree
+import Data.BTree.Alloc.Concurrent.Meta
+import Data.BTree.Alloc.Concurrent.Monad
+import Data.BTree.Alloc.Concurrent.Overflow
 import Data.BTree.Alloc.Transaction
 import Data.BTree.Impure
 import Data.BTree.Primitives
@@ -62,6 +64,7 @@ createConcurrentDb hnds = do
     meta0 = ConcurrentMeta { concurrentMetaRevision = 0
                            , concurrentMetaTree = Tree zeroHeight Nothing
                            , concurrentMetaFreeTree = Tree zeroHeight Nothing
+                           , concurrentMetaOverflowTree = Tree zeroHeight Nothing
                            }
 
 -- | Open the an existing database, with the given handles.
@@ -160,15 +163,21 @@ transact act db
     case tx of
         Abort v -> return v
         Commit newTree v -> do
+            -- Save the newly free'd overflow pages to be deleted when they are
+            -- no longer in use.
+            (overflowTree', env') <- saveOverflowIds env
+                (concurrentMetaOverflowTree meta)
+
             -- Save the free'd pages to the free page database
             -- don't try to use pages from the free database when doing so
-            freeTree' <- saveFreePages' 0 True Nothing $ env { writerReusablePagesOn = False }
+            freeTree' <- saveFreePages' 0 True Nothing $ env' { writerReusablePagesOn = False }
 
             -- Commit
             let newMeta = ConcurrentMeta
-                    { concurrentMetaRevision = newRevision
-                    , concurrentMetaTree     = newTree
-                    , concurrentMetaFreeTree = freeTree'
+                    { concurrentMetaRevision     = newRevision
+                    , concurrentMetaTree         = newTree
+                    , concurrentMetaFreeTree     = freeTree'
+                    , concurrentMetaOverflowTree = overflowTree'
                     }
             setCurrentMeta newMeta db
             return v
@@ -178,6 +187,18 @@ transact act db
         v  <- action
         liftIO (putMVar l ())
         return v
+
+    saveOverflowIds :: (MonadIO m, ConcurrentMetaStoreM m)
+                    => WriterEnv ConcurrentHandles
+                    -> OverflowTree
+                    -> m (OverflowTree, WriterEnv ConcurrentHandles)
+    saveOverflowIds env tree =
+        case map (\(OldOverflow i) ->i) (writerRemovedOverflows env) of
+            [] -> return (tree, env)
+            x:xs -> flip runConcurrentT env $
+                insertOverflowIds (writerTxId env)
+                                  (x :| xs)
+                                  tree
 
     saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
                    => Int

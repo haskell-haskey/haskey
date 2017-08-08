@@ -120,9 +120,17 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
       where
         pg = encode $ NodePage height node
 
-    getOverflow = undefined
+    getOverflow hnd val = do
+        bs <- get >>= lookupPage hnd 0
+        decodeM (overflowPage val) bs >>= \case
+            OverflowPage v ->
+                justErrM "could not cast overflow value" $
+                    castValue v
 
-    putOverflow = undefined
+    putOverflow hnd val =
+        modify $ M.update (Just . M.insert 0 pg) hnd
+      where
+        pg = encode $ OverflowPage val
 
 --------------------------------------------------------------------------------
 

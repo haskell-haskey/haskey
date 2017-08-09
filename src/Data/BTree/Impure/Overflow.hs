@@ -1,12 +1,13 @@
 -- | Functions related to overflow pages.
 module Data.BTree.Impure.Overflow where
 
-import Prelude hiding (max)
+import Prelude hiding (max, mapM)
 
 import Control.Applicative ((<$>))
 
 import Data.Binary (encode)
 import Data.Map (Map)
+import Data.Traversable (mapM)
 import qualified Data.ByteString.Lazy as BL
 
 import Data.BTree.Alloc.Class

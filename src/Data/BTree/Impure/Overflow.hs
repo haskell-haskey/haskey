@@ -3,6 +3,8 @@ module Data.BTree.Impure.Overflow where
 
 import Prelude hiding (max)
 
+import Control.Applicative ((<$>))
+
 import Data.Binary (encode)
 import Data.Map (Map)
 import qualified Data.ByteString.Lazy as BL

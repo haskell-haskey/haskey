@@ -7,6 +7,8 @@ module Data.BTree.Impure.Lookup where
 
 import qualified Data.Map as M
 
+import Control.Applicative ((<$>))
+
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure.Overflow
 import Data.BTree.Impure.Structures

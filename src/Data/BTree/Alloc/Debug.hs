@@ -3,6 +3,7 @@
 -- | An in memory allocator for debugging and testing purposes.
 module Data.BTree.Alloc.Debug where
 
+import Control.Applicative (Applicative, (<$>))
 import Control.Monad.Identity
 import Control.Monad.State
 
@@ -48,7 +49,7 @@ runDebug pages = runIdentity . flip runStateT pages . runDebugT
 evalDebug :: Pages -> DebugT Identity a -> a
 evalDebug pages = fst . runDebug pages
 
-instance Monad m => AllocReaderM (DebugT m) where
+instance (Functor m, Monad m) => AllocReaderM (DebugT m) where
     readNode _ nid = do
         n <- gets (\pgs -> pagesNodes pgs ! nodeIdToPageId nid)
         return $ getSomeNode n
@@ -57,7 +58,7 @@ instance Monad m => AllocReaderM (DebugT m) where
         v <- gets (\pgs -> pagesOverflow pgs ! c)
         return $ getSomeVal v
 
-instance Monad m => AllocM (DebugT m) where
+instance (Functor m, Monad m) => AllocM (DebugT m) where
     nodePageSize = return $ \h ->
         fromIntegral . BS.length . encode . NodePage h
 

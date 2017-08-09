@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -20,6 +21,7 @@ import Data.Binary (Binary(..))
 import Data.Foldable (foldlM)
 import Data.Map (Map)
 import Data.Maybe (isJust)
+import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import qualified Data.Map as M
 
@@ -197,7 +199,7 @@ defaultConcurrentHandles =
 --
 -- This value will overflow 20% of the time.
 newtype TestValue = TestValue (Either Integer [Word8])
-                  deriving (Eq, Generic, Show)
+                  deriving (Eq, Generic, Show, Typeable)
 
 instance Binary TestValue where
 instance Value TestValue where

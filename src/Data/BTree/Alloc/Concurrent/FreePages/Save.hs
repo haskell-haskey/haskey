@@ -11,25 +11,23 @@ import Data.BTree.Alloc.Concurrent.FreePages.Tree
 saveFreePages :: AllocM m
               => WriterEnv hnd
               -> m FreeTree
-saveFreePages env = saveNewlyAndDirtyFreedPages env tree
+saveFreePages env = saveNewlyFreedPages env tree
                 >>= saveCachedFreePages env
   where
     tree = writerFreeTree env
 
--- | Save the newly free pages and the freed dirty pages of the current
--- transaction, as stored by 'writerNewlyFreedPages' and
--- 'writerFreedDirtyPages'.
-saveNewlyAndDirtyFreedPages :: AllocM m
+-- | Save the newly free pages of the current transaction, as stored by
+-- 'writerNewlyFreedPages'.
+saveNewlyFreedPages :: AllocM m
                             => WriterEnv hnd
                             -> FreeTree
                             -> m FreeTree
-saveNewlyAndDirtyFreedPages env tree =
-    case newlyFreed ++ freedDirty of
+saveNewlyFreedPages env tree =
+    case newlyFreed of
         [] -> deleteSubtree (writerTxId env) tree
         x:xs -> replaceSubtree (writerTxId env) (x :| xs) tree
   where
     newlyFreed = map (\(NewlyFreed pid) -> pid) $ writerNewlyFreedPages env
-    freedDirty = map (\(DirtyFree  pid) -> pid) $ writerFreedDirtyPages env
 
 -- | Save the free apges from the free page cache in
 -- 'writerReusablePages' using 'writerReuseablePagesTxId'.

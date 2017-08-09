@@ -37,11 +37,12 @@ getFreePageId = runMaybeT $ (DirtyFreePage <$> MaybeT getFreedDirtyPageId)
 -- current transaction.
 getFreedDirtyPageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe DirtyFree)
-getFreedDirtyPageId = ifM (not . writerFreedDirtyPagesOn <$> get) (return Nothing) $
-    writerFreedDirtyPages <$> get >>= \case
-        []            -> return Nothing
-        pid : pageIds -> do
-            modify' $ \env -> env { writerFreedDirtyPages = pageIds }
+getFreedDirtyPageId = do
+    s <- writerFreedDirtyPages <$> get
+    case S.minView s of
+        Nothing -> return Nothing
+        Just (pid, s') -> do
+            modify' $ \e -> e { writerFreedDirtyPages = s' }
             return (Just pid)
 
 -- | Get a cached free page.
@@ -49,11 +50,12 @@ getFreedDirtyPageId = ifM (not . writerFreedDirtyPagesOn <$> get) (return Nothin
 -- Get a free page from the free database cache stored in 'writerReusablePages'.
 getCachedFreePageId :: (Functor m, MonadState (WriterEnv hnd) m)
                     => m (Maybe OldFree)
-getCachedFreePageId = writerReusablePages <$> get >>= \case
-    []            -> return Nothing
-    pid : pageIds -> do
-        modify' $ \env -> env { writerReusablePages = pageIds }
-        return (Just pid)
+getCachedFreePageId = ifM (not . writerReusablePagesOn <$> get) (return Nothing) $
+    writerReusablePages <$> get >>= \case
+        []            -> return Nothing
+        pid : pageIds -> do
+            modify' $ \env -> env { writerReusablePages = pageIds }
+            return (Just pid)
 
 -- | Try to get a list of free pages from the free page database, return the
 -- first free one for immediate use, and store the rest in the environment.

@@ -11,7 +11,6 @@ import Control.Monad.IO.Class
 
 import Data.Proxy (Proxy(..))
 import Data.List.NonEmpty (NonEmpty((:|)))
-import qualified Data.Set as S
 
 import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
@@ -168,7 +167,7 @@ transact act db = withRLock' (concurrentDbWriterLock db) $ do
             Nothing -> return ()
             Just tree' -> do
                 -- Save the free'd pages to the free page database
-                freeTree' <- saveFreePages' 0 True Nothing env
+                freeTree' <- saveFreePages' 0 env
 
                 -- Commit
                 let newMeta = meta {
@@ -206,7 +205,7 @@ transactNow act db
                 (concurrentMetaOverflowTree meta)
 
             -- Save the free'd pages to the free page database
-            freeTree' <- saveFreePages' 0 True Nothing env'
+            freeTree' <- saveFreePages' 0 env'
 
             -- Commit
             let newMeta = ConcurrentMeta
@@ -232,35 +231,46 @@ transactNow act db
 
 saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
                => Int
-               -> Bool
-               -> Maybe [DirtyFree]
                -> WriterEnv ConcurrentHandles
                -> m FreeTree
-saveFreePages' paranoid dirtyPagesOn oldDirtyFree env
+saveFreePages' paranoid env
     | paranoid >= 100 = error "paranoid: looping!"
     | otherwise
     = do
-    (freeTree', env') <- runConcurrentT (saveFreePages env) $
-        env { writerFreedDirtyPagesOn = dirtyPagesOn
-            , writerReusablePagesOn = False }
 
-    let newEnv = env' { writerFreeTree = freeTree' }
-    let oldDirtyFree' = Just $ writerFreedDirtyPages env
+    -- Saving the free pages
+    -- =====================
+    --
+    -- Saving free pages to the free database is a complicated task. At the end
+    -- of a transaction we have 3 types of free pages:
+    --
+    --  1. 'DirtyFree': Pages that were freshly allocated from the end of the
+    --                  dabase file, but are no longer used. These are free'd
+    --                  by truncating the datase file. They can freely be used
+    --                  during this routine.
+    --
+    --  2. 'NewlyFreed': Pages that were written by a previous transaction, but
+    --                   free'd in this transaction. They might still be in use
+    --                   by an older reader, and can thus not be used anyways.
+    --
+    --                   Note that this list **may grow during this routine**,
+    --                   as new pages can be free'd.
+    --
+    --  3. 'OldFree': Pages that were fetched from the free database while
+    --                executing the transaction. Technically, they can be used
+    --                during this routine, BUT that would mean the list of
+    --                'OldFree' pages can grow and shrink during the call,
+    --                which would complicate the convergence/termination
+    --                conditions of this routine. So currently, **we disable
+    --                the use of these pages in this routine.**
+
+    (freeTree', env') <- runConcurrentT (saveFreePages env) $
+        env { writerReusablePagesOn = False }
 
     -- Did we free any new pages? We have to put them in the free tree!
-    -- Did we free any new dirty pages? We have to put them in the free tree!
-    if writerNewlyFreedPages env == writerNewlyFreedPages env' &&
-       writerFreedDirtyPages env == writerFreedDirtyPages env' &&
-       writerReusablePages   env == writerReusablePages  env'
+    if writerNewlyFreedPages env' == writerNewlyFreedPages env
        then return freeTree'
-       else let isPerm x y = S.fromList x == S.fromList y in
-            if maybe False (writerFreedDirtyPages env' `isPerm`) oldDirtyFree
-            then -- Same state twice?? We are writing (dirty page id x) to
-                 -- (page id x) making it not dirty anymore, getting us in
-                 -- an endless loop. Try allocating a fresh page to break the
-                 -- loop!
-                 saveFreePages' (paranoid + 1) False oldDirtyFree' newEnv
-            else saveFreePages' (paranoid + 1) True  oldDirtyFree' newEnv
+       else saveFreePages' (paranoid + 1) $ env' { writerFreeTree = freeTree' }
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)

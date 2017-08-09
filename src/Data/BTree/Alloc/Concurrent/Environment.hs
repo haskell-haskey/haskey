@@ -27,15 +27,11 @@ data WriterEnv hnds = WriterEnv
     -- transaction is commited.
 
     , writerDirtyPages :: !(Set Dirty)
-    -- ^ Pages written to in this transcation. These pages can be reused in the
-    -- same transaction if free'd later.
+    -- ^ Pages freshly allocated in this transcation. These pages can be reused
+    -- in the same transaction if free'd later.
 
-    , writerFreedDirtyPages :: ![DirtyFree]
+    , writerFreedDirtyPages :: !(Set DirtyFree)
     -- ^ Pages free for immediate reuse.
-
-    , writerFreedDirtyPagesOn :: Bool
-    -- ^ Whether or not it is allowed to use pages from
-    -- 'writerFreedDirtyPages'.
 
     , writerFreeTree :: !FreeTree
     -- ^ The root of the free tree, might change during a transaction.
@@ -74,8 +70,7 @@ newWriter hnd tx readers freeTree = WriterEnv {
   , writerReaders = readers
   , writerNewlyFreedPages = []
   , writerDirtyPages = S.empty
-  , writerFreedDirtyPages = []
-  , writerFreedDirtyPagesOn = True
+  , writerFreedDirtyPages = S.empty
   , writerFreeTree = freeTree
   , writerDirtyReusablePages = S.empty
   , writerReusablePages = []
@@ -129,13 +124,14 @@ freePage pid = do
     dirtyOldFree' <- dirtyOldFree pid
 
     if | Just (Dirty p) <- dirty' -> modify' $
-            \e -> e { writerFreedDirtyPages = DirtyFree p : writerFreedDirtyPages e }
+            \e -> e { writerFreedDirtyPages =
+                        S.insert (DirtyFree p) (writerFreedDirtyPages e) }
 
        | Just (DirtyOldFree p) <- dirtyOldFree' -> modify' $
             \e -> e { writerReusablePages = OldFree p : writerReusablePages e }
 
        | p <- pid -> modify' $
-            \e -> e { writerNewlyFreedPages = NewlyFreed p : writerNewlyFreedPages e }
+            \e -> e { writerNewlyFreedPages = NewlyFreed p : writerNewlyFreedPages e  }
 
 -- | Get a 'Dirty' page, by first proving it is in fact dirty.
 dirty :: (Functor m, MonadState (WriterEnv hnd) m) => PageId -> m (Maybe Dirty)

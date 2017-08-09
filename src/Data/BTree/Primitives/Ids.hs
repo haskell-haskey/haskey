@@ -21,6 +21,12 @@ import Numeric (showHex)
 newtype PageId = PageId { fromPageId :: Word64 }
   deriving (Eq, Ord, Binary, Num, Value, Key, Typeable)
 
+-- | Reference to a stored overflow page.
+--
+-- An overflow id is the combination of the transaction id that
+-- generated it, and a counter.
+type OverflowId = (TxId, Word64)
+
 {-| Type used to indicate the size of storage pools. -}
 newtype PageCount = PageCount { fromPageCount :: Word64 }
   deriving (Eq, Ord, Binary, Num, Enum, Typeable)

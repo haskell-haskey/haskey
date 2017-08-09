@@ -54,4 +54,6 @@ instance Key ByteString where
         -- Length of the longest Common prefix
         n  = length (takeWhile id (BS.zipWith (==) a b))
 
+instance (Key a, Key b) => Key (a, b) where
+
 --------------------------------------------------------------------------------

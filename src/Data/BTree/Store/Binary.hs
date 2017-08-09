@@ -94,13 +94,15 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
     openHandle fp =
         modify $ M.insertWith (flip const) fp M.empty
 
-    closeHandle fp =
+    closeHandle _ = return ()
+
+    removeHandle fp =
         modify $ M.delete fp
 
     nodePageSize = return $ \h ->
         fromIntegral . BS.length . encode . NodePage h
 
-    maxPageSize = return 128
+    maxPageSize = return 256
 
     newPageId hnd = do
         m <- get >>= lookupFile hnd
@@ -118,10 +120,22 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
       where
         pg = encode $ NodePage height node
 
+    getOverflow hnd val = do
+        bs <- get >>= lookupPage hnd 0
+        decodeM (overflowPage val) bs >>= \case
+            OverflowPage v ->
+                justErrM "could not cast overflow value" $
+                    castValue v
+
+    putOverflow hnd val =
+        modify $ M.update (Just . M.insert 0 pg) hnd
+      where
+        pg = encode $ OverflowPage val
+
 --------------------------------------------------------------------------------
 
-instance (Ord fp, Show fp, Applicative m, Monad m) =>
-    ConcurrentMetaStoreM fp (StoreT fp m)
+instance (Applicative m, Monad m) =>
+    ConcurrentMetaStoreM (StoreT FilePath m)
   where
     putConcurrentMeta h meta =
         modify $ M.update (Just . M.insert 0 pg) h

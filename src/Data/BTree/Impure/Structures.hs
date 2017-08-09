@@ -11,6 +11,8 @@ module Data.BTree.Impure.Structures (
   -- * Structures
   Tree(..)
 , Node(..)
+, LeafItems
+, LeafValue(..)
 
   -- * Binary encoding
 , putNode
@@ -19,13 +21,15 @@ module Data.BTree.Impure.Structures (
   -- * Casting
 , castNode
 , castNode'
+, castValue
 ) where
 
 import Control.Applicative ((<$>), (<*>))
+
 import Data.Binary (Binary(..), Put, Get)
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
-import Data.Typeable (Typeable, typeRep)
+import Data.Typeable (Typeable, typeRep, cast)
 
 import GHC.Generics (Generic)
 
@@ -49,6 +53,13 @@ data Tree key val where
             } -> Tree key val
     deriving (Typeable)
 
+data LeafValue v = RawValue v | OverflowValue OverflowId
+                 deriving (Eq, Generic, Show)
+
+instance Binary v => Binary (LeafValue v) where
+
+type LeafItems k v = Map k (LeafValue v)
+
 {-| A node in a B+-tree.
 
     Nodes are parameterized over the key and value types and are additionally
@@ -62,7 +73,7 @@ data Tree key val where
 data Node height key val where
     Idx  :: { idxChildren      ::  Index key (NodeId height key val)
             } -> Node ('S height) key val
-    Leaf :: { leafItems        ::  Map key val
+    Leaf :: { leafItems        ::  LeafItems key val
             } -> Node 'Z key val
     deriving (Typeable)
 
@@ -134,3 +145,10 @@ castNode' h n
     | otherwise                         = Right (unsafeCoerce n)
 
 --------------------------------------------------------------------------------
+
+-- | Cast a value to a different type.
+--
+-- Essentially this is just a drop-in replacement for
+-- 'Data.Typeable.cast'.
+castValue :: (Typeable v1, Typeable v2) => v1 -> Maybe v2
+castValue = cast

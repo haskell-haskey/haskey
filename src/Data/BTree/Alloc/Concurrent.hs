@@ -25,4 +25,5 @@ module Data.BTree.Alloc.Concurrent (
 
 import Data.BTree.Alloc.Concurrent.Database
 import Data.BTree.Alloc.Concurrent.Meta
+import Data.BTree.Alloc.Concurrent.Monad
 import Data.BTree.Alloc.Transaction

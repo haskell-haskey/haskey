@@ -13,15 +13,23 @@ import Control.Applicative (Applicative, (<$>))
 import Control.Monad.State
 
 import Data.Proxy (Proxy(..))
-import qualified Data.Set as S
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.FreePages.Query
 import Data.BTree.Alloc.Concurrent.Meta
+import Data.BTree.Alloc.Concurrent.Overflow
 import Data.BTree.Primitives
 import Data.BTree.Store
 import qualified Data.BTree.Store.Class as Store
+
+-- | All necessary database handles.
+data ConcurrentHandles = ConcurrentHandles {
+    concurrentHandlesMain :: FilePath
+  , concurrentHandlesMetadata1 :: FilePath
+  , concurrentHandlesMetadata2 :: FilePath
+  , concurrentHandlesOverflowDir :: FilePath
+  } deriving (Show)
 
 -- | Monad in which page allocations can take place.
 --
@@ -35,46 +43,93 @@ instance MonadTrans (ConcurrentT env hnd) where
 
 -- | Run the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment. -}
-runConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env hnd m a -> env hnd -> m (a, env hnd)
+runConcurrentT :: ConcurrentMetaStoreM m
+               => ConcurrentT env ConcurrentHandles m a
+               -> env ConcurrentHandles
+               -> m (a, env ConcurrentHandles)
 runConcurrentT m = runStateT (fromConcurrentT m)
 
 -- | Evaluate the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment. -}
-evalConcurrentT :: ConcurrentMetaStoreM hnd m => ConcurrentT env hnd m a -> env hnd -> m a
+evalConcurrentT :: ConcurrentMetaStoreM m
+                => ConcurrentT env ConcurrentHandles m a
+                -> env ConcurrentHandles ->
+                m a
 evalConcurrentT m env = fst <$> runConcurrentT m env
 
-instance (ConcurrentMetaStoreM hnd m, MonadIO m) => AllocM (ConcurrentT WriterEnv hnd m) where
+instance
+    (ConcurrentMetaStoreM m, MonadIO m)
+    => AllocM (ConcurrentT WriterEnv ConcurrentHandles m)
+  where
     nodePageSize = ConcurrentT Store.nodePageSize
 
     maxPageSize = ConcurrentT Store.maxPageSize
 
-    allocNode height n = getNid >>= \nid -> ConcurrentT $ do
-        hnd <- writerHnd <$> get
-        modify' $ \env -> env { writerAllocdPages =
-            S.insert (nodeIdToPageId nid) (writerAllocdPages env) }
-        putNodePage hnd height nid n
+    allocNode height n = do
+        hnd <- concurrentHandlesMain . writerHnds <$> get
+        pid <- getPid
+        touchPage pid
+
+        let nid = pageIdToNodeId (getSomeFreePageId pid)
+        lift $ putNodePage hnd height nid n
         return nid
       where
-        getNid = getFreeNodeId >>= \case
-            Just nid -> return nid
+        getPid = getFreePageId >>= \case
+            Just pid -> return pid
             Nothing -> do
-                hnd <- writerHnd <$> get
+                hnd <- concurrentHandlesMain . writerHnds <$> get
                 pid <- lift $ newPageId hnd
-                return $! pageIdToNodeId pid
+                return (FreshFreePage (Fresh pid))
 
-    freeNode _ nid = ConcurrentT $ modify' $ \env ->
-        if S.member pid (writerAllocdPages env)
-            then env { writerFreedDirtyPages = pid : writerFreedDirtyPages env }
-            else env { writerNewlyFreedPages = pid : writerNewlyFreedPages env }
-      where
-        pid = nodeIdToPageId nid
+    freeNode _ nid = freePage (nodeIdToPageId nid)
 
-instance ConcurrentMetaStoreM hnd m => AllocReaderM (ConcurrentT WriterEnv hnd m) where
-    readNode height nid = ConcurrentT $ do
-        hnd <- writerHnd <$> get
-        getNodePage hnd height Proxy Proxy nid
+    allocOverflow v = do
+        root <- concurrentHandlesOverflowDir . writerHnds <$> get
+        oid <- getNewOverflowId
+        touchOverflow oid
 
-instance ConcurrentMetaStoreM hnd m => AllocReaderM (ConcurrentT ReaderEnv hnd m) where
-    readNode height nid = ConcurrentT $ do
-        hnd <- readerHnd <$> get
-        getNodePage hnd height Proxy Proxy nid
+        let hnd = getOverflowHandle root oid
+        lift $ openHandle hnd
+        lift $ putOverflow hnd v
+        lift $ closeHandle hnd
+        return oid
+
+    freeOverflow oid = overflowType oid >>= \case
+        Right i -> removeOldOverflow i
+        Left (DirtyOverflow i) -> do
+            root <- concurrentHandlesOverflowDir . writerHnds <$> get
+            lift $ removeHandle (getOverflowHandle root i)
+
+instance
+    ConcurrentMetaStoreM m
+    => AllocReaderM (ConcurrentT WriterEnv ConcurrentHandles m)
+  where
+    readNode height nid = do
+        hnd <- concurrentHandlesMain . writerHnds <$> get
+        lift $ getNodePage hnd height Proxy Proxy nid
+
+    readOverflow i = do
+        root <- concurrentHandlesOverflowDir . writerHnds <$> get
+        readOverflow' root i
+
+instance
+    ConcurrentMetaStoreM m
+    => AllocReaderM (ConcurrentT ReaderEnv ConcurrentHandles m)
+  where
+    readNode height nid = do
+        hnd <- concurrentHandlesMain . readerHnds <$> get
+        lift $ getNodePage hnd height Proxy Proxy nid
+
+    readOverflow i = do
+        root <- concurrentHandlesOverflowDir . readerHnds <$> get
+        readOverflow' root i
+
+readOverflow' :: (ConcurrentMetaStoreM m, Value v)
+              => FilePath -> OverflowId -> ConcurrentT env hnd m v
+readOverflow' root oid = do
+    let hnd = getOverflowHandle root oid
+    lift $ openHandle hnd
+    v <- lift $ getOverflow hnd Proxy
+    lift $ closeHandle hnd
+    return v
+

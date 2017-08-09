@@ -29,12 +29,14 @@ import Data.BTree.Primitives
 -- | The type of a page.
 data PageType = TypeEmpty
               | TypeNode
+              | TypeOverflow
               | TypeConcurrentMeta
               deriving (Eq, Generic, Show)
 
 data SPageType t where
     STypeEmpty           :: SPageType 'TypeEmpty
     STypeNode            :: SPageType 'TypeNode
+    STypeOverflow        :: SPageType 'TypeOverflow
     STypeConcurrentMeta  :: SPageType 'TypeConcurrentMeta
 
 instance Binary PageType where
@@ -46,6 +48,9 @@ data Page (t :: PageType) where
               => Height h
               -> Node h k v
               -> Page 'TypeNode
+    OverflowPage :: (Value v)
+                 => v
+                 -> Page 'TypeOverflow
     ConcurrentMetaPage :: (Key k, Value v)
                        => ConcurrentMeta k v
                        -> Page 'TypeConcurrentMeta
@@ -57,6 +62,7 @@ data SGet t = SGet (SPageType t) (Get (Page t))
 pageType :: SPageType t -> PageType
 pageType STypeEmpty          = TypeEmpty
 pageType STypeNode           = TypeNode
+pageType STypeOverflow       = TypeOverflow
 pageType STypeConcurrentMeta = TypeConcurrentMeta
 
 -- | Encode a page to a lazy byte string.
@@ -85,6 +91,7 @@ decodeM g bs = case decode g bs of
 putPage :: Page t -> Put
 putPage EmptyPage              = put TypeEmpty
 putPage (NodePage h n)         = put TypeNode >> put h >> putNode n
+putPage (OverflowPage v)       = put TypeOverflow >> put v
 putPage (ConcurrentMetaPage m) = put TypeConcurrentMeta >> put m
 
 -- | Decoder for an empty page.
@@ -105,12 +112,20 @@ nodePage h k v = SGet STypeNode $ get >>= \case
         if fromHeight h == fromHeight h'
             then NodePage h <$> get' h k v
             else fail $ "expected height " ++ show h ++ " but got "
-                     ++ show h ++ " while decoding TypeNode"
+                     ++ show h' ++ " while decoding TypeNode"
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeNode"
   where
     get' :: (Key k, Value v)
          => Height h -> Proxy k -> Proxy v -> Get (Node h k v)
     get' h' _ _ = getNode h'
+
+overflowPage :: (Value v) => Proxy v -> SGet 'TypeOverflow
+overflowPage v = SGet STypeOverflow $ get >>= \case
+    TypeOverflow -> OverflowPage <$> get' v
+    x -> fail $ "unexpected " ++ show x ++ " while decoding TypeOverflow"
+  where
+    get' :: (Value v) => Proxy v -> Get v
+    get' _ = get
 
 concurrentMetaPage :: (Key k, Value v)
                    => Proxy k

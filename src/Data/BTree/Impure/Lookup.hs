@@ -7,7 +7,10 @@ module Data.BTree.Impure.Lookup where
 
 import qualified Data.Map as M
 
+import Control.Applicative ((<$>))
+
 import Data.BTree.Alloc.Class
+import Data.BTree.Impure.Overflow
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 
@@ -35,7 +38,8 @@ lookupRec k = fetchAndGo
         let (_ctx,childId) = valView k children
         fetchAndGo (decrHeight hgt) childId
     go _hgt (Leaf items) =
-        return $! M.lookup k items
+        case M.lookup k items of Nothing -> return Nothing
+                                 Just v  -> Just <$> fromLeafValue v
 
 {-| Lookup a value in an impure B+-tree. -}
 lookupTree :: forall m key val. (AllocReaderM m, Key key, Value val)
@@ -72,7 +76,11 @@ lookupMinTree tree
     lookupMinRec h nid = readNode h nid >>= \case
         Idx children -> let (_, childId) = valViewMin children in
                         lookupMinRec (decrHeight h) childId
-        Leaf items -> return $! lookupMin items
+        Leaf items -> case lookupMin items of
+            Nothing -> return Nothing
+            Just (k, v) -> do
+                v' <- fromLeafValue v
+                return $ Just (k, v')
 
     lookupMin m | M.null m  = Nothing
                 | otherwise = Just $! M.findMin m

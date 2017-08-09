@@ -29,6 +29,9 @@ tests = testGroup "Impure.Structures"
     , testProperty "binary tree" prop_binary_tree
     ]
 
+instance Arbitrary v => Arbitrary (LeafValue v) where
+    arbitrary = oneof [RawValue <$> arbitrary, OverflowValue <$> arbitrary]
+
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Node 'Z k v) where
     arbitrary = Leaf <$> arbitrary
 

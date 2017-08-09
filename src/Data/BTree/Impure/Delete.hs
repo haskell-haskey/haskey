@@ -84,7 +84,12 @@ deleteRec key = fetchAndGo
                  newChildId <- allocNode subHeight newChild
                  return (Idx (putVal ctx newChildId))
     recurse _hgt (Leaf items) =
-        return (Leaf (M.delete key items))
+        case M.lookup key items of
+            Nothing -> return $ Leaf items
+            Just (RawValue _) -> return $ Leaf (M.delete key items)
+            Just (OverflowValue oid) -> do
+                freeOverflow oid
+                return $ Leaf (M.delete key items)
 
 --------------------------------------------------------------------------------
 

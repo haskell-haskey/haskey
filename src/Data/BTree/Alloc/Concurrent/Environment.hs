@@ -26,12 +26,19 @@ data WriterEnv hnds = WriterEnv
     -- ^ Pages free'd in this transaction, not ready for reuse until the
     -- transaction is commited.
 
-    , writerDirtyPages :: !(Set Dirty)
-    -- ^ Pages freshly allocated in this transcation. These pages can be reused
-    -- in the same transaction if free'd later.
+    , writerOriginalNumPages :: !PageId
+    -- ^ The original number of pages in the database file, before the
+    -- transaction started.
+
+    , writerNewNumPages :: !PageId
+    -- ^ The new uncommited number of pages in the database file.
+    --
+    -- All pages in the range 'writerOriginalNumPages' to 'writerNewNumPages'
+    -- (excluding) are freshly allocated in the ongoing transaction.
 
     , writerFreedDirtyPages :: !(Set DirtyFree)
-    -- ^ Pages free for immediate reuse.
+    -- ^ Pages freshly allocated AND free'd in this transaction. Immediately
+    -- ready for reuse.
 
     , writerFreeTree :: !FreeTree
     -- ^ The root of the free tree, might change during a transaction.
@@ -63,13 +70,14 @@ data WriterEnv hnds = WriterEnv
     }
 
 -- | Create a new writer.
-newWriter :: hnd -> TxId -> Map TxId Integer -> FreeTree -> WriterEnv hnd
-newWriter hnd tx readers freeTree = WriterEnv {
+newWriter :: hnd -> TxId -> PageId -> Map TxId Integer -> FreeTree -> WriterEnv hnd
+newWriter hnd tx numPages readers freeTree = WriterEnv {
     writerHnds = hnd
   , writerTxId = tx
   , writerReaders = readers
   , writerNewlyFreedPages = []
-  , writerDirtyPages = S.empty
+  , writerOriginalNumPages = numPages
+  , writerNewNumPages = numPages
   , writerFreedDirtyPages = S.empty
   , writerFreeTree = freeTree
   , writerDirtyReusablePages = S.empty
@@ -135,11 +143,11 @@ freePage pid = do
 
 -- | Get a 'Dirty' page, by first proving it is in fact dirty.
 dirty :: (Functor m, MonadState (WriterEnv hnd) m) => PageId -> m (Maybe Dirty)
-dirty pid = (page . writerDirtyPages) <$> get
+dirty pid = (page . writerOriginalNumPages) <$> get
   where
-    page dirty'
-        | S.member (Dirty pid) dirty' = Just (Dirty pid)
-        | otherwise                   = Nothing
+    page origNumPages
+        | pid >= origNumPages = Just (Dirty pid)
+        | otherwise           = Nothing
 
 -- | Get a 'DirtyOldFree' page, by first proving it is in fact a dirty old free page.
 dirtyOldFree :: (Functor m, MonadState (WriterEnv hnd) m) => PageId -> m (Maybe DirtyOldFree)
@@ -153,8 +161,10 @@ dirtyOldFree pid = (page . writerDirtyReusablePages) <$> get
 -- | Touch a fresh page, make it dirty.
 touchPage :: MonadState (WriterEnv hnd) m => SomeFreePage -> m ()
 touchPage (DirtyFreePage _) = return ()
-touchPage (FreshFreePage (Fresh pid)) = modify' $ \e -> e { writerDirtyPages = S.insert dirty' (writerDirtyPages e) }
-  where dirty' = Dirty pid
+touchPage (FreshFreePage (Fresh pid)) = modify' $ \e ->
+    if writerNewNumPages e < pid + 1
+        then e { writerNewNumPages = pid + 1 }
+        else e
 touchPage (OldFreePage (OldFree pid)) = modify' $ \e -> e { writerDirtyReusablePages = S.insert dirty' (writerDirtyReusablePages e) }
   where dirty' = DirtyOldFree pid
 

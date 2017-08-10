@@ -23,6 +23,7 @@ data CurrentMetaPage = Meta1 | Meta2
 -- | Meta data of the page allocator.
 data ConcurrentMeta k v = ConcurrentMeta {
     concurrentMetaRevision :: TxId
+  , concurrentMetaNumPages :: PageId
   , concurrentMetaTree :: Tree k v
   , concurrentMetaFreeTree :: FreeTree
   , concurrentMetaOverflowTree :: OverflowTree

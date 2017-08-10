@@ -62,6 +62,7 @@ createConcurrentDb hnds = do
     return db
   where
     meta0 = ConcurrentMeta { concurrentMetaRevision = 0
+                           , concurrentMetaNumPages = 0
                            , concurrentMetaTree = Tree zeroHeight Nothing
                            , concurrentMetaFreeTree = Tree zeroHeight Nothing
                            , concurrentMetaOverflowTree = Tree zeroHeight Nothing
@@ -224,10 +225,12 @@ actAndCommit db act
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1
 
-    let writer :: ConcurrentMeta k v -> WriterEnv ConcurrentHandles
-        writer = newWriter hnds newRevision readers . concurrentMetaFreeTree
-
-    ((maybeMeta, v), env) <- runConcurrentT (act meta) $ writer meta
+    ((maybeMeta, v), env) <- runConcurrentT (act meta) $
+                                newWriter hnds
+                                          newRevision
+                                          (concurrentMetaNumPages meta)
+                                          readers
+                                          (concurrentMetaFreeTree meta)
 
     let maybeMeta' = updateMeta env <$> maybeMeta
 
@@ -238,6 +241,7 @@ actAndCommit db act
             (newMeta, _) <- flip execStateT (meta', env) $ do
                 saveOverflowIds
                 saveFreePages' 0
+                cleanupFreedDirtyPages
 
             -- Commit
             setCurrentMeta (newMeta { concurrentMetaRevision = newRevision })
@@ -311,5 +315,19 @@ saveFreePages' paranoid
     -- Did we free any new pages? We have to put them in the free tree!
     unless (writerNewlyFreedPages env' == writerNewlyFreedPages env) $
        saveFreePages' (paranoid + 1)
+
+-- | Cleanup the dirty pages.
+--
+-- Pages that are 'DirtyFree' were freshly allocated in this transaction, but
+-- are no longer used. Since they are (mostly) at the end of the database, they
+-- can be free'd by truncating the database file.
+--
+-- This function also edits the size of database as stored in the meta-data
+cleanupFreedDirtyPages :: (MonadIO m, ConcurrentMetaStoreM m)
+                       => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
+cleanupFreedDirtyPages = do
+    (meta, env) <- get
+    let meta' = meta { concurrentMetaNumPages = writerNewNumPages env }
+    put (meta', env)
 
 --------------------------------------------------------------------------------

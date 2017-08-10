@@ -77,8 +77,7 @@ instance
         getPid = getFreePageId >>= \case
             Just pid -> return pid
             Nothing -> do
-                hnd <- concurrentHandlesMain . writerHnds <$> get
-                pid <- lift $ newPageId hnd
+                pid <- writerNewNumPages <$> get
                 return (FreshFreePage (Fresh pid))
 
     freeNode _ nid = freePage (nodeIdToPageId nid)

@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiWayIf #-}
 -- | Environments of a read or write transaction.
 module Data.BTree.Alloc.Concurrent.Environment where
@@ -6,6 +7,7 @@ module Data.BTree.Alloc.Concurrent.Environment where
 import Control.Applicative ((<$>))
 import Control.Monad.State
 
+import Data.Binary (Binary)
 import Data.Set (Set)
 import Data.Word (Word64)
 import qualified Data.Set as S
@@ -70,15 +72,15 @@ data WriterEnv hnds = WriterEnv
     }
 
 -- | Create a new writer.
-newWriter :: hnd -> TxId -> PageId -> Map TxId Integer -> FreeTree -> WriterEnv hnd
-newWriter hnd tx numPages readers freeTree = WriterEnv {
+newWriter :: hnd -> TxId -> PageId -> Map TxId Integer -> Set DirtyFree -> FreeTree -> WriterEnv hnd
+newWriter hnd tx numPages readers dirtyFree freeTree = WriterEnv {
     writerHnds = hnd
   , writerTxId = tx
   , writerReaders = readers
   , writerNewlyFreedPages = []
   , writerOriginalNumPages = numPages
   , writerNewNumPages = numPages
-  , writerFreedDirtyPages = S.empty
+  , writerFreedDirtyPages = dirtyFree
   , writerFreeTree = freeTree
   , writerDirtyReusablePages = S.empty
   , writerReusablePages = []
@@ -101,7 +103,7 @@ newtype NewlyFreed = NewlyFreed PageId deriving (Eq, Ord, Show)
 newtype Dirty = Dirty PageId deriving (Eq, Ord, Show)
 
 -- | Wrapper around 'PageId' indicating the page is dirty and free for reuse.
-newtype DirtyFree = DirtyFree PageId deriving (Eq, Ord, Show)
+newtype DirtyFree = DirtyFree PageId deriving (Binary, Eq, Ord, Show)
 
 -- | Wrapper around 'PageId' inidcating it was fetched from the free database
 -- and is ready for reuse.

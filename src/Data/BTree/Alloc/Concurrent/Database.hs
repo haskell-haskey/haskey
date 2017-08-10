@@ -6,8 +6,10 @@ module Data.BTree.Alloc.Concurrent.Database where
 
 import Control.Applicative ((<$>))
 import Control.Concurrent.STM
-import Control.Monad (void)
+import Control.Monad (void, unless)
 import Control.Monad.IO.Class
+import Control.Monad.State
+import Control.Monad.Trans (lift)
 
 import Data.Proxy (Proxy(..))
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -18,7 +20,6 @@ import qualified STMContainers.Map as Map
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.FreePages.Save
-import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Alloc.Concurrent.Meta
 import Data.BTree.Alloc.Concurrent.Monad
 import Data.BTree.Alloc.Concurrent.Overflow
@@ -149,128 +150,26 @@ transact act db = withRLock' (concurrentDbWriterLock db) $ do
     transactNow act db
   where
     cleanup :: (MonadIO m, ConcurrentMetaStoreM m) => m ()
-    cleanup
-        | ConcurrentDb
-          { concurrentDbHandles = hnds
-          , concurrentDbReaders = readers
-          } <- db
-        = do
-        meta <- liftIO . atomically $ getCurrentMeta db
-        let newRevision = concurrentMetaRevision meta + 1
-        let tree = concurrentMetaOverflowTree meta
-        (v, env) <- runConcurrentT (deleteOutdatedOverflowIds tree) $
-                            newWriter hnds
-                                      newRevision
-                                      readers
-                                      (concurrentMetaFreeTree meta)
+    cleanup = actAndCommit db $ \meta -> do
+        v <- deleteOutdatedOverflowIds (concurrentMetaOverflowTree meta)
         case v of
-            Nothing -> return ()
-            Just tree' -> do
-                -- Save the free'd pages to the free page database
-                freeTree' <- saveFreePages' 0 env
-
-                -- Commit
-                let newMeta = meta {
-                      concurrentMetaRevision     = newRevision
-                    , concurrentMetaFreeTree     = freeTree'
-                    , concurrentMetaOverflowTree = tree'
-                    }
-                setCurrentMeta newMeta db
+            Nothing -> return (Nothing, ())
+            Just tree -> do
+                let meta' = meta { concurrentMetaOverflowTree = tree }
+                return (Just meta', ())
 
 {-| Execute a write transaction, without cleaning up old overflow pages. -}
 transactNow :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
             => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
             -> ConcurrentDb key val -> m a
-transactNow act db
-    | ConcurrentDb
-      { concurrentDbHandles = hnds
-      , concurrentDbWriterLock = lock
-      , concurrentDbReaders = readers
-      } <- db
-    = withRLock' lock $ do
-
-    meta <- liftIO . atomically $ getCurrentMeta db
-    let newRevision = concurrentMetaRevision meta + 1
-    (tx, env) <- runConcurrentT (act $ concurrentMetaTree meta) $
-                    newWriter hnds
-                              newRevision
-                              readers
-                              (concurrentMetaFreeTree meta)
-    case tx of
-        Abort v -> return v
-        Commit newTree v -> do
-            -- Save the newly free'd overflow pages to be deleted when they are
-            -- no longer in use.
-            (overflowTree', env') <- saveOverflowIds env
-                (concurrentMetaOverflowTree meta)
-
-            -- Save the free'd pages to the free page database
-            freeTree' <- saveFreePages' 0 env'
-
-            -- Commit
-            let newMeta = ConcurrentMeta
-                    { concurrentMetaRevision     = newRevision
-                    , concurrentMetaTree         = newTree
-                    , concurrentMetaFreeTree     = freeTree'
-                    , concurrentMetaOverflowTree = overflowTree'
-                    }
-            setCurrentMeta newMeta db
-            return v
-  where
-    saveOverflowIds :: (MonadIO m, ConcurrentMetaStoreM m)
-                    => WriterEnv ConcurrentHandles
-                    -> OverflowTree
-                    -> m (OverflowTree, WriterEnv ConcurrentHandles)
-    saveOverflowIds env tree =
-        case map (\(OldOverflow i) ->i) (writerRemovedOverflows env) of
-            [] -> return (tree, env)
-            x:xs -> flip runConcurrentT env $
-                insertOverflowIds (writerTxId env)
-                                  (x :| xs)
-                                  tree
-
-saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
-               => Int
-               -> WriterEnv ConcurrentHandles
-               -> m FreeTree
-saveFreePages' paranoid env
-    | paranoid >= 100 = error "paranoid: looping!"
-    | otherwise
-    = do
-
-    -- Saving the free pages
-    -- =====================
-    --
-    -- Saving free pages to the free database is a complicated task. At the end
-    -- of a transaction we have 3 types of free pages:
-    --
-    --  1. 'DirtyFree': Pages that were freshly allocated from the end of the
-    --                  dabase file, but are no longer used. These are free'd
-    --                  by truncating the datase file. They can freely be used
-    --                  during this routine.
-    --
-    --  2. 'NewlyFreed': Pages that were written by a previous transaction, but
-    --                   free'd in this transaction. They might still be in use
-    --                   by an older reader, and can thus not be used anyways.
-    --
-    --                   Note that this list **may grow during this routine**,
-    --                   as new pages can be free'd.
-    --
-    --  3. 'OldFree': Pages that were fetched from the free database while
-    --                executing the transaction. Technically, they can be used
-    --                during this routine, BUT that would mean the list of
-    --                'OldFree' pages can grow and shrink during the call,
-    --                which would complicate the convergence/termination
-    --                conditions of this routine. So currently, **we disable
-    --                the use of these pages in this routine.**
-
-    (freeTree', env') <- runConcurrentT (saveFreePages env) $
-        env { writerReusablePagesOn = False }
-
-    -- Did we free any new pages? We have to put them in the free tree!
-    if writerNewlyFreedPages env' == writerNewlyFreedPages env
-       then return freeTree'
-       else saveFreePages' (paranoid + 1) $ env' { writerFreeTree = freeTree' }
+transactNow act db = withRLock' (concurrentDbWriterLock db) $
+    actAndCommit db $ \meta -> do
+        tx <- act (concurrentMetaTree meta)
+        case tx of
+            Abort v -> return (Nothing, v)
+            Commit tree v ->
+                let meta' = meta { concurrentMetaTree = tree } in
+                return (Just meta', v)
 
 {-| Execute a write transaction, without a result. -}
 transact_ :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
@@ -301,3 +200,116 @@ transactReadOnly act db
     subOne Nothing = Nothing
     subOne (Just 0) = Nothing
     subOne (Just x) = Just $! x - 1
+
+--------------------------------------------------------------------------------
+
+-- | Run a write action that takes the current meta-data and returns new
+-- meta-data to be commited, or 'Nothing' if the write transaction should be
+-- aborted.
+actAndCommit :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
+             => ConcurrentDb key val
+             -> (forall n. (MonadIO n, ConcurrentMetaStoreM n)
+                 => ConcurrentMeta key val
+                 -> ConcurrentT WriterEnv ConcurrentHandles n (Maybe (ConcurrentMeta key val), v)
+                )
+             -> m v
+actAndCommit db act
+    | ConcurrentDb
+      { concurrentDbHandles = hnds
+      , concurrentDbWriterLock = lock
+      , concurrentDbReaders = readers
+      } <- db
+    = withRLock' lock $ do
+
+    meta <- liftIO . atomically $ getCurrentMeta db
+    let newRevision = concurrentMetaRevision meta + 1
+
+    let writer :: ConcurrentMeta k v -> WriterEnv ConcurrentHandles
+        writer = newWriter hnds newRevision readers . concurrentMetaFreeTree
+
+    ((maybeMeta, v), env) <- runConcurrentT (act meta) $ writer meta
+
+    let maybeMeta' = updateMeta env <$> maybeMeta
+
+    case maybeMeta' of
+        Nothing -> return v
+        Just meta' -> do
+            -- Bookkeeping
+            (newMeta, _) <- flip execStateT (meta', env) $ do
+                saveOverflowIds
+                saveFreePages' 0
+
+            -- Commit
+            setCurrentMeta (newMeta { concurrentMetaRevision = newRevision })
+                           db
+            return v
+
+-- Update the meta-data from a writer environment
+updateMeta :: WriterEnv ConcurrentHandles -> ConcurrentMeta k v -> ConcurrentMeta k v
+updateMeta env m = m { concurrentMetaFreeTree = writerFreeTree env }
+
+
+-- Save the newly free'd overflow pages, for deletion on the next tx.
+saveOverflowIds :: (MonadIO m, ConcurrentMetaStoreM m)
+                => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
+saveOverflowIds = do
+    (meta, env) <- get
+    case map (\(OldOverflow i) ->i) (writerRemovedOverflows env) of
+        [] -> return ()
+        x:xs -> do
+            (tree', env') <- lift $ flip runConcurrentT env $
+                insertOverflowIds (writerTxId env)
+                                  (x :| xs)
+                                  (concurrentMetaOverflowTree meta)
+            let meta' = (updateMeta env meta)
+                            { concurrentMetaOverflowTree = tree' }
+            put (meta', env')
+
+-- Save the free'd pages to the free page database
+saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
+               => Int
+               -> StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
+saveFreePages' paranoid
+    | paranoid >= 100 = error "paranoid: looping!"
+    | otherwise
+    = do
+
+    -- Saving the free pages
+    -- =====================
+    --
+    -- Saving free pages to the free database is a complicated task. At the
+    -- end of a transaction we have 3 types of free pages:
+    --
+    --  1. 'DirtyFree': Pages that were freshly allocated from the end of
+    --          the dabase file, but are no longer used. These are free'd
+    --          by truncating the datase file. They can freely be used
+    --          during this routine.
+    --
+    --  2. 'NewlyFreed': Pages that were written by a previous transaction,
+    --          but free'd in this transaction. They might still be in use
+    --          by an older reader, and can thus not be used anyways.
+    --
+    --          Note that this list **may grow during this routine**, as
+    --          new pages can be free'd.
+    --
+    --  3. 'OldFree': Pages that were fetched from the free database while
+    --          executing the transaction. Technically, they can be used
+    --          during this routine, BUT that would mean the list of
+    --          'OldFree' pages can grow and shrink during the call, which
+    --          would complicate the convergence/termination conditions of
+    --          this routine. So currently, **we disable the use of these
+    --          pages in this routine.**
+
+    (meta, env) <- get
+    (tree', env') <- lift $ runConcurrentT (saveFreePages env) $
+        env { writerReusablePagesOn = False }
+
+    let meta' = (updateMeta env meta)
+                    { concurrentMetaFreeTree = tree' }
+    put (meta', env' { writerFreeTree = tree' })
+
+    -- Did we free any new pages? We have to put them in the free tree!
+    unless (writerNewlyFreedPages env' == writerNewlyFreedPages env) $
+       saveFreePages' (paranoid + 1)
+
+--------------------------------------------------------------------------------

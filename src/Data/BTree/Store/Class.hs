@@ -36,9 +36,6 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
     {-| The maximum page size the allocator can handle. -}
     maxPageSize  :: m PageSize
 
-    {-| Get a new unused fresh 'PageId' from the end of the file. -}
-    newPageId    :: hnd -> m PageId
-
     {-| Read a page and return the actual node and the transaction id when the
        node was written. -}
     getNodePage  :: (Key key, Value val)
@@ -76,7 +73,6 @@ instance StoreM hnd m => StoreM hnd (StateT s m) where
     removeHandle = lift.             closeHandle
     nodePageSize = lift              nodePageSize
     maxPageSize  = lift              maxPageSize
-    newPageId    = lift.             newPageId
     getNodePage  = ((((lift.).).).). getNodePage
     putNodePage  = (((lift.).).).    putNodePage
     getOverflow  = (lift.).          getOverflow
@@ -88,7 +84,6 @@ instance StoreM hnd m => StoreM hnd (ReaderT s m) where
     removeHandle = lift.             closeHandle
     nodePageSize = lift              nodePageSize
     maxPageSize  = lift              maxPageSize
-    newPageId    = lift.             newPageId
     getNodePage  = ((((lift.).).).). getNodePage
     putNodePage  = (((lift.).).).    putNodePage
     getOverflow  = (lift.).          getOverflow

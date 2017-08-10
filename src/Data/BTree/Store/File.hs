@@ -128,16 +128,6 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
     maxPageSize = return 256
 
-    newPageId fp = do
-        fh <- get >>= lookupHandle fp
-        fs <- liftIO $ hFileSize fh
-        ps <- fromIntegral <$> maxPageSize
-
-        let n = fs `div` ps
-        case fs `rem` ps of
-            0 -> return (fromIntegral n)
-            _ -> return (fromIntegral n + 1)
-
     getNodePage fp height key val nid = do
         h    <- get >>= lookupHandle fp
         size <- maxPageSize

@@ -13,6 +13,7 @@ import Control.Monad.Trans (lift)
 
 import Data.Proxy (Proxy(..))
 import Data.List.NonEmpty (NonEmpty((:|)))
+import qualified Data.Set as S
 
 import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
@@ -62,9 +63,11 @@ createConcurrentDb hnds = do
     return db
   where
     meta0 = ConcurrentMeta { concurrentMetaRevision = 0
+                           , concurrentMetaNumPages = 0
                            , concurrentMetaTree = Tree zeroHeight Nothing
                            , concurrentMetaFreeTree = Tree zeroHeight Nothing
                            , concurrentMetaOverflowTree = Tree zeroHeight Nothing
+                           , concurrentMetaFreshUnusedPages = S.empty
                            }
 
 -- | Open the an existing database, with the given handles.
@@ -224,10 +227,13 @@ actAndCommit db act
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1
 
-    let writer :: ConcurrentMeta k v -> WriterEnv ConcurrentHandles
-        writer = newWriter hnds newRevision readers . concurrentMetaFreeTree
-
-    ((maybeMeta, v), env) <- runConcurrentT (act meta) $ writer meta
+    ((maybeMeta, v), env) <- runConcurrentT (act meta) $
+                               newWriter hnds
+                                         newRevision
+                                         (concurrentMetaNumPages meta)
+                                         readers
+                                         (concurrentMetaFreshUnusedPages meta)
+                                         (concurrentMetaFreeTree meta)
 
     let maybeMeta' = updateMeta env <$> maybeMeta
 
@@ -238,6 +244,7 @@ actAndCommit db act
             (newMeta, _) <- flip execStateT (meta', env) $ do
                 saveOverflowIds
                 saveFreePages' 0
+                handleFreedDirtyPages
 
             -- Commit
             setCurrentMeta (newMeta { concurrentMetaRevision = newRevision })
@@ -311,5 +318,18 @@ saveFreePages' paranoid
     -- Did we free any new pages? We have to put them in the free tree!
     unless (writerNewlyFreedPages env' == writerNewlyFreedPages env) $
        saveFreePages' (paranoid + 1)
+
+-- | Handle the dirty pages.
+--
+-- Save the newly created free dirty pages to the metadata for later use.
+--
+-- Update the database size.
+handleFreedDirtyPages :: (MonadIO m, ConcurrentMetaStoreM m)
+                      => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
+handleFreedDirtyPages = do
+    (meta, env) <- get
+    let meta' = meta { concurrentMetaNumPages = writerNewNumPages env
+                     , concurrentMetaFreshUnusedPages = writerFreedDirtyPages env }
+    put (meta', env)
 
 --------------------------------------------------------------------------------

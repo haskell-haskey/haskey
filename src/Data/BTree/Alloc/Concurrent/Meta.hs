@@ -8,9 +8,11 @@ module Data.BTree.Alloc.Concurrent.Meta where
 
 import Data.Binary (Binary)
 import Data.Proxy (Proxy)
+import Data.Set as Set
 
 import GHC.Generics (Generic)
 
+import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Alloc.Concurrent.Overflow
 import Data.BTree.Impure.Structures
@@ -23,9 +25,11 @@ data CurrentMetaPage = Meta1 | Meta2
 -- | Meta data of the page allocator.
 data ConcurrentMeta k v = ConcurrentMeta {
     concurrentMetaRevision :: TxId
+  , concurrentMetaNumPages :: PageId
   , concurrentMetaTree :: Tree k v
   , concurrentMetaFreeTree :: FreeTree
   , concurrentMetaOverflowTree :: OverflowTree
+  , concurrentMetaFreshUnusedPages :: Set DirtyFree
   } deriving (Generic)
 
 deriving instance (Show k, Show v) => Show (ConcurrentMeta k v)

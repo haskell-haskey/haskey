@@ -104,10 +104,6 @@ instance (Show fp, Ord fp, Applicative m, Monad m) =>
 
     maxPageSize = return 256
 
-    newPageId hnd = do
-        m <- get >>= lookupFile hnd
-        return $ fromIntegral (M.size m)
-
     getNodePage hnd h key val nid = do
         bs <- get >>= lookupPage hnd (nodeIdToPageId nid)
         decodeM (nodePage h key val) bs >>= \case

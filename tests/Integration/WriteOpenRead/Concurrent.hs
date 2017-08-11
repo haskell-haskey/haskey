@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 module Integration.WriteOpenRead.Concurrent where
 
@@ -13,6 +12,7 @@ import Test.QuickCheck.Monadic
 
 import Control.Applicative ((<$>))
 import Control.Monad
+import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
@@ -52,17 +52,17 @@ tests = testGroup "WriteOpenRead.Concurrent"
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     (db, files) <- run create
-    result <- run . runMaybeT $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
-                                       (files, M.empty)
-                                       txs
-    assert $ isJust result
+    _ <- run $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
+                      (files, M.empty)
+                      txs
+    return ()
   where
 
     writeReadTest :: ConcurrentDb Integer TestValue
                   -> Files String
                   -> TestTransaction Integer TestValue
                   -> Map Integer TestValue
-                  -> MaybeT IO (Files String, Map Integer TestValue)
+                  -> IO (Files String, Map Integer TestValue)
     writeReadTest db files tx m = do
         files'   <- openAndWrite db files tx
         read'    <- openAndRead db files'
@@ -148,7 +148,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
 --------------------------------------------------------------------------------
 
-writeTransaction :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
+writeTransaction :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
                  => TestTransaction k v
                  -> ConcurrentDb k v
                  -> m ()

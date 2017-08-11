@@ -9,6 +9,7 @@ import Control.Applicative ((<$>))
 import Control.Concurrent.STM
 import Control.Monad (void, unless)
 import Control.Monad.IO.Class
+import Control.Monad.Catch (MonadMask)
 import Control.Monad.State
 import Control.Monad.Trans (lift)
 
@@ -146,14 +147,14 @@ setCurrentMeta new db
                 writeTVar (concurrentDbMeta1 db) new
 
 -- | Execute a write transaction, with a result.
-transact :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
+transact :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
          -> ConcurrentDb key val -> m a
-transact act db = withRLock' (concurrentDbWriterLock db) $ do
+transact act db = withRLock (concurrentDbWriterLock db) $ do
     cleanup
     transactNow act db
   where
-    cleanup :: (MonadIO m, ConcurrentMetaStoreM m) => m ()
+    cleanup :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m) => m ()
     cleanup = actAndCommit db $ \meta -> do
         v <- deleteOutdatedOverflowIds (concurrentMetaOverflowTree meta)
         case v of
@@ -163,10 +164,10 @@ transact act db = withRLock' (concurrentDbWriterLock db) $ do
                 return (Just meta', ())
 
 -- | Execute a write transaction, without cleaning up old overflow pages.
-transactNow :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
-            => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
-            -> ConcurrentDb key val -> m a
-transactNow act db = withRLock' (concurrentDbWriterLock db) $
+transactNow :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
+            => (forall n. AllocM n => Tree k v -> n (Transaction k v a))
+            -> ConcurrentDb k v -> m a
+transactNow act db = withRLock (concurrentDbWriterLock db) $
     actAndCommit db $ \meta -> do
         tx <- act (concurrentMetaTree meta)
         case tx of
@@ -176,9 +177,9 @@ transactNow act db = withRLock' (concurrentDbWriterLock db) $
                 return (Just meta', v)
 
 -- | Execute a write transaction, without a result.
-transact_ :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
-          => (forall n. AllocM n => Tree key val -> n (Transaction key val ()))
-          -> ConcurrentDb key val -> m ()
+transact_ :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
+          => (forall n. AllocM n => Tree k v -> n (Transaction k v ()))
+          -> ConcurrentDb k v -> m ()
 transact_ act db = void $ transact act db
 
 -- | Execute a read-only transaction.
@@ -210,20 +211,20 @@ transactReadOnly act db
 -- | Run a write action that takes the current meta-data and returns new
 -- meta-data to be commited, or 'Nothing' if the write transaction should be
 -- aborted.
-actAndCommit :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
-             => ConcurrentDb key val
+actAndCommit :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
+             => ConcurrentDb k v
              -> (forall n. (MonadIO n, ConcurrentMetaStoreM n)
-                 => ConcurrentMeta key val
-                 -> ConcurrentT WriterEnv ConcurrentHandles n (Maybe (ConcurrentMeta key val), v)
+                 => ConcurrentMeta k v
+                 -> ConcurrentT WriterEnv ConcurrentHandles n (Maybe (ConcurrentMeta k v), a)
                 )
-             -> m v
+             -> m a
 actAndCommit db act
     | ConcurrentDb
       { concurrentDbHandles = hnds
       , concurrentDbWriterLock = lock
       , concurrentDbReaders = readers
       } <- db
-    = withRLock' lock $ do
+    = withRLock lock $ do
 
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1

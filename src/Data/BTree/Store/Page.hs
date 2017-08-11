@@ -10,7 +10,7 @@
 module Data.BTree.Store.Page where
 
 import Control.Applicative ((<$>))
-import Control.Monad.Except (MonadError, throwError)
+import Control.Monad.Catch
 
 import Data.Binary (Binary(..), Put, Get)
 import Data.Binary.Get (runGetOrFail)
@@ -82,9 +82,9 @@ decode (SGet t g) bs = case runGetOrFail g (fromStrict bs) of
 
 
 -- | Monadic wrapper around 'decode'
-decodeM :: MonadError String m => SGet t -> ByteString -> m (Page t)
+decodeM :: MonadThrow m => SGet t -> ByteString -> m (Page t)
 decodeM g bs = case decode g bs of
-    Left err -> throwError err
+    Left err -> throwM $ DecodeError err
     Right v -> return v
 
 -- | The encoder of a 'Page'.
@@ -137,3 +137,8 @@ concurrentMetaPage k v = SGet STypeConcurrentMeta $ get >>= \ case
   where
     get' :: (Key k, Value v) => Proxy k -> Proxy v -> Get (ConcurrentMeta k v)
     get' _ _ = get
+
+-- | Exception thrown when decoding of a page fails.
+newtype DecodeError = DecodeError String deriving (Show)
+
+instance Exception DecodeError where

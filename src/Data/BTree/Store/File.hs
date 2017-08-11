@@ -21,10 +21,17 @@ module Data.BTree.Store.File (
 
   -- * Binary encoding
 , encodeAndPad
+
+  -- * Exceptions
+, FileNotFoundError(..)
+, PageOverflowError(..)
+, WrongNodeTypeError(..)
+, WrongOverflowValueError(..)
 ) where
 import Control.Applicative (Applicative, (<$>))
 import Control.Monad
-import Control.Monad.Except
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
@@ -32,20 +39,21 @@ import Data.ByteString (ByteString)
 import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Monoid ((<>))
+import Data.Typeable (Typeable)
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 
 import System.Directory (createDirectoryIfMissing, removeFile)
 import System.FilePath (takeDirectory)
 import System.IO
-import System.IO.Error (catchIOError, ioError, isDoesNotExistError)
+import System.IO.Error (ioError, isDoesNotExistError)
 
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 import Data.BTree.Store.Class
 import Data.BTree.Store.Page
-import Data.BTree.Utils.Monad.Except (justErrM)
+import Data.BTree.Utils.Monad.Catch (justErrM)
 
 --------------------------------------------------------------------------------
 
@@ -71,9 +79,9 @@ encodeAndPad size page
 type Files fp = Map fp Handle
 
 
-lookupHandle :: (Ord fp, Show fp, Functor m, MonadError String m)
+lookupHandle :: (Functor m, MonadThrow m, Ord fp, Show fp, Typeable fp)
              => fp -> Files fp -> m Handle
-lookupHandle fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
+lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 
 -- | Monad in which on-disk storage operations can take place.
 --
@@ -81,23 +89,25 @@ lookupHandle fp m = justErrM ("no file for handle " ++ show fp) $ M.lookup fp m
 -- 'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 -- concurrent page allocator.
 newtype StoreT fp m a = StoreT
-    { fromStoreT :: ExceptT String (StateT (Files fp) m) a
-    } deriving (Applicative, Functor, Monad, MonadIO, MonadState (Files fp), MonadError String)
+    { fromStoreT :: StateT (Files fp) m a
+    } deriving (Applicative, Functor, Monad,
+                MonadIO, MonadThrow, MonadCatch, MonadMask,
+                MonadState (Files fp))
 
 -- | Run the storage operations in the 'StoreT' monad, given a collection of
 -- open files.
-runStoreT :: StoreT fp m a -> Files fp -> m (Either String a, Files fp)
-runStoreT = runStateT . runExceptT . fromStoreT
+runStoreT :: StoreT fp m a -> Files fp -> m (a, Files fp)
+runStoreT = runStateT . fromStoreT
 
 -- | Evaluate the storage operations in the 'StoreT' monad, given a collection
 -- of open files.
-evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Either String a)
-evalStoreT = evalStateT . runExceptT . fromStoreT
+evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m a
+evalStoreT = evalStateT . fromStoreT
 
 -- | Execute the storage operations in the 'StoreT' monad, given a collection
 -- of open files.
-execStoreT :: Monad m => StoreT fp m a -> Files fp-> m (Files fp)
-execStoreT = execStateT . runExceptT . fromStoreT
+execStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Files fp)
+execStoreT = execStateT . fromStoreT
 
 -- | An empty file store, with no open files.
 emptyStore :: Files fp
@@ -105,7 +115,7 @@ emptyStore = M.empty
 
 --------------------------------------------------------------------------------
 
-instance (Applicative m, Monad m, MonadIO m) =>
+instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
     StoreM FilePath (StoreT FilePath m)
   where
     openHandle fp = do
@@ -143,8 +153,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
         case n of
             NodePage hgtSrc tree ->
-                justErrM "could not cast node page" $
-                    castNode hgtSrc height tree
+                justErrM WrongNodeTypeError $ castNode hgtSrc height tree
 
     putNodePage fp hgt nid node = do
         h    <- get >>= lookupHandle fp
@@ -155,7 +164,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
             page       = NodePage hgt node
 
         liftIO $ hSeek h AbsoluteSeek offset
-        bs <- justErrM "putNodePage: page too large" $ encodeAndPad size page
+        bs <- justErrM PageOverflowError $ encodeAndPad size page
         liftIO $ BS.hPut h bs
 
     getOverflow fp val = do
@@ -164,9 +173,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
         bs <- liftIO $ BS.hGetContents h
         n <- decodeM (overflowPage val) bs
         case n of
-            OverflowPage v ->
-                justErrM "could not cast overflow value" $
-                    castValue v
+            OverflowPage v -> justErrM WrongOverflowValueError $ castValue v
 
 
     putOverflow fp val = do
@@ -176,7 +183,7 @@ instance (Applicative m, Monad m, MonadIO m) =>
 
 --------------------------------------------------------------------------------
 
-instance (Applicative m, Monad m, MonadIO m) =>
+instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
     ConcurrentMetaStoreM (StoreT FilePath m)
   where
     putConcurrentMeta fp meta = do
@@ -194,5 +201,33 @@ instance (Applicative m, Monad m, MonadIO m) =>
         bs <- liftIO $ BS.hGetContents fh
         decodeM (concurrentMetaPage k v) bs >>= \case
             ConcurrentMetaPage meta -> return $ Just (coerce meta)
+
+--------------------------------------------------------------------------------
+
+-- | Exception thrown when a file is accessed that doesn't exist.
+newtype FileNotFoundError hnd = FileNotFoundError hnd deriving (Show)
+
+instance (Typeable hnd, Show hnd) => Exception (FileNotFoundError hnd) where
+
+-- | Exception thrown when a page that is too large is written.
+--
+-- As used in 'putNodePage'.
+data PageOverflowError = PageOverflowError deriving (Show)
+
+instance Exception PageOverflowError where
+
+-- | Exception thrown when a node cannot be cast to the right type.
+--
+-- As used in 'getNodePage'.
+data WrongNodeTypeError = WrongNodeTypeError deriving (Show)
+
+instance Exception WrongNodeTypeError where
+
+-- | Exception thrown when a value from an overflow page cannot be cast.
+--
+-- As used in 'getOverflow'.
+data WrongOverflowValueError = WrongOverflowValueError deriving (Show)
+
+instance Exception WrongOverflowValueError where
 
 --------------------------------------------------------------------------------

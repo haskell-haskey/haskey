@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE RecordWildCards #-}
 -- | Environments of a read or write transaction.
 module Data.BTree.Alloc.Concurrent.Environment where
 
@@ -17,7 +18,21 @@ import STMContainers.Map (Map)
 import Data.BTree.Alloc.Concurrent.FreePages.Tree
 import Data.BTree.Primitives
 
+-- | State that can be recovered.
+class RecoverableState s where
+    recover :: s -> Maybe RecoveredState
+
+-- | Recovered state of an interrupted 'ConcurrentT' action.
+--
+-- Contains all information needed for cleanup.
+newtype RecoveredState = RecoveredState {
+    recoveredStateOverflowCounter :: Word64
+  } deriving (Eq, Show)
+
 newtype ReaderEnv hnds = ReaderEnv { readerHnds :: hnds }
+
+instance RecoverableState (ReaderEnv hnds) where
+    recover _ = Nothing
 
 data WriterEnv hnds = WriterEnv
     { writerHnds :: !hnds
@@ -71,6 +86,10 @@ data WriterEnv hnds = WriterEnv
     -- and should be deleted when no longer in use.
     }
 
+instance RecoverableState (WriterEnv hnds) where
+    recover WriterEnv{..} = Just RecoveredState {
+        recoveredStateOverflowCounter = writerOverflowCounter
+      }
 -- | Create a new writer.
 newWriter :: hnd -> TxId -> PageId -> Map TxId Integer -> Set DirtyFree -> FreeTree -> WriterEnv hnd
 newWriter hnd tx numPages readers dirtyFree freeTree = WriterEnv {

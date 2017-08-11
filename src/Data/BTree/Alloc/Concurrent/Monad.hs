@@ -9,13 +9,12 @@
 -- concurrent readers and serialized writers.
 module Data.BTree.Alloc.Concurrent.Monad where
 
-import Control.Applicative (Applicative, (<$>), (<*>), pure)
+import Control.Applicative (Applicative, (<$>))
 import Control.Monad.Catch
 import Control.Monad.State
 import Control.Monad.Trans (lift)
 
 import Data.Proxy (Proxy(..))
-import Data.Typeable (Typeable)
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
@@ -50,19 +49,16 @@ newtype ConcurrentT env hnd m a = ConcurrentT { fromConcurrentT :: StateT (env h
 instance MonadTrans (ConcurrentT env hnd) where
     lift = ConcurrentT . lift
 
-instance (MonadThrow m, Typeable (env hnd)) => MonadThrow (ConcurrentT env hnd m) where
+instance (MonadThrow m, RecoverableState (env hnd)) => MonadThrow (ConcurrentT env hnd m) where
     throwM e = do
-        e' <- ConcurrentError <$> pure (toException e) <*> get
-        lift $ throwM e'
+        s <- recover <$> get
+        lift $ throwM (ConcurrentError (toException e) s)
 
 -- | Exception that was caught while running a 'ConcurrentT' action through
 -- 'runConcurrentT'. Includes the original exception and the recovered state.
-data ConcurrentError env = ConcurrentError SomeException env
+data ConcurrentError = ConcurrentError SomeException (Maybe RecoveredState) deriving (Show)
 
-instance Show (ConcurrentError env) where
-    show (ConcurrentError e _) = "ConcurrentError (" ++ show e ++ ") (<recovered state>)"
-
-instance Typeable env => Exception (ConcurrentError env) where
+instance Exception ConcurrentError where
 
 -- | Run the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment.
@@ -72,10 +68,10 @@ instance Typeable env => Exception (ConcurrentError env) where
 -- 'ConcurrentError' exception along with the recovered state. The
 -- 'ConcurrentError' will then be rethrown.
 --
--- Async synchronous errors
+-- Asynchronous errors are not caught, and are thus not cleaned up.
 --
 -- See also the description of 'ConcurrentT'
-runConcurrentT :: (ConcurrentMetaStoreM m, MonadMask m, Typeable env)
+runConcurrentT :: (ConcurrentMetaStoreM m, MonadMask m)
                => ConcurrentT env ConcurrentHandles m a
                -> env ConcurrentHandles
                -> m (a, env ConcurrentHandles)
@@ -83,10 +79,10 @@ runConcurrentT m = runStateT (fromConcurrentT m)
 
 -- | Evaluate the actions in an 'ConcurrentT' monad, given a reader or writer
 -- environment.
-evalConcurrentT :: (ConcurrentMetaStoreM m, MonadMask m, Typeable env)
+evalConcurrentT :: (ConcurrentMetaStoreM m, MonadMask m)
                 => ConcurrentT env ConcurrentHandles m a
-                -> env ConcurrentHandles ->
-                m a
+                -> env ConcurrentHandles
+                -> m a
 evalConcurrentT m env = fst <$> runConcurrentT m env
 
 instance

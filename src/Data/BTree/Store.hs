@@ -1,4 +1,4 @@
-{-| Storage back-ends that manage physical storage of pages. -}
+-- | Storage back-ends that manage physical storage of pages.
 module Data.BTree.Store (
   module Data.BTree.Store.Class
 ) where

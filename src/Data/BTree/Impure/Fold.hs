@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs #-}
-{-| Algorithms related to folding over an impure B+-tree. -}
+-- | Algorithms related to folding over an impure B+-tree.
 module Data.BTree.Impure.Fold where
 
 import Prelude hiding (foldr, foldl)
@@ -16,22 +16,22 @@ import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
-{-| Perform a right-associative fold over the tree. -}
+-- | Perform a right-associative fold over the tree.
 foldr :: (AllocReaderM m, Key k, Value a)
       => (a -> b -> b) -> b -> Tree k a -> m b
 foldr f = foldrM (\a b -> return (f a b))
 
-{-| Perform a right-associative fold over the tree key-value pairs. -}
+-- | Perform a right-associative fold over the tree key-value pairs.
 foldrWithKey :: (AllocReaderM m, Key k, Value a)
              => (k -> a -> b -> b) -> b -> Tree k a -> m b
 foldrWithKey f = foldrWithKeyM (\k a b -> return (f k a b))
 
-{-| Perform a monadic right-associative fold over the tree. -}
+-- | Perform a monadic right-associative fold over the tree.
 foldrM :: (AllocReaderM m, Key k, Value a)
        => (a -> b -> m b) -> b -> Tree k a -> m b
 foldrM f = foldrWithKeyM (const f)
 
-{-| Perform a monadic right-assiciative fold over the tree key-value pairs. -}
+-- | Perform a monadic right-assiciative fold over the tree key-value pairs.
 foldrWithKeyM :: (AllocReaderM m, Key k, Value a)
               => (k -> a -> b -> m b) -> b -> Tree k a -> m b
 foldrWithKeyM _ x (Tree _ Nothing) = return x
@@ -55,12 +55,12 @@ foldrLeafItemsWithKeyM f x items = M.foldlWithKey f' return items x
 
 --------------------------------------------------------------------------------
 
-{-| Map each value of the tree to a monoid, and combine the results. -}
+-- | Map each value of the tree to a monoid, and combine the results.
 foldMap :: (AllocReaderM m, Key k, Value a, Monoid c)
       => (a -> c) -> Tree k a -> m c
 foldMap f = foldr ((<>) . f) mempty
 
-{-| Convert an impure B+-tree to a list of key-value pairs. -}
+-- | Convert an impure B+-tree to a list of key-value pairs.
 toList :: (AllocReaderM m, Key k, Value a)
       => Tree k a -> m [(k, a)]
 toList = foldrWithKey (\k v xs -> (k, v):xs) []

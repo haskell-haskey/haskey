@@ -144,7 +144,7 @@ setCurrentMeta new db
                 writeTVar v Meta1
                 writeTVar (concurrentDbMeta1 db) new
 
-{-| Execute a write transaction, with a result. -}
+-- | Execute a write transaction, with a result.
 transact :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
          => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
          -> ConcurrentDb key val -> m a
@@ -161,7 +161,7 @@ transact act db = withRLock' (concurrentDbWriterLock db) $ do
                 let meta' = meta { concurrentMetaOverflowTree = tree }
                 return (Just meta', ())
 
-{-| Execute a write transaction, without cleaning up old overflow pages. -}
+-- | Execute a write transaction, without cleaning up old overflow pages.
 transactNow :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
             => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
             -> ConcurrentDb key val -> m a
@@ -174,13 +174,13 @@ transactNow act db = withRLock' (concurrentDbWriterLock db) $
                 let meta' = meta { concurrentMetaTree = tree } in
                 return (Just meta', v)
 
-{-| Execute a write transaction, without a result. -}
+-- | Execute a write transaction, without a result.
 transact_ :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
           => (forall n. AllocM n => Tree key val -> n (Transaction key val ()))
           -> ConcurrentDb key val -> m ()
 transact_ act db = void $ transact act db
 
-{-| Execute a read-only transaction. -}
+-- | Execute a read-only transaction.
 transactReadOnly :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
                  => (forall n. AllocReaderM n => Tree key val -> n a)
                  -> ConcurrentDb key val -> m a

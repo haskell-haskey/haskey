@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-| Algorithms related to inserting key-value pairs in an impure B+-tree. -}
+-- | Algorithms related to inserting key-value pairs in an impure B+-tree.
 module Data.BTree.Impure.Insert where
 
 import Data.Map (Map)
@@ -15,11 +15,10 @@ import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
-{-| Split an index node.
-
-   This function is partial. It fails when the original index cannot be split,
-   because it does not contain enough elements (underflow).
- -}
+-- | Split an index node.
+--
+-- This function is partial. It fails when the original index cannot be split,
+-- because it does not contain enough elements (underflow).
 splitIndex :: (AllocM m, Key key, Value val) =>
    Height ('S height) ->
    Index key (NodeId height key val) ->
@@ -32,11 +31,10 @@ splitIndex h index = do
         Just extIndex -> return extIndex
         Nothing       -> error "Splitting failed!? Underflow "
 
-{-| Split a leaf node.
-
-   This function is partial. It fails when the original leaf cannot be split,
-   because it does not contain enough elements (underflow).
- -}
+-- | Split a leaf node.
+--
+-- This function is partial. It fails when the original leaf cannot be split,
+-- because it does not contain enough elements (underflow).
 splitLeaf :: (AllocM m, Key key, Value val) =>
     LeafItems key val ->
     m (Index key (Node 'Z key val))
@@ -99,7 +97,7 @@ insertRecMany h kvs nid
 
 --------------------------------------------------------------------------------
 
-{-| Insert a key-value pair in an impure B+-tree. -}
+-- | Insert a key-value pair in an impure B+-tree.
 insertTree :: (AllocM m, Key key, Value val)
     => key
     -> val
@@ -140,7 +138,7 @@ insertTree key val tree
               , treeRootId = Just newRootId
               }
 
-{-| Bulk insert a bunch of key-value pairs in an impure B+-tree. -}
+-- | Bulk insert a bunch of key-value pairs in an impure B+-tree.
 insertTreeMany :: (AllocM m, Key key, Value val)
     => Map key val
     -> Tree key val
@@ -159,12 +157,11 @@ insertTreeMany kvs tree
         idx <- traverse (allocNode zeroHeight) =<< splitLeaf kvs'
         fixUp zeroHeight $! idx
 
-{-| Fix up the root node of a tree.
-
-    Fix up the root node of a tree, where all other nodes are valid, but the
-    root node may contain more items than allowed. Do this by repeatedly
-    splitting up the root node.
--}
+-- | Fix up the root node of a tree.
+--
+-- Fix up the root node of a tree, where all other nodes are valid, but the
+-- root node may contain more items than allowed. Do this by repeatedly
+-- splitting up the root node.
 fixUp :: (AllocM m, Key key, Value val)
        => Height height
        -> Index key (NodeId height key val)

@@ -4,7 +4,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-| A pure in-memory B+-tree implementation. -}
+-- | A pure in-memory B+-tree implementation.
 module Data.BTree.Pure (
   -- * Structures
   Tree(..)
@@ -53,24 +53,22 @@ import qualified Data.Map as M
 
 --------------------------------------------------------------------------------
 
-{-| A pure B+-tree.
-
-    This is a simple wrapper around a root 'Node'. An empty tree is represented
-    by 'Nothing'. Otherwise it's 'Just' the root. The height is existentially
-    quantified.
--}
+-- | A pure B+-tree.
+--
+-- This is a simple wrapper around a root 'Node'. An empty tree is represented
+-- by 'Nothing'. Otherwise it's 'Just' the root. The height is existentially
+-- quantified.
 data Tree key val where
     Tree :: Maybe (Node height key val)
          -> Tree key val
 
 
-{-| A node in a B+-tree.
-
-    Nodes are parameterized over the key and value types and are additionally
-    indexed by their height. All paths from the root to the leaves have the same
-    length. The height is the number of edges from the root to the leaves,
-    i.e. leaves are at height zero and index nodes increase the height.
--}
+-- | A node in a B+-tree.
+--
+-- Nodes are parameterized over the key and value types and are additionally
+-- indexed by their height. All paths from the root to the leaves have the same
+-- length. The height is the number of edges from the root to the leaves,
+-- i.e. leaves are at height zero and index nodes increase the height.
 data Node (height :: Nat) key val where
     Idx  :: { idxChildren   :: Index key (Node height key val)
             } -> Node ('S height) key val
@@ -80,33 +78,31 @@ data Node (height :: Nat) key val where
 deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
 
-{-| The empty tree. -}
+-- | The empty tree.
 empty :: Tree key val
 empty = Tree Nothing
 
-{-| Construct a tree containg one element. -}
+-- | Construct a tree containg one element.
 singleton :: Key k => k -> v -> Tree k v
 singleton k v = insert k v empty
 
-{-| /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
-
-    If the list contains duplicate keys, the last pair for a duplicate key is
-    kept.
--}
+-- | /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
+--
+-- If the list contains duplicate keys, the last pair for a duplicate key is
+-- kept.
 fromList :: Key k => [(k,v)] -> Tree k v
 fromList = L.foldl' (flip $ uncurry insert) empty
 
 --------------------------------------------------------------------------------
 
-{-| Insert a key-value pair into a tree.
-
-    When inserting a new entry, the leaf it is inserted to and the index nodes
-    on the path to the leaf potentially need to be split. Instead of returning
-    the outcome, 1 node or 2 nodes (with a discriminating key), we return an
-    'Index' of these nodes.
-
-    If the key already existed in the tree, it is overwritten.
--}
+-- | Insert a key-value pair into a tree.
+--
+-- When inserting a new entry, the leaf it is inserted to and the index nodes
+-- on the path to the leaf potentially need to be split. Instead of returning
+-- the outcome, 1 node or 2 nodes (with a discriminating key), we return an
+-- 'Index' of these nodes.
+--
+-- If the key already existed in the tree, it is overwritten.
 insert :: Key k => k -> v -> Tree k v -> Tree k v
 insert k d (Tree (Just rootNode))
     | newRootIdx <- insertRec k d rootNode
@@ -140,7 +136,7 @@ insertRec key val (Idx children)
 insertRec key val (Leaf items)
     = splitLeaf (M.insert key val items)
 
-{-| Insert a bunch of key-value pairs simultaneously. -}
+-- | Insert a bunch of key-value pairs simultaneously.
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v
 insertMany kvs (Tree (Just rootNode))
     = fixUp $ insertRecMany kvs rootNode
@@ -160,12 +156,11 @@ insertRecMany kvs (Idx idx)
 insertRecMany kvs (Leaf items)
     = splitLeaf (M.union kvs items)
 
-{-| Fix up the root node of a tree.
-
-    Fix up the root node of a tree, where all other nodes are valid, but the
-    root node may contain more items than allowed. Do this by repeatedly
-    splitting up the root node.
--}
+-- | Fix up the root node of a tree.
+--
+-- Fix up the root node of a tree, where all other nodes are valid, but the
+-- root node may contain more items than allowed. Do this by repeatedly
+-- splitting up the root node.
 fixUp :: Key key => Index key (Node height key val) -> Tree key val
 fixUp idx = case fromSingletonIndex idx of
     Just newRootNode -> Tree (Just newRootNode)
@@ -173,8 +168,7 @@ fixUp idx = case fromSingletonIndex idx of
 
 --------------------------------------------------------------------------------
 
-{-| /O(n)/. Fold key\/value pairs in the B-tree.
--}
+-- | /O(n)/. Fold key\/value pairs in the B-tree.
 foldrWithKey :: forall k v w. (k -> v -> w -> w) -> w -> Tree k v -> w
 foldrWithKey f z0 (Tree mbRoot) = maybe z0 (go z0) mbRoot
   where
@@ -182,14 +176,13 @@ foldrWithKey f z0 (Tree mbRoot) = maybe z0 (go z0) mbRoot
     go z1 (Leaf items) = M.foldrWithKey f z1 items
     go z1 (Idx index)  = F.foldr (flip go) z1 index
 
-{-| /O(n)/. Convert the B-tree to a sorted list of key\/value pairs.
--}
+-- | /O(n)/. Convert the B-tree to a sorted list of key\/value pairs.
 toList :: Tree k v -> [(k,v)]
 toList = foldrWithKey (\k v kvs -> (k,v):kvs) []
 
 --------------------------------------------------------------------------------
 
-{-| Delete a key-value pair from the tree. -}
+-- | Delete a key-value pair from the tree.
 delete :: Key k => k -> Tree k v -> Tree k v
 delete _key (Tree Nothing)  = Tree Nothing
 delete key  (Tree (Just rootNode)) = case deleteRec key rootNode of
@@ -250,26 +243,26 @@ lookupRec key (Idx children)
 lookupRec key (Leaf items)
     = M.lookup key items
 
-{-| Lookup a value in the tree. -}
+-- | Lookup a value in the tree.
 lookup :: Key k => k -> Tree k v -> Maybe v
 lookup _ (Tree Nothing) = Nothing
 lookup k (Tree (Just n)) = lookupRec k n
 
-{-| Lookup a value in the tree, or return a default. -}
+-- | Lookup a value in the tree, or return a default.
 findWithDefault :: Key k => v -> k -> Tree k v -> v
 findWithDefault v k = fromMaybe v . lookup k
 
-{-| Check whether a key is present in the tree. -}
+-- | Check whether a key is present in the tree.
 member :: Key k => k -> Tree k v -> Bool
 member k = isJust . lookup k
 
-{-| Check whether a key is not present in the tree. -}
+-- | Check whether a key is not present in the tree.
 notMember :: Key k => k -> Tree k v -> Bool
 notMember k = isNothing . lookup k
 
 --------------------------------------------------------------------------------
 
-{-| Check whether the tree is empty. -}
+-- | Check whether the tree is empty.
 null :: Tree k v -> Bool
 null (Tree n) = isNothing n
 
@@ -277,7 +270,7 @@ sizeNode :: Node n k v -> Int
 sizeNode (Leaf items) = M.size items
 sizeNode (Idx nodes)  = F.sum (fmap sizeNode nodes)
 
-{-| The size of a tree. -}
+-- | The size of a tree.
 size :: Tree k v -> Int
 size (Tree Nothing) = 0
 size (Tree (Just n)) = sizeNode n
@@ -285,7 +278,6 @@ size (Tree (Just n)) = sizeNode n
 --------------------------------------------------------------------------------
 
 -- | Make a tree node foldable over its value.
-
 instance F.Foldable (Tree key) where
     foldMap _ (Tree Nothing) = mempty
     foldMap f (Tree (Just n)) = F.foldMap f n

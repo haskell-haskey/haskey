@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -206,28 +207,28 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 --------------------------------------------------------------------------------
 
 -- | Exception thrown when a file is accessed that doesn't exist.
-newtype FileNotFoundError hnd = FileNotFoundError hnd deriving (Show)
+newtype FileNotFoundError hnd = FileNotFoundError hnd deriving (Show, Typeable)
 
 instance (Typeable hnd, Show hnd) => Exception (FileNotFoundError hnd) where
 
 -- | Exception thrown when a page that is too large is written.
 --
 -- As used in 'putNodePage'.
-data PageOverflowError = PageOverflowError deriving (Show)
+data PageOverflowError = PageOverflowError deriving (Show, Typeable)
 
 instance Exception PageOverflowError where
 
 -- | Exception thrown when a node cannot be cast to the right type.
 --
 -- As used in 'getNodePage'.
-data WrongNodeTypeError = WrongNodeTypeError deriving (Show)
+data WrongNodeTypeError = WrongNodeTypeError deriving (Show, Typeable)
 
 instance Exception WrongNodeTypeError where
 
 -- | Exception thrown when a value from an overflow page cannot be cast.
 --
 -- As used in 'getOverflow'.
-data WrongOverflowValueError = WrongOverflowValueError deriving (Show)
+data WrongOverflowValueError = WrongOverflowValueError deriving (Show, Typeable)
 
 instance Exception WrongOverflowValueError where
 

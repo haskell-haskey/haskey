@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -18,6 +19,7 @@ import Data.Binary.Put (runPut)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (fromStrict, toStrict)
 import Data.Proxy
+import Data.Typeable (Typeable)
 
 import GHC.Generics (Generic)
 
@@ -139,6 +141,6 @@ concurrentMetaPage k v = SGet STypeConcurrentMeta $ get >>= \ case
     get' _ _ = get
 
 -- | Exception thrown when decoding of a page fails.
-newtype DecodeError = DecodeError String deriving (Show)
+newtype DecodeError = DecodeError String deriving (Show, Typeable)
 
 instance Exception DecodeError where

@@ -168,7 +168,7 @@ writeTransaction (TestTransaction txType actions) =
         | TxAbort  <- txType = const abort_
         | TxCommit <- txType = commit_
 
-readAll :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
+readAll :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
         => ConcurrentDb k v
         -> m [(k, v)]
 readAll = transactReadOnly Tree.toList

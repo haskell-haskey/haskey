@@ -183,7 +183,7 @@ transact_ :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
 transact_ act db = void $ transact act db
 
 -- | Execute a read-only transaction.
-transactReadOnly :: (MonadIO m, ConcurrentMetaStoreM m, Key key, Value val)
+transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
                  => (forall n. AllocReaderM n => Tree key val -> n a)
                  -> ConcurrentDb key val -> m a
 transactReadOnly act db
@@ -213,7 +213,7 @@ transactReadOnly act db
 -- aborted.
 actAndCommit :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
              => ConcurrentDb k v
-             -> (forall n. (MonadIO n, ConcurrentMetaStoreM n)
+             -> (forall n. (MonadIO n, MonadMask n, ConcurrentMetaStoreM n)
                  => ConcurrentMeta k v
                  -> ConcurrentT WriterEnv ConcurrentHandles n (Maybe (ConcurrentMeta k v), a)
                 )
@@ -276,7 +276,7 @@ updateMeta env m = m { concurrentMetaFreeTree = writerFreeTree env }
 
 
 -- | Save the newly free'd overflow pages, for deletion on the next tx.
-saveOverflowIds :: (MonadIO m, ConcurrentMetaStoreM m)
+saveOverflowIds :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                 => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
 saveOverflowIds = do
     (meta, env) <- get
@@ -292,7 +292,7 @@ saveOverflowIds = do
             put (meta', env')
 
 -- | Save the free'd pages to the free page database
-saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
+saveFreePages' :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                => Int
                -> StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
 saveFreePages' paranoid
@@ -343,7 +343,7 @@ saveFreePages' paranoid
 -- Save the newly created free dirty pages to the metadata for later use.
 --
 -- Update the database size.
-handleFreedDirtyPages :: (MonadIO m, ConcurrentMetaStoreM m)
+handleFreedDirtyPages :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                       => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
 handleFreedDirtyPages = do
     (meta, env) <- get

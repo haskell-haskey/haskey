@@ -6,7 +6,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-| Basic structures of an impure B+-tree.  -}
+-- | Basic structures of an impure B+-tree.
 module Data.BTree.Impure.Structures (
   -- * Structures
   Tree(..)
@@ -39,11 +39,10 @@ import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
 
-{-| A B+-tree.
-
-    This is a simple wrapper around a root 'Node'. The type-level height is
-    existentially quantified, but a term-level witness is stores.
--}
+-- | A B+-tree.
+--
+-- This is a simple wrapper around a root 'Node'. The type-level height is
+-- existentially quantified, but a term-level witness is stores.
 data Tree key val where
     Tree :: { -- | A term-level witness for the type-level height index.
               treeHeight :: Height height
@@ -60,16 +59,15 @@ instance Binary v => Binary (LeafValue v) where
 
 type LeafItems k v = Map k (LeafValue v)
 
-{-| A node in a B+-tree.
-
-    Nodes are parameterized over the key and value types and are additionally
-    indexed by their height. All paths from the root to the leaves have the same
-    length. The height is the number of edges from the root to the leaves,
-    i.e. leaves are at height zero and index nodes increase the height.
-
-    Sub-trees are represented by a 'NodeId' that are used to resolve the actual
-    storage location of the sub-tree node.
--}
+-- | A node in a B+-tree.
+--
+--  Nodes are parameterized over the key and value types and are additionally
+--  indexed by their height. All paths from the root to the leaves have the same
+--  length. The height is the number of edges from the root to the leaves,
+--  i.e. leaves are at height zero and index nodes increase the height.
+--
+--  Sub-trees are represented by a 'NodeId' that are used to resolve the actual
+--  storage location of the sub-tree node.
 data Node height key val where
     Idx  :: { idxChildren      ::  Index key (NodeId height key val)
             } -> Node ('S height) key val
@@ -98,13 +96,13 @@ data BNode = BIdx
 
 instance Binary BNode where
 
-{-| Encode a 'Node' -}
+-- | Encode a 'Node'
 putNode :: (Binary key, Binary val) => Node height key val -> Put
 putNode = \case
     Leaf items -> put BLeaf >> put items
     Idx idx    -> put BIdx  >> put idx
 
-{-| Decode a 'Node' of a certain height. -}
+-- | Decode a 'Node' of a certain height.
 getNode :: (Binary key, Binary val) => Height height -> Get (Node height key val)
 getNode height = case viewHeight height of
     UZero   -> do
@@ -116,10 +114,9 @@ getNode height = case viewHeight height of
 
 --------------------------------------------------------------------------------
 
-{-| Cast a node to a different type.
-
-    Essentially this is just a drop-in replacement for 'Data.Typeable.cast'.
--}
+-- | Cast a node to a different type.
+--
+-- Essentially this is just a drop-in replacement for 'Data.Typeable.cast'.
 castNode :: forall n key1 val1 height1 key2 val2 height2.
        (Typeable key1, Typeable val1, Typeable key2, Typeable val2)
     => Height height1      -- ^ Term-level witness for the source height.
@@ -134,7 +131,7 @@ castNode height1 height2 n
     | otherwise
     = Nothing
 
-{-| Cast a node to one of the available types. -}
+-- | Cast a node to one of the available types.
 castNode' :: forall n h k v.
           (Typeable k, Typeable v)
     => Height h         -- ^ Term-level witness for the source height

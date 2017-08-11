@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-| Algorithms related to looking up key-value pairs in an impure B+-tree. -}
+-- | Algorithms related to looking up key-value pairs in an impure B+-tree.
 module Data.BTree.Impure.Lookup where
 
 import qualified Data.Map as M
@@ -41,7 +41,7 @@ lookupRec k = fetchAndGo
         case M.lookup k items of Nothing -> return Nothing
                                  Just v  -> Just <$> fromLeafValue v
 
-{-| Lookup a value in an impure B+-tree. -}
+-- | Lookup a value in an impure B+-tree.
 lookupTree :: forall m key val. (AllocReaderM m, Key key, Value val)
     => key
     -> Tree key val
@@ -59,7 +59,7 @@ lookupTree k tree
 
 --------------------------------------------------------------------------------
 
-{-| The minimal key of the map, returns 'Nothing' if the map is empty. -}
+-- | The minimal key of the map, returns 'Nothing' if the map is empty.
 lookupMinTree :: (AllocReaderM m, Key key, Value val)
               => Tree key val
               -> m (Maybe (key, val))

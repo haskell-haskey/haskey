@@ -3,7 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-| Algorithms related to deletion from an impure B+-tree. -}
+-- | Algorithms related to deletion from an impure B+-tree.
 module Data.BTree.Impure.Delete where
 
 import Data.Monoid
@@ -18,14 +18,14 @@ import Data.BTree.Pure.TwoThree
 
 --------------------------------------------------------------------------------
 
-{-| Check whether a node needs to be merged. -}
+-- | Check whether a node needs to be merged.
 nodeNeedsMerge :: Node height key val -> Bool
 nodeNeedsMerge (Idx children) =
     indexNumKeys children < minIdxKeys
 nodeNeedsMerge (Leaf items) =
     M.size items < minLeafItems
 
-{-| Merge two nodes. -}
+-- | Merge two nodes.
 mergeNodes :: (AllocM m, Key key, Value val)
     => Height height
     -> Node height key val
@@ -93,7 +93,7 @@ deleteRec key = fetchAndGo
 
 --------------------------------------------------------------------------------
 
-{-| Delete a node from the tree. -}
+-- | Delete a node from the tree.
 deleteTree :: (AllocM m, Key key, Value val)
     => key
     -> Tree key val

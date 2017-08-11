@@ -12,11 +12,10 @@ import Data.BTree.Utils.Map (mapInits, mapSplitAt)
 
 --------------------------------------------------------------------------------
 
-{-| Split a leaf many times until the predicate is satisfied.
-
-    This function ensures that the for each returned leaf, the predicate is
-    satisfied, or returns 'Nothing' when it can't be satisfied.
--}
+-- | Split a leaf many times until the predicate is satisfied.
+--
+-- This function ensures that the for each returned leaf, the predicate is
+-- satisfied, or returns 'Nothing' when it can't be satisfied.
 splitLeafManyPred :: (Key key)
                     => (a -> Bool)
                     -> (Map key val -> a)
@@ -41,11 +40,11 @@ splitLeafManyPred p f = go
     lstForWhich :: (a -> Bool) -> [a] -> Maybe a
     lstForWhich g xs = safeLast $ takeWhile g xs
 
-{-| Split a leaf many times.
-    This function ensures that the for each returned leaf, the amount of
-    items <= maxLeafItems (and >= minLeafItems, except when the original
-    leaf had less than minLeafItems items.
--}
+-- | Split a leaf many times.
+--
+-- This function ensures that the for each returned leaf, the amount of
+-- items <= maxLeafItems (and >= minLeafItems, except when the original
+-- leaf had less than minLeafItems items.
 splitLeafMany :: Key key => Int -> (Map key val -> a) -> Map key val -> Index key a
 splitLeafMany maxLeafItems f items
     | M.size items <= maxLeafItems
@@ -73,4 +72,5 @@ splitLeafMany maxLeafItems f items
         = (reverse keys, reverse leafs)
         | otherwise
         = error "splitLeafMany: constraint violation, got a Map with <= maxLeafItems"
+
 --------------------------------------------------------------------------------

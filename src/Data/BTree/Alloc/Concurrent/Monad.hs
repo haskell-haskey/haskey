@@ -42,7 +42,7 @@ instance MonadTrans (ConcurrentT env hnd) where
     lift = ConcurrentT . lift
 
 -- | Run the actions in an 'ConcurrentT' monad, given a reader or writer
--- environment. -}
+-- environment.
 runConcurrentT :: ConcurrentMetaStoreM m
                => ConcurrentT env ConcurrentHandles m a
                -> env ConcurrentHandles
@@ -50,7 +50,7 @@ runConcurrentT :: ConcurrentMetaStoreM m
 runConcurrentT m = runStateT (fromConcurrentT m)
 
 -- | Evaluate the actions in an 'ConcurrentT' monad, given a reader or writer
--- environment. -}
+-- environment.
 evalConcurrentT :: ConcurrentMetaStoreM m
                 => ConcurrentT env ConcurrentHandles m a
                 -> env ConcurrentHandles ->

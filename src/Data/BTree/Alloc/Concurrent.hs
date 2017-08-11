@@ -1,6 +1,5 @@
-{-| The module implements an page allocator with page reuse and support for
-   multiple readers and serialized writers.
- -}
+-- | The module implements an page allocator with page reuse and support for
+-- multiple readers and serialized writers.
 module Data.BTree.Alloc.Concurrent (
   -- * Allocator
   ConcurrentDb(..)

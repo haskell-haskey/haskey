@@ -75,14 +75,14 @@ prop_lookup_insert k v t = Tree.lookup k (Tree.insert k v t) == Just v
 nubByFstEq :: Eq a => [(a, b)] -> [(a, b)]
 nubByFstEq = nubBy ((==) `on` fst)
 
-{-| Check whether a given tree is valid. -}
+-- | Check whether a given tree is valid.
 validTree :: Ord key => Tree key val -> Bool
 validTree (Tree Nothing) = True
 validTree (Tree (Just (Leaf items))) = M.size items <= maxLeafItems
 validTree (Tree (Just (Idx idx))) =
     validIndexSize 1 maxIdxKeys idx && F.all validNode idx
 
-{-| Check whether a (non-root) node is valid. -}
+-- | Check whether a (non-root) node is valid.
 validNode :: Ord key => Node height key val -> Bool
 validNode = \case
     Leaf items -> M.size items >= minLeafItems &&

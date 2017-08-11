@@ -24,48 +24,44 @@ import Data.BTree.Utils.Vector (isStrictlyIncreasing, vecUncons, vecUnsnoc)
 
 --------------------------------------------------------------------------------
 
-{-| The 'Index' encodes the internal structure of an index node.
-
-    The index is abstracted over the type 'node' of sub-trees. The keys and
-    nodes are stored in separate 'Vector's and the keys are sorted in strictly
-    increasing order. There should always be one more sub-tree than there are
-    keys. Hence structurally the smallest 'Index' has one sub-tree and no keys,
-    but a valid B+-tree index node will have at least two sub-trees and one key.
- -}
+-- | The 'Index' encodes the internal structure of an index node.
+--
+-- The index is abstracted over the type 'node' of sub-trees. The keys and
+-- nodes are stored in separate 'Vector's and the keys are sorted in strictly
+-- increasing order. There should always be one more sub-tree than there are
+-- keys. Hence structurally the smallest 'Index' has one sub-tree and no keys,
+-- but a valid B+-tree index node will have at least two sub-trees and one key.
 data Index key node = Index !(Vector key) !(Vector node)
   deriving (Eq, Functor, Foldable, Generic, Show, Traversable)
 
 instance (Binary k, Binary n) => Binary (Index k n) where
 
-{-| Return the number of keys in this 'Index.
--}
+-- | Return the number of keys in this 'Index'.
 indexNumKeys :: Index key val -> Int
 indexNumKeys (Index keys _vals) = V.length keys
 
-{-| Return the number of values stored in this 'Index.
--}
+-- | Return the number of values stored in this 'Index'.
 indexNumVals :: Index key val -> Int
 indexNumVals (Index _keys vals) = V.length vals
 
-{-| Validate the key/node count invariant of an index.  -}
+-- | Validate the key/node count invariant of an 'Index'.
 validIndex :: Ord key => Index key node -> Bool
 validIndex (Index keys nodes) =
     V.length keys + 1 == V.length nodes &&
     isStrictlyIncreasing keys
 
-{-| Validate the size of an index. -}
+-- | Validate the size of an 'Index'.
 validIndexSize :: Ord key => Int -> Int -> Index key node -> Bool
 validIndexSize minIdxKeys maxIdxKeys idx@(Index keys _) =
     validIndex idx && V.length keys >= minIdxKeys && V.length keys <= maxIdxKeys
 
-{-| Split an index node.
-
-    This function splits an index node into two new nodes at the given key
-    position @numLeftKeys@ and returns the resulting indices and the key
-    separating them. Eventually this should take the binary size of serialized
-    keys and sub-tree pointers into account. See also 'splitLeaf' in
-    "Data.BTree.Primitives.Leaf".
--}
+-- | Split an index node.
+--
+-- This function splits an index node into two new nodes at the given key
+-- position @numLeftKeys@ and returns the resulting indices and the key
+-- separating them. Eventually this should take the binary size of serialized
+-- keys and sub-tree pointers into account. See also 'splitLeaf' in
+-- "Data.BTree.Primitives.Leaf".
 splitIndexAt :: Int -> Index key val -> (Index key val, key, Index key val)
 splitIndexAt numLeftKeys (Index keys vals)
     | (leftKeys, middleKeyAndRightKeys) <- V.splitAt numLeftKeys     keys
@@ -75,18 +71,17 @@ splitIndexAt numLeftKeys (Index keys vals)
             (Index leftKeys leftVals, middleKey, Index rightKeys rightVals)
         Nothing -> error "splitIndex: empty Index"
 
-{-| Split an index many times.
-
-    This function splits an 'Index' node into smaller pieces. Each resulting
-    sub-'Index' has between @maxIdxKeys/2@ and @maxIdxKeys@ inclusive values and
-    is additionally applied to the function @f@.
-
-    This is the dual of a monadic bind and is also known as the `extended`
-    function of extendable functors. See "Data.Functor.Extend" in the
-    "semigroupoids" package.
-
-    prop> bindIndex (extendedIndex n id idx) id == idx
--}
+-- | Split an index many times.
+--
+--  This function splits an 'Index' node into smaller pieces. Each resulting
+--  sub-'Index' has between @maxIdxKeys/2@ and @maxIdxKeys@ inclusive values and
+--  is additionally applied to the function @f@.
+--
+--  This is the dual of a monadic bind and is also known as the `extended`
+--  function of extendable functors. See "Data.Functor.Extend" in the
+--  "semigroupoids" package.
+--
+--  prop> bindIndex (extendedIndex n id idx) id == idx
 extendedIndex :: Int -> (Index k b -> a) -> Index k b -> Index k a
 extendedIndex maxIdxKeys f = go
   where
@@ -130,51 +125,46 @@ extendIndexPred p f = go
             rightEnc <- go right
             return $! mergeIndex (singletonIndex leftEnc) middleKey rightEnc
 
-{-| Merge two indices.
-
-    Merge two indices 'leftIndex', 'rightIndex' given a discriminating key
-    'middleKey', i.e. such that '∀ (k,v) ∈ leftIndex. k < middleKey' and
-    '∀ (k,v) ∈ rightIndex. middleKey <= k'.
-
-    'mergeIndex' is a partial inverse of splitIndex, i.e.
-    prop> splitIndex is == (left,mid,right) => mergeIndex left mid right == is
--}
+-- | Merge two indices.
+--
+-- Merge two indices 'leftIndex', 'rightIndex' given a discriminating key
+-- 'middleKey', i.e. such that '∀ (k,v) ∈ leftIndex. k < middleKey' and
+-- '∀ (k,v) ∈ rightIndex. middleKey <= k'.
+--
+-- 'mergeIndex' is a partial inverse of splitIndex, i.e.
+-- prop> splitIndex is == (left,mid,right) => mergeIndex left mid right == is
 mergeIndex :: Index key val -> key -> Index key val -> Index key val
 mergeIndex (Index leftKeys leftVals) middleKey (Index rightKeys rightVals) =
     Index
       (leftKeys <> V.singleton middleKey <> rightKeys)
       (leftVals <> rightVals)
 
-{-| Create an index from key-value lists.
-
-    The internal invariants of the 'Index' data structure apply. That means
-    there is one more value than there are keys and keys are ordered in strictly
-    increasing order.
--}
+-- | Create an index from key-value lists.
+--
+-- The internal invariants of the 'Index' data structure apply. That means
+-- there is one more value than there are keys and keys are ordered in strictly
+-- increasing order.
 indexFromList :: [key] -> [val] -> Index key val
 indexFromList ks vs = Index (V.fromList ks) (V.fromList vs)
 
-{-| Create an index with a single value.
--}
+-- | Create an index with a single value.
 singletonIndex :: val -> Index key val
 singletonIndex = Index V.empty . V.singleton
 
-{-| Test if the index consists of a single value.
-
-    Returns the element if the index is a singleton. Otherwise fails.
-
-    prop> fromSingletonIndex (singletonIndex val) == Just val
--}
+-- | Test if the index consists of a single value.
+--
+-- Returns the element if the index is a singleton. Otherwise fails.
+--
+-- prop> fromSingletonIndex (singletonIndex val) == Just val
 fromSingletonIndex :: Index key val -> Maybe val
 fromSingletonIndex (Index _keys vals) =
     if V.length vals == 1 then Just $! V.unsafeHead vals else Nothing
 
 --------------------------------------------------------------------------------
 
-{-| Bind an index
-
-    prop> bindIndex idx singletonIndex == idx
--}
+-- | Bind an index
+--
+-- prop> bindIndex idx singletonIndex == idx
 bindIndex :: Index k a -> (a -> Index k b) -> Index k b
 bindIndex idx f = runIdentity $ bindIndexM idx (return . f)
 
@@ -193,13 +183,12 @@ bindIndexM (Index ks vs) f = case vecUncons vs of
 
 --------------------------------------------------------------------------------
 
-{-| Representation of one-hole contexts of 'Index'.
-
-    Just one val removes. All keys are present.
-
-    V.length leftVals  == V.length lefyKeys
-    V.length rightVals == V.length rightKeys
--}
+-- | Representation of one-hole contexts of 'Index'.
+--
+-- Just one val removes. All keys are present.
+--
+-- prop> V.length leftVals  == V.length lefyKeys
+-- prop> V.length rightVals == V.length rightKeys
 data IndexCtx key val = IndexCtx
     { indexCtxLeftKeys  :: !(Vector key)
     , indexCtxRightKeys :: !(Vector key)
@@ -251,7 +240,7 @@ valViewMin (Index keys vals)
     | otherwise
     = error "valVeiwMin: empty Index"
 
-{-| Distribute a map of key-value pairs over an index. -}
+-- | Distribute a map of key-value pairs over an index.
 distribute :: Ord k => M.Map k v -> Index k node -> Index k (M.Map k v, node)
 distribute kvs (Index keys nodes)
     | a <- V.imap rangeTail          (Nothing `V.cons` V.map Just keys)

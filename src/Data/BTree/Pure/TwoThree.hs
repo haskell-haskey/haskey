@@ -1,4 +1,4 @@
-{-| Setup of a 2-3 tree. -}
+-- | Setup of a 2-3 tree.
 module Data.BTree.Pure.TwoThree where
 
 minFanout :: Int

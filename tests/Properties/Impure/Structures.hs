@@ -62,8 +62,8 @@ prop_binary_tree :: Tree Int64 Bool -> Bool
 prop_binary_tree t = B.decode (B.encode t) `treeEqShape` t
 
 --------------------------------------------------------------------------------
---
-{-| Compare the shape of a 'Tree' structure -}
+
+-- | Compare the shape of a 'Tree' structure
 treeEqShape :: (Typeable key, Typeable val)
             => Tree key val
             -> Tree key val

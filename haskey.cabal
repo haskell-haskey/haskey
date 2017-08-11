@@ -58,7 +58,7 @@ library
     Data.BTree.Utils.List
     Data.BTree.Utils.Map
     Data.BTree.Utils.Monad
-    Data.BTree.Utils.Monad.Except
+    Data.BTree.Utils.Monad.Catch
     Data.BTree.Utils.RLock
     Data.BTree.Utils.STM.Map
     Data.BTree.Utils.Vector
@@ -80,6 +80,7 @@ library
     bytestring              >=0.10 && <1,
     containers              >=0.5  && <1,
     directory               >=1.2  && <2,
+    exceptions              >=0.8.3 && <0.9,
     filepath                >=1.4  && <2,
     focus                   >=0.1.2 && <0.2,
     hashable                >=1.2  && <1.3,

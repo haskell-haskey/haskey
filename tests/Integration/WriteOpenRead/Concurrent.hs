@@ -51,7 +51,7 @@ tests = testGroup "WriteOpenRead.Concurrent"
 
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
-    (Right db, files) <- run create
+    (db, files) <- run create
     result <- run . runMaybeT $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
                                        (files, M.empty)
                                        txs
@@ -74,21 +74,16 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: IO (Either String (ConcurrentDb Integer TestValue), Files String)
+    create :: IO (ConcurrentDb Integer TestValue, Files String)
     create = flip runStoreT emptyStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
       where
         hnds = defaultConcurrentHandles
 
-    openAndRead db files = evalStoreT (readAll db) files >>= \case
-        Left err -> error err
-        Right v -> return v
+    openAndRead db = evalStoreT (readAll db)
 
-    openAndWrite db files tx = runStoreT (writeTransaction tx db) files
-        >>= \case
-            (Left err, _) -> error $ "while writing: " ++ show err
-            (Right _, files') -> return files'
+    openAndWrite db files tx = execStoreT (writeTransaction tx db) files
 
 --------------------------------------------------------------------------------
 
@@ -107,12 +102,12 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
       , concurrentHandlesOverflowDir = fp </> "overflow"
       }
 
-    (Right db, files) <- run $ create hnds
+    (db, files) <- run $ create hnds
     result <- run . runMaybeT $ foldM (writeReadTest db files)
                                       M.empty
                                       txs
 
-    _ <- FS.runStoreT (closeConcurrentHandles hnds) files
+    _ <- run $ FS.runStoreT (closeConcurrentHandles hnds) files
 
     run $ removeDirectoryRecursive fp
 
@@ -135,7 +130,7 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                     ++ "\n    got:     " ++ show read'
 
     create :: ConcurrentHandles
-           -> IO (Either String (ConcurrentDb Integer TestValue), FS.Files FilePath)
+           -> IO (ConcurrentDb Integer TestValue, FS.Files FilePath)
     create hnds = flip FS.runStoreT FS.emptyStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
@@ -143,19 +138,13 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     openAndRead :: ConcurrentDb Integer TestValue
                 -> FS.Files FilePath
                 -> IO [(Integer, TestValue)]
-    openAndRead db files = FS.evalStoreT (readAll db) files
-        >>= \case
-            Left err -> error err
-            Right v -> return v
+    openAndRead db = FS.evalStoreT (readAll db)
 
     openAndWrite :: ConcurrentDb Integer TestValue
                  -> FS.Files FilePath
                  -> TestTransaction Integer TestValue
                  -> IO (FS.Files FilePath)
-    openAndWrite db files tx = FS.runStoreT (void $ writeTransaction tx db) files
-        >>= \case
-            (Left err, _)    -> error $ "while writing: " ++ show err
-            (Right _, files') -> return files'
+    openAndWrite db files tx = FS.execStoreT (void $ writeTransaction tx db) files
 
 --------------------------------------------------------------------------------
 

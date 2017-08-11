@@ -50,6 +50,7 @@ import System.IO.Error (ioError, isDoesNotExistError)
 
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure.Structures
+
 import Data.BTree.Primitives
 import Data.BTree.Store.Class
 import Data.BTree.Store.Page

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -238,7 +239,10 @@ actAndCommit db act
     let maybeMeta' = updateMeta env <$> maybeMeta
 
     case maybeMeta' of
-        Nothing -> return v
+        Nothing -> do
+            removeNewlyAllocatedOverflows env
+            return v
+
         Just meta' -> do
             -- Bookkeeping
             (newMeta, _) <- flip execStateT (meta', env) $ do
@@ -251,12 +255,26 @@ actAndCommit db act
                            db
             return v
 
--- Update the meta-data from a writer environment
+-- | Remove all overflow pages that were written in the transaction.
+--
+-- If the transaction is aborted, all written pages should be deleted.
+removeNewlyAllocatedOverflows :: (MonadIO m, ConcurrentMetaStoreM m)
+                              => WriterEnv ConcurrentHandles
+                              -> m ()
+removeNewlyAllocatedOverflows env = do
+    let root = concurrentHandlesOverflowDir (writerHnds env)
+    sequence_ [ delete root (i - 1) | i <- [1..(writerOverflowCounter env)] ]
+  where
+    delete root c = do
+        let i = (writerTxId env, c)
+        removeHandle (getOverflowHandle root i)
+
+-- | Update the meta-data from a writer environment
 updateMeta :: WriterEnv ConcurrentHandles -> ConcurrentMeta k v -> ConcurrentMeta k v
 updateMeta env m = m { concurrentMetaFreeTree = writerFreeTree env }
 
 
--- Save the newly free'd overflow pages, for deletion on the next tx.
+-- | Save the newly free'd overflow pages, for deletion on the next tx.
 saveOverflowIds :: (MonadIO m, ConcurrentMetaStoreM m)
                 => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
 saveOverflowIds = do
@@ -272,7 +290,7 @@ saveOverflowIds = do
                             { concurrentMetaOverflowTree = tree' }
             put (meta', env')
 
--- Save the free'd pages to the free page database
+-- | Save the free'd pages to the free page database
 saveFreePages' :: (MonadIO m, ConcurrentMetaStoreM m)
                => Int
                -> StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
@@ -289,7 +307,7 @@ saveFreePages' paranoid
     --
     --  1. 'DirtyFree': Pages that were freshly allocated from the end of
     --          the dabase file, but are no longer used. These are free'd
-    --          by truncating the datase file. They can freely be used
+    --          by saving them in the metadata. They can freely be used
     --          during this routine.
     --
     --  2. 'NewlyFreed': Pages that were written by a previous transaction,

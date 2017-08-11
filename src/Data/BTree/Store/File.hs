@@ -38,6 +38,7 @@ import qualified Data.Map as M
 import System.Directory (createDirectoryIfMissing, removeFile)
 import System.FilePath (takeDirectory)
 import System.IO
+import System.IO.Error (catchIOError, ioError, isDoesNotExistError)
 
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure.Structures
@@ -120,7 +121,8 @@ instance (Applicative m, Monad m, MonadIO m) =>
         modify (M.delete fp)
 
     removeHandle fp =
-        liftIO $ removeFile fp
+        liftIO $ removeFile fp `catchIOError` \e ->
+            unless (isDoesNotExistError e) (ioError e)
 
     nodePageSize =
         return $ \h ->

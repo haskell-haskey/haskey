@@ -27,16 +27,21 @@ deleteHeavySetup :: TransactionSetup
 deleteHeavySetup = TransactionSetup { sequenceInsertFrequency = 35
                                     , sequenceReplaceFrequency = 20
                                     , sequenceDeleteFrequency = 45
-                                    , sequenceExceptionFrequency = 5 }
+                                    , sequenceExceptionFrequency = 0 }
 
 insertHeavySetup :: TransactionSetup
 insertHeavySetup = TransactionSetup { sequenceInsertFrequency = 12
                                     , sequenceReplaceFrequency = 4
                                     , sequenceDeleteFrequency = 4
-                                    , sequenceExceptionFrequency = 1}
+                                    , sequenceExceptionFrequency = 0}
+
+withExceptionSetup :: TransactionSetup
+withExceptionSetup = insertHeavySetup { sequenceExceptionFrequency = 5 }
 
 genTransactionSetup :: Gen TransactionSetup
-genTransactionSetup = elements [deleteHeavySetup, insertHeavySetup]
+genTransactionSetup = frequency [(45, return deleteHeavySetup),
+                                 (45, return insertHeavySetup),
+                                 (10, return withExceptionSetup)]
 
 data TxType = TxAbort | TxCommit
             deriving (Show)

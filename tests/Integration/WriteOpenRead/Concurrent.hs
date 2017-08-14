@@ -12,7 +12,7 @@ import Test.QuickCheck.Monadic
 
 import Control.Applicative ((<$>))
 import Control.Monad
-import Control.Monad.Catch (MonadMask)
+import Control.Monad.Catch (MonadMask, Exception, throwM, catch)
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
@@ -20,7 +20,7 @@ import Control.Monad.Trans.Maybe
 import Data.Binary (Binary(..))
 import Data.Foldable (foldlM)
 import Data.Map (Map)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import qualified Data.Map as M
@@ -64,9 +64,10 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                   -> Map Integer TestValue
                   -> IO (Files String, Map Integer TestValue)
     writeReadTest db files tx m = do
-        files'   <- openAndWrite db files tx
+        files'   <- openAndWrite db files tx `catch`
+                        \TestException -> return files
         read'    <- openAndRead db files'
-        let expected = testTransactionResult m tx
+        let expected = fromMaybe m $ testTransactionResult m tx
         if read' == M.toList expected
             then return (files', expected)
             else error $ "error:"
@@ -119,9 +120,10 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                   -> TestTransaction Integer TestValue
                   -> MaybeT IO (Map Integer TestValue)
     writeReadTest db files m tx = do
-        _     <- lift $ openAndWrite db files tx
+        _     <- lift $ void (openAndWrite db files tx) `catch`
+                            \TestException -> return ()
         read' <- lift $ openAndRead db files
-        let expected = testTransactionResult m tx
+        let expected = fromMaybe m $ testTransactionResult m tx
         if read' == M.toList expected
             then return expected
             else error $ "error:"
@@ -155,15 +157,16 @@ writeTransaction :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Valu
 writeTransaction (TestTransaction txType actions) =
     transaction
   where
-    writeAction (Insert k v)  = insertTree k v
-    writeAction (Replace k v) = insertTree k v
-    writeAction (Delete k)    = deleteTree k
+    writeAction (Insert k v)   = insertTree k v
+    writeAction (Replace k v)  = insertTree k v
+    writeAction (Delete k)     = deleteTree k
+    writeAction ThrowException = const (throwM TestException)
 
     transaction = transact_ $
         foldl (>=>) return (map writeAction actions)
         >=> commitOrAbort
 
-    commitOrAbort :: AllocM n => Tree key val -> n (Transaction key val ())
+    commitOrAbort :: (AllocM n, MonadMask n) => Tree key val -> n (Transaction key val ())
     commitOrAbort
         | TxAbort  <- txType = const abort_
         | TxCommit <- txType = commit_
@@ -199,5 +202,10 @@ instance Arbitrary TestValue where
       where
         small = arbitrary
         big = arbitrary
+
+-- | Exception used for testing
+data TestException = TestException deriving (Show, Typeable)
+
+instance Exception TestException where
 
 --------------------------------------------------------------------------------

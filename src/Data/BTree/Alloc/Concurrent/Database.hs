@@ -150,7 +150,7 @@ setCurrentMeta new db
 
 -- | Execute a write transaction, with a result.
 transact :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
-         => (forall n. AllocM n => Tree key val -> n (Transaction key val a))
+         => (forall n. (AllocM n, MonadMask n) => Tree key val -> n (Transaction key val a))
          -> ConcurrentDb key val -> m a
 transact act db = withRLock (concurrentDbWriterLock db) $ do
     cleanup
@@ -167,7 +167,7 @@ transact act db = withRLock (concurrentDbWriterLock db) $ do
 
 -- | Execute a write transaction, without cleaning up old overflow pages.
 transactNow :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
-            => (forall n. AllocM n => Tree k v -> n (Transaction k v a))
+            => (forall n. (AllocM n, MonadMask n) => Tree k v -> n (Transaction k v a))
             -> ConcurrentDb k v -> m a
 transactNow act db = withRLock (concurrentDbWriterLock db) $
     actAndCommit db $ \meta -> do
@@ -180,13 +180,13 @@ transactNow act db = withRLock (concurrentDbWriterLock db) $
 
 -- | Execute a write transaction, without a result.
 transact_ :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
-          => (forall n. AllocM n => Tree k v -> n (Transaction k v ()))
+          => (forall n. (AllocM n, MonadMask n) => Tree k v -> n (Transaction k v ()))
           -> ConcurrentDb k v -> m ()
 transact_ act db = void $ transact act db
 
 -- | Execute a read-only transaction.
 transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
-                 => (forall n. AllocReaderM n => Tree key val -> n a)
+                 => (forall n. (AllocReaderM n, MonadMask m) => Tree key val -> n a)
                  -> ConcurrentDb key val -> m a
 transactReadOnly act db
     | ConcurrentDb

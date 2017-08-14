@@ -136,6 +136,8 @@ instance (Applicative m, Monad m, MonadThrow m,
       where
         pg = encode $ OverflowPage val
 
+    listOverflows _ = gets M.keys
+
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadThrow m) =>

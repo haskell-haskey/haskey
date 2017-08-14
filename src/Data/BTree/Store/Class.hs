@@ -66,27 +66,36 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
                 -> val
                 -> m ()
 
+    -- | List overflow pages in the specific overflow directory.
+    --
+    -- The result should include **AT LEAST** the handles in the specified
+    -- directory, but it may contain more handles, even handles that do not
+    -- belong to an overflow page.
+    listOverflows :: hnd -> m [hnd]
+
 
 instance StoreM hnd m => StoreM hnd (StateT s m) where
-    openHandle   = lift.             openHandle
-    closeHandle  = lift.             closeHandle
-    removeHandle = lift.             closeHandle
-    nodePageSize = lift              nodePageSize
-    maxPageSize  = lift              maxPageSize
-    getNodePage  = ((((lift.).).).). getNodePage
-    putNodePage  = (((lift.).).).    putNodePage
-    getOverflow  = (lift.).          getOverflow
-    putOverflow  = (lift.).          putOverflow
+    openHandle    = lift.             openHandle
+    closeHandle   = lift.             closeHandle
+    removeHandle  = lift.             closeHandle
+    nodePageSize  = lift              nodePageSize
+    maxPageSize   = lift              maxPageSize
+    getNodePage   = ((((lift.).).).). getNodePage
+    putNodePage   = (((lift.).).).    putNodePage
+    getOverflow   = (lift.).          getOverflow
+    putOverflow   = (lift.).          putOverflow
+    listOverflows = lift.             listOverflows
 
 instance StoreM hnd m => StoreM hnd (ReaderT s m) where
-    openHandle   = lift.             openHandle
-    closeHandle  = lift.             closeHandle
-    removeHandle = lift.             closeHandle
-    nodePageSize = lift              nodePageSize
-    maxPageSize  = lift              maxPageSize
-    getNodePage  = ((((lift.).).).). getNodePage
-    putNodePage  = (((lift.).).).    putNodePage
-    getOverflow  = (lift.).          getOverflow
-    putOverflow  = (lift.).          putOverflow
+    openHandle    = lift.             openHandle
+    closeHandle   = lift.             closeHandle
+    removeHandle  = lift.             closeHandle
+    nodePageSize  = lift              nodePageSize
+    maxPageSize   = lift              maxPageSize
+    getNodePage   = ((((lift.).).).). getNodePage
+    putNodePage   = (((lift.).).).    putNodePage
+    getOverflow   = (lift.).          getOverflow
+    putOverflow   = (lift.).          putOverflow
+    listOverflows = lift.             listOverflows
 
 --------------------------------------------------------------------------------

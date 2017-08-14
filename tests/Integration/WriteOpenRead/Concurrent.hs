@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 module Integration.WriteOpenRead.Concurrent where
 
@@ -13,6 +12,7 @@ import Test.QuickCheck.Monadic
 
 import Control.Applicative ((<$>))
 import Control.Monad
+import Control.Monad.Catch (MonadMask, Exception, throwM, catch)
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
@@ -20,7 +20,7 @@ import Control.Monad.Trans.Maybe
 import Data.Binary (Binary(..))
 import Data.Foldable (foldlM)
 import Data.Map (Map)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import qualified Data.Map as M
@@ -52,21 +52,22 @@ tests = testGroup "WriteOpenRead.Concurrent"
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
     (db, files) <- run create
-    result <- run . runMaybeT $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
-                                       (files, M.empty)
-                                       txs
-    assert $ isJust result
+    _ <- run $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
+                      (files, M.empty)
+                      txs
+    return ()
   where
 
     writeReadTest :: ConcurrentDb Integer TestValue
                   -> Files String
                   -> TestTransaction Integer TestValue
                   -> Map Integer TestValue
-                  -> MaybeT IO (Files String, Map Integer TestValue)
+                  -> IO (Files String, Map Integer TestValue)
     writeReadTest db files tx m = do
-        files'   <- openAndWrite db files tx
+        files'   <- openAndWrite db files tx `catch`
+                        \TestException -> return files
         read'    <- openAndRead db files'
-        let expected = testTransactionResult m tx
+        let expected = fromMaybe m $ testTransactionResult m tx
         if read' == M.toList expected
             then return (files', expected)
             else error $ "error:"
@@ -119,9 +120,10 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                   -> TestTransaction Integer TestValue
                   -> MaybeT IO (Map Integer TestValue)
     writeReadTest db files m tx = do
-        _     <- lift $ openAndWrite db files tx
+        _     <- lift $ void (openAndWrite db files tx) `catch`
+                            \TestException -> return ()
         read' <- lift $ openAndRead db files
-        let expected = testTransactionResult m tx
+        let expected = fromMaybe m $ testTransactionResult m tx
         if read' == M.toList expected
             then return expected
             else error $ "error:"
@@ -148,27 +150,28 @@ prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 
 --------------------------------------------------------------------------------
 
-writeTransaction :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
+writeTransaction :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
                  => TestTransaction k v
                  -> ConcurrentDb k v
                  -> m ()
 writeTransaction (TestTransaction txType actions) =
     transaction
   where
-    writeAction (Insert k v)  = insertTree k v
-    writeAction (Replace k v) = insertTree k v
-    writeAction (Delete k)    = deleteTree k
+    writeAction (Insert k v)   = insertTree k v
+    writeAction (Replace k v)  = insertTree k v
+    writeAction (Delete k)     = deleteTree k
+    writeAction ThrowException = const (throwM TestException)
 
     transaction = transact_ $
         foldl (>=>) return (map writeAction actions)
         >=> commitOrAbort
 
-    commitOrAbort :: AllocM n => Tree key val -> n (Transaction key val ())
+    commitOrAbort :: (AllocM n, MonadMask n) => Tree key val -> n (Transaction key val ())
     commitOrAbort
         | TxAbort  <- txType = const abort_
         | TxCommit <- txType = commit_
 
-readAll :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
+readAll :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
         => ConcurrentDb k v
         -> m [(k, v)]
 readAll = transactReadOnly Tree.toList
@@ -199,5 +202,10 @@ instance Arbitrary TestValue where
       where
         small = arbitrary
         big = arbitrary
+
+-- | Exception used for testing
+data TestException = TestException deriving (Show, Typeable)
+
+instance Exception TestException where
 
 --------------------------------------------------------------------------------

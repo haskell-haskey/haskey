@@ -1,11 +1,10 @@
-{-# LANGUAGE LambdaCase #-}
 -- | Simple implementations of reentrant locks using 'MVar'
 module Data.BTree.Utils.RLock where
 
 import Control.Concurrent (ThreadId, myThreadId)
 import Control.Concurrent.MVar
-import Control.Exception (bracket_)
 import Control.Monad (unless, when)
+import Control.Monad.Catch (MonadMask, bracket_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 -- | A reentrant lock.
@@ -46,13 +45,6 @@ releaseRLock (r, l) = do
         putMVar l ()
 
 -- | Execute an action with the lock, bracketed, exception-safe
-withRLock :: RLock -> IO a -> IO a
-withRLock l = bracket_ (acquireRLock l) (releaseRLock l)
-
--- | Exception-unsafe version of 'withRLock'.
-withRLock' :: MonadIO m => RLock -> m a -> m a
-withRLock' l action = do
-    liftIO $ acquireRLock l
-    v <- action
-    liftIO $ releaseRLock l
-    return v
+withRLock :: (MonadIO m, MonadMask m) => RLock -> m a -> m a
+withRLock l = bracket_ (liftIO $ acquireRLock l)
+                       (liftIO $ releaseRLock l)

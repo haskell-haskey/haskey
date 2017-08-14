@@ -44,7 +44,7 @@ import Data.Typeable (Typeable)
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 
-import System.Directory (createDirectoryIfMissing, removeFile)
+import System.Directory (createDirectoryIfMissing, removeFile, getDirectoryContents)
 import System.FilePath (takeDirectory)
 import System.IO
 import System.IO.Error (ioError, isDoesNotExistError)
@@ -182,6 +182,10 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         h <- get >>= lookupHandle fp
         liftIO $ hSeek h AbsoluteSeek 0
         liftIO $ BS.hPut h (encode $ OverflowPage val)
+
+    listOverflows dir = liftIO $ getDirectoryContents dir `catch` catch'
+      where catch' e | isDoesNotExistError e = return []
+                     | otherwise = ioError e
 
 --------------------------------------------------------------------------------
 

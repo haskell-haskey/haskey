@@ -10,6 +10,7 @@
 module Data.BTree.Alloc.Concurrent.Monad where
 
 import Control.Applicative (Applicative, (<$>))
+import Control.Monad.Catch
 import Control.Monad.State
 
 import Data.Proxy (Proxy(..))
@@ -36,7 +37,9 @@ data ConcurrentHandles = ConcurrentHandles {
 -- The monad has access to a 'ConcurrentMetaStoreM' back-end which manages can
 -- store and retreive the corresponding metadata.
 newtype ConcurrentT env hnd m a = ConcurrentT { fromConcurrentT :: StateT (env hnd) m a }
-                                deriving (Functor, Applicative, Monad, MonadIO, MonadState (env hnd))
+                                deriving (Functor, Applicative, Monad,
+                                          MonadIO, MonadThrow, MonadCatch, MonadMask,
+                                          MonadState (env hnd))
 
 instance MonadTrans (ConcurrentT env hnd) where
     lift = ConcurrentT . lift

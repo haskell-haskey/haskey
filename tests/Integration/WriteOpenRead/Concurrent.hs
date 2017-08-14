@@ -62,7 +62,7 @@ case_bad_seed = do
     args = stdArgs { replay = Just gen }
 
 prop_memory_backend :: PropertyM IO ()
-prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
+prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> do
     (db, files) <- run create
     _ <- run $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
                       (files, M.empty)
@@ -76,8 +76,7 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
                   -> Map Integer TestValue
                   -> IO (Files String, Map Integer TestValue)
     writeReadTest db files tx m = do
-        files'   <- openAndWrite db files tx `catch`
-                        \TestException -> return files
+        files'   <- openAndWrite db files tx
         read'    <- openAndRead db files'
         let expected = fromMaybe m $ testTransactionResult m tx
         if read' == M.toList expected
@@ -101,7 +100,7 @@ prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
 --------------------------------------------------------------------------------
 
 prop_file_backend :: PropertyM IO ()
-prop_file_backend = forAllM genTestSequence $ \(TestSequence txs) -> do
+prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
     exists <- run $ doesDirectoryExist "/var/run/shm"
     w      <- if exists then run $ writable <$> getPermissions "/var/run/shm"
                         else return False

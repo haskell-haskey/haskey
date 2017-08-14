@@ -38,10 +38,14 @@ insertHeavySetup = TransactionSetup { sequenceInsertFrequency = 12
 withExceptionSetup :: TransactionSetup
 withExceptionSetup = insertHeavySetup { sequenceExceptionFrequency = 5 }
 
-genTransactionSetup :: Gen TransactionSetup
-genTransactionSetup = frequency [(45, return deleteHeavySetup),
-                                 (45, return insertHeavySetup),
-                                 (10, return withExceptionSetup)]
+genTransactionSetup :: Bool -> Gen TransactionSetup
+genTransactionSetup withExc =
+    frequency [(45, return deleteHeavySetup),
+               (45, return insertHeavySetup),
+               (f,  return withExceptionSetup)]
+  where
+    f | withExc = 10
+      | otherwise = 0
 
 data TxType = TxAbort | TxCommit
             deriving (Show)
@@ -107,8 +111,8 @@ shrinkTestTransaction :: (Ord k, Arbitrary k, Arbitrary v)
 shrinkTestTransaction (TestTransaction _ []) = []
 shrinkTestTransaction (TestTransaction t actions) = map (TestTransaction t) (init (inits actions))
 
-genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => Gen (TestSequence k v)
-genTestSequence = sized $ \n -> do
+genTestSequence :: (Ord k, Arbitrary k, Arbitrary v) => Bool -> Gen (TestSequence k v)
+genTestSequence withExc = sized $ \n -> do
     k <- choose (0, n)
     (_, txs) <- execStateT (replicateM k next) (M.empty, [])
     return $ TestSequence (reverse txs)
@@ -117,7 +121,7 @@ genTestSequence = sized $ \n -> do
          => StateT (Map k v, [TestTransaction k v]) Gen ()
     next = do
         (m, txs) <- get
-        (tx, m') <- lift $ genTransactionSetup >>= genTestTransaction m
+        (tx, m') <- lift $ genTransactionSetup withExc >>= genTestTransaction m
         put (fromMaybe m m', tx:txs)
 
 shrinkTestSequence :: (Ord k, Arbitrary k, Arbitrary v)

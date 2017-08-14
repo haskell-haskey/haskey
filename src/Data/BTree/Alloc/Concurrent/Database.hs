@@ -9,12 +9,14 @@ import Control.Applicative ((<$>))
 import Control.Concurrent.STM
 import Control.Monad (void, unless)
 import Control.Monad.IO.Class
-import Control.Monad.Catch (MonadMask)
+import Control.Monad.Catch (MonadCatch, MonadMask, SomeException,
+                            catch, mask, onException)
 import Control.Monad.State
 import Control.Monad.Trans (lift)
 
 import Data.Proxy (Proxy(..))
 import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 
 import STMContainers.Map (Map)
@@ -228,33 +230,58 @@ actAndCommit db act
 
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1
+    wrap hnds newRevision $ do
+        ((maybeMeta, v), env) <- runConcurrentT (act meta) $
+                                   newWriter hnds
+                                             newRevision
+                                             (concurrentMetaNumPages meta)
+                                             readers
+                                             (concurrentMetaFreshUnusedPages meta)
+                                             (concurrentMetaFreeTree meta)
 
-    ((maybeMeta, v), env) <- runConcurrentT (act meta) $
-                               newWriter hnds
-                                         newRevision
-                                         (concurrentMetaNumPages meta)
-                                         readers
-                                         (concurrentMetaFreshUnusedPages meta)
-                                         (concurrentMetaFreeTree meta)
+        let maybeMeta' = updateMeta env <$> maybeMeta
 
-    let maybeMeta' = updateMeta env <$> maybeMeta
+        case maybeMeta' of
+            Nothing -> do
+                removeNewlyAllocatedOverflows env
+                return v
 
-    case maybeMeta' of
-        Nothing -> do
-            removeNewlyAllocatedOverflows env
-            return v
+            Just meta' -> do
+                -- Bookkeeping
+                (newMeta, _) <- flip execStateT (meta', env) $ do
+                    saveOverflowIds
+                    saveFreePages' 0
+                    handleFreedDirtyPages
 
-        Just meta' -> do
-            -- Bookkeeping
-            (newMeta, _) <- flip execStateT (meta', env) $ do
-                saveOverflowIds
-                saveFreePages' 0
-                handleFreedDirtyPages
+                -- Commit
+                setCurrentMeta (newMeta { concurrentMetaRevision = newRevision })
+                               db
+                return v
+  where
+    wrap :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
+         => ConcurrentHandles
+         -> TxId
+         -> m a
+         -> m a
+    wrap hnds tx action = mask $ \restore ->
+        restore action `onException` cleanupAfterException hnds tx
 
-            -- Commit
-            setCurrentMeta (newMeta { concurrentMetaRevision = newRevision })
-                           db
-            return v
+-- | Cleanup after an exception occurs, or after a program crash.
+--
+-- The 'TxId' of the aborted transaction should be passed.
+cleanupAfterException :: (MonadIO m, MonadCatch m, ConcurrentMetaStoreM m)
+                      => ConcurrentHandles
+                      -> TxId
+                      -> m ()
+cleanupAfterException hnds tx = do
+    let dir = getOverflowDir (concurrentHandlesOverflowDir hnds) tx
+    overflows <- filter filter' <$> listOverflows dir
+    mapM_ (\fp -> removeHandle fp `catch` ignore) overflows
+  where
+    filter' fp = fromMaybe False $ (== tx) . fst <$> readOverflowId fp
+
+    ignore :: Monad m => SomeException -> m ()
+    ignore _ = return ()
 
 -- | Remove all overflow pages that were written in the transaction.
 --

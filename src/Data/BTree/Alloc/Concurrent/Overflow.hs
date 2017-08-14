@@ -11,13 +11,13 @@ import Control.Monad.State
 import Data.Bits (shiftR)
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Word (Word8)
 import qualified Data.List.NonEmpty as NE
 
-import Numeric (showHex)
+import Numeric (showHex, readHex)
 
-import System.FilePath ((</>), (<.>))
+import System.FilePath ((</>), (<.>), dropExtension, takeFileName)
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
@@ -36,13 +36,30 @@ getNewOverflowId = do
 
 getOverflowHandle :: FilePath -> OverflowId -> FilePath
 getOverflowHandle root (TxId tx, c) =
-    root </> lsb1 </> lsb2 </> showHex' tx <.> showHex' c <.> "overflow"
+    getOverflowDir root (TxId tx) </> showHex' tx <.> showHex' c <.> "overflow"
+
+getOverflowDir :: FilePath -> TxId -> FilePath
+getOverflowDir root (TxId tx) =
+    root </> lsb1 </> lsb2
   where
     lsb1 = showHex' (fromIntegral tx :: Word8)
     lsb2 = showHex' (fromIntegral (tx `shiftR` 8) :: Word8)
 
-    showHex' :: (Integral a, Show a) => a -> String
-    showHex' = flip showHex ""
+readOverflowId :: FilePath -> Maybe OverflowId
+readOverflowId fp = parse (dropExtension $ takeFileName fp)
+  where
+    parse s = do
+        (tx, s') <- readHex' s
+        s'' <- case s' of '.':xs -> return xs
+                          _      -> Nothing
+        (c, _) <- readHex' s''
+        return (tx, c)
+
+showHex' :: (Integral a, Show a) => a -> String
+showHex' = flip showHex ""
+
+readHex' :: (Eq a, Num a) => String -> Maybe (a, String)
+readHex' s = listToMaybe $ readHex s
 
 --------------------------------------------------------------------------------
 

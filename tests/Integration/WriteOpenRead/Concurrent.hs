@@ -9,6 +9,7 @@ import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
+import Test.QuickCheck.Random
 
 import Control.Applicative ((<$>))
 import Control.Monad
@@ -48,6 +49,17 @@ tests = testGroup "WriteOpenRead.Concurrent"
     [ testProperty "memory backend" (monadicIO prop_memory_backend)
     , testProperty "file backend" (monadicIO prop_file_backend)
     ]
+
+case_bad_seed :: IO ()
+case_bad_seed = do
+    putStrLn "Testing bad case..."
+    quickCheckWith args (monadicIO prop_memory_backend)
+    putStrLn "    done"
+  where
+    -- This seed results in out of memory!!
+    seed = 1576280407925194075
+    gen = (mkQCGen seed, seed)
+    args = stdArgs { replay = Just gen }
 
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM genTestSequence $ \(TestSequence txs) -> do

@@ -77,18 +77,24 @@ createConcurrentDb hnds = do
 -- | Open the an existing database, with the given handles.
 --
 -- The handles should already have been opened using 'openConcurrentHandles'.
-openConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM m)
+openConcurrentDb :: (Key k, Value v, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                  => ConcurrentHandles -> m (Maybe (ConcurrentDb k v))
 openConcurrentDb hnds@ConcurrentHandles{..} = do
     m1 <- readConcurrentMeta concurrentHandlesMetadata1 Proxy Proxy
     m2 <- readConcurrentMeta concurrentHandlesMetadata2 Proxy Proxy
-    case (m1, m2) of
+    maybeDb <- case (m1, m2) of
         (Nothing, Nothing) -> return Nothing
         (Just m , Nothing) -> Just <$> newConcurrentDb hnds m
         (Nothing, Just m ) -> Just <$> newConcurrentDb hnds m
         (Just x , Just y ) -> if concurrentMetaRevision x > concurrentMetaRevision y
                                   then Just <$> newConcurrentDb hnds x
                                   else Just <$> newConcurrentDb hnds y
+    case maybeDb of
+        Nothing -> return Nothing
+        Just db -> do
+            meta <- liftIO . atomically $ getCurrentMeta db
+            cleanupAfterException hnds (concurrentMetaRevision meta + 1)
+            return (Just db)
 
 -- | Close the handles of the database.
 closeConcurrentHandles :: (MonadIO m, ConcurrentMetaStoreM m)

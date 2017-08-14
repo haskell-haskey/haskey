@@ -10,7 +10,7 @@ import Control.Concurrent.STM
 import Control.Monad (void, unless)
 import Control.Monad.IO.Class
 import Control.Monad.Catch (MonadCatch, MonadMask, SomeException,
-                            catch, mask, onException)
+                            catch, mask, onException, bracket)
 import Control.Monad.State
 import Control.Monad.Trans (lift)
 
@@ -194,25 +194,29 @@ transact_ act db = void $ transact act db
 transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
                  => (forall n. (AllocReaderM n, MonadMask m) => Tree key val -> n a)
                  -> ConcurrentDb key val -> m a
-transactReadOnly act db
-    | ConcurrentDb
-      { concurrentDbHandles = hnds
-      , concurrentDbReaders = readers
-      } <- db
-    = do
-    meta <- liftIO . atomically $ do
-        meta <- getCurrentMeta db
-        Map.alter (concurrentMetaRevision meta) addOne readers
-        return meta
-    v <- evalConcurrentT (act $ concurrentMetaTree meta) (ReaderEnv hnds)
-    liftIO . atomically $ Map.alter (concurrentMetaRevision meta) subOne readers
-    return v
+transactReadOnly act db =
+    bracket acquireMeta
+            releaseMeta $
+            \meta -> evalConcurrentT (act $ concurrentMetaTree meta)
+                                     (ReaderEnv hnds)
   where
+    hnds    = concurrentDbHandles db
+    readers = concurrentDbReaders db
+
     addOne Nothing = Just 1
     addOne (Just x) = Just $! x + 1
     subOne Nothing = Nothing
     subOne (Just 0) = Nothing
     subOne (Just x) = Just $! x - 1
+
+    acquireMeta = liftIO . atomically $ do
+        meta <- getCurrentMeta db
+        Map.alter (concurrentMetaRevision meta) addOne readers
+        return meta
+
+    releaseMeta meta =
+        let rev = concurrentMetaRevision meta in
+        liftIO . atomically $ Map.alter rev subOne readers
 
 --------------------------------------------------------------------------------
 

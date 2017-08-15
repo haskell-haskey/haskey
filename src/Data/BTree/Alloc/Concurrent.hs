@@ -6,6 +6,7 @@ module Data.BTree.Alloc.Concurrent (
 
   -- * Open, close and create databases
 , ConcurrentHandles(..)
+, concurrentHandles
 , openConcurrentHandles
 , closeConcurrentHandles
 , createConcurrentDb

@@ -31,7 +31,6 @@ import GHC.Generics (Generic)
 import System.Directory (removeDirectoryRecursive,
                          getTemporaryDirectory, doesDirectoryExist,
                          writable, getPermissions)
-import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
 
 import Data.BTree.Alloc.Class
@@ -91,7 +90,7 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
         openConcurrentHandles hnds
         createConcurrentDb hnds
       where
-        hnds = defaultConcurrentHandles
+        hnds = concurrentHandles ""
 
     openAndRead db = evalStoreT (readAll db)
 
@@ -107,12 +106,7 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
     tmpDir <- if w then return "/var/run/shm"
                    else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
-    let hnds = ConcurrentHandles {
-        concurrentHandlesMain        = fp </> "main.db"
-      , concurrentHandlesMetadata1   = fp </> "meta.md1"
-      , concurrentHandlesMetadata2   = fp </> "meta.md2"
-      , concurrentHandlesOverflowDir = fp </> "overflow"
-      }
+    let hnds = concurrentHandles fp
 
     (db, files) <- run $ create hnds
     result <- run . runMaybeT $ foldM (writeReadTest db files)
@@ -186,15 +180,6 @@ readAll :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
         => ConcurrentDb k v
         -> m [(k, v)]
 readAll = transactReadOnly Tree.toList
-
-defaultConcurrentHandles :: ConcurrentHandles
-defaultConcurrentHandles =
-    ConcurrentHandles {
-        concurrentHandlesMain        = "main.db"
-      , concurrentHandlesMetadata1   = "meta.md1"
-      , concurrentHandlesMetadata2   = "meta.md2"
-      , concurrentHandlesOverflowDir = "overflow"
-      }
 
 --------------------------------------------------------------------------------
 

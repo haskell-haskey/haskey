@@ -15,6 +15,8 @@ import Control.Monad.State
 
 import Data.Proxy (Proxy(..))
 
+import System.FilePath ((</>))
+
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.FreePages.Query
@@ -31,6 +33,15 @@ data ConcurrentHandles = ConcurrentHandles {
   , concurrentHandlesMetadata2 :: FilePath
   , concurrentHandlesOverflowDir :: FilePath
   } deriving (Show)
+
+-- | Construct a set of 'ConcurrentHandles' from a root directory.
+concurrentHandles :: FilePath -> ConcurrentHandles
+concurrentHandles fp = ConcurrentHandles {
+    concurrentHandlesMain        = fp </> "index" </> "index"
+  , concurrentHandlesMetadata1   = fp </> "meta" </> "1"
+  , concurrentHandlesMetadata2   = fp </> "meta" </> "2"
+  , concurrentHandlesOverflowDir = fp </> "overflow"
+  }
 
 -- | Monad in which page allocations can take place.
 --

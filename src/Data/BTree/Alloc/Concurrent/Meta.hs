@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -25,11 +26,14 @@ data CurrentMetaPage = Meta1 | Meta2
 -- | Meta data of the page allocator.
 data ConcurrentMeta k v = ConcurrentMeta {
     concurrentMetaRevision :: TxId
-  , concurrentMetaNumPages :: PageId
+  , concurrentMetaDataNumPages :: S 'TypeData PageId
+  , concurrentMetaIndexNumPages :: S 'TypeIndex PageId
   , concurrentMetaTree :: Tree k v
-  , concurrentMetaFreeTree :: FreeTree
+  , concurrentMetaDataFreeTree :: S 'TypeData FreeTree
+  , concurrentMetaIndexFreeTree :: S 'TypeIndex FreeTree
   , concurrentMetaOverflowTree :: OverflowTree
-  , concurrentMetaFreshUnusedPages :: Set DirtyFree
+  , concurrentMetaDataFreshUnusedPages :: S 'TypeData (Set DirtyFree)
+  , concurrentMetaIndexFreshUnusedPages :: S 'TypeIndex (Set DirtyFree)
   } deriving (Generic)
 
 deriving instance (Show k, Show v) => Show (ConcurrentMeta k v)

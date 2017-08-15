@@ -1,4 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
@@ -28,7 +30,8 @@ import qualified Data.BTree.Store.Class as Store
 
 -- | All necessary database handles.
 data ConcurrentHandles = ConcurrentHandles {
-    concurrentHandlesMain :: FilePath
+    concurrentHandlesData :: FilePath
+  , concurrentHandlesIndex :: FilePath
   , concurrentHandlesMetadata1 :: FilePath
   , concurrentHandlesMetadata2 :: FilePath
   , concurrentHandlesOverflowDir :: FilePath
@@ -37,7 +40,8 @@ data ConcurrentHandles = ConcurrentHandles {
 -- | Construct a set of 'ConcurrentHandles' from a root directory.
 concurrentHandles :: FilePath -> ConcurrentHandles
 concurrentHandles fp = ConcurrentHandles {
-    concurrentHandlesMain        = fp </> "index" </> "index"
+    concurrentHandlesData        = fp </> "data" </> "data"
+  , concurrentHandlesIndex       = fp </> "index" </> "index"
   , concurrentHandlesMetadata1   = fp </> "meta" </> "1"
   , concurrentHandlesMetadata2   = fp </> "meta" </> "2"
   , concurrentHandlesOverflowDir = fp </> "overflow"
@@ -80,21 +84,36 @@ instance
     maxPageSize = ConcurrentT Store.maxPageSize
 
     allocNode height n = do
-        hnd <- concurrentHandlesMain . writerHnds <$> get
-        pid <- getPid
-        touchPage pid
+        hnd <- getWriterHnd height
+        pid <- getAndTouchPid
 
         let nid = pageIdToNodeId (getSomeFreePageId pid)
         lift $ putNodePage hnd height nid n
         return nid
       where
-        getPid = getFreePageId >>= \case
+        getAndTouchPid = getFreePageId' >>= \case
             Just pid -> return pid
-            Nothing -> do
-                pid <- writerNewNumPages <$> get
-                return (FreshFreePage (Fresh pid))
+            Nothing -> newTouchedPid
 
-    freeNode _ nid = freePage (nodeIdToPageId nid)
+        getFreePageId' | isLeafHeight height = getFreePageId (DataState ())
+                       | otherwise           = getFreePageId (IndexState ())
+
+        newTouchedPid
+            | isLeafHeight height = do
+                pid <- fileStateNewNumPages . writerDataFileState <$> get
+                let pid' = FreshFreePage . Fresh <$> pid
+                touchPage pid'
+                return $ getSValue pid'
+            | otherwise = do
+                pid <- fileStateNewNumPages . writerIndexFileState <$> get
+                let pid'' = FreshFreePage . Fresh <$> pid
+                touchPage pid''
+                return $ getSValue pid''
+
+
+    freeNode height nid
+        | isLeafHeight height = freePage (DataState  $ nodeIdToPageId nid)
+        | otherwise           = freePage (IndexState $ nodeIdToPageId nid)
 
     allocOverflow v = do
         root <- concurrentHandlesOverflowDir . writerHnds <$> get
@@ -118,7 +137,7 @@ instance
     => AllocReaderM (ConcurrentT WriterEnv ConcurrentHandles m)
   where
     readNode height nid = do
-        hnd <- concurrentHandlesMain . writerHnds <$> get
+        hnd <- getWriterHnd height
         lift $ getNodePage hnd height Proxy Proxy nid
 
     readOverflow i = do
@@ -130,7 +149,7 @@ instance
     => AllocReaderM (ConcurrentT ReaderEnv ConcurrentHandles m)
   where
     readNode height nid = do
-        hnd <- concurrentHandlesMain . readerHnds <$> get
+        hnd <- getReaderHnd height
         lift $ getNodePage hnd height Proxy Proxy nid
 
     readOverflow i = do
@@ -146,3 +165,14 @@ readOverflow' root oid = do
     lift $ closeHandle hnd
     return v
 
+getWriterHnd :: MonadState (WriterEnv ConcurrentHandles) m
+             => Height height
+             -> m FilePath
+getWriterHnd h | isLeafHeight h = concurrentHandlesData . writerHnds <$> get
+               | otherwise      = concurrentHandlesIndex . writerHnds <$> get
+
+getReaderHnd :: MonadState (ReaderEnv ConcurrentHandles) m
+             => Height height
+             -> m FilePath
+getReaderHnd h | isLeafHeight h = concurrentHandlesData . readerHnds <$> get
+               | otherwise      = concurrentHandlesIndex . readerHnds <$> get

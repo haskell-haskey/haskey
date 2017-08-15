@@ -16,6 +16,9 @@ data Nat = Z | S Nat
 newtype Height (h :: Nat) = Height { fromHeight :: Int64 }
     deriving (Binary, Eq, Ord)
 
+isLeafHeight :: Height h -> Bool
+isLeafHeight (Height x) = x == 0
+
 instance Show (Height h) where
     showsPrec p = showsPrec p . fromHeight
 

@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RankNTypes #-}
 module Data.BTree.Alloc.Concurrent.FreePages.Query where
 
 import Control.Applicative ((<|>), (<$>))
@@ -26,36 +28,69 @@ import qualified Data.BTree.Utils.STM.Map as Map
 -- from the in-memory free page cache stored in 'writerReusablePages'. If that
 -- one is empty, actually query one from the free database.
 getFreePageId :: (Functor m, AllocM m, MonadIO m, MonadState (WriterEnv hnd) m)
-              => m (Maybe SomeFreePage)
-getFreePageId = runMaybeT $ (DirtyFreePage <$> MaybeT getFreedDirtyPageId)
-                        <|> (OldFreePage   <$> MaybeT getCachedFreePageId)
-                        <|> (OldFreePage   <$> MaybeT queryNewFreePageIds)
+              => S stateType ()
+              -> m (Maybe SomeFreePage)
+getFreePageId t =
+    runMaybeT $ (DirtyFreePage <$> MaybeT (getFreedDirtyPageId t))
+            <|> (OldFreePage   <$> MaybeT (getCachedFreePageId t))
+            <|> (OldFreePage   <$> MaybeT (queryNewFreePageIds t))
 
 -- | Get a free'd dirty page.
 --
 -- Get a free'd dirty page, that is immediately suitable for reuse in the
 -- current transaction.
 getFreedDirtyPageId :: (Functor m, MonadState (WriterEnv hnd) m)
-                    => m (Maybe DirtyFree)
-getFreedDirtyPageId = do
-    s <- writerFreedDirtyPages <$> get
-    case S.minView s of
-        Nothing -> return Nothing
-        Just (pid, s') -> do
-            modify' $ \e -> e { writerFreedDirtyPages = s' }
-            return (Just pid)
+                    => S stateType ()
+                    -> m (Maybe DirtyFree)
+getFreedDirtyPageId stateType =
+    case stateType of
+        DataState () -> do
+            s <- writerDataFileState <$> get
+            let (pid, s') = query s DataState
+            modify' $ \env -> env { writerDataFileState = s' }
+            return pid
+        IndexState () -> do
+            s <- writerIndexFileState <$> get
+            let (pid, s') = query s IndexState
+            modify' $ \env -> env { writerIndexFileState = s' }
+            return pid
+  where
+    query :: FileState t
+          -> (forall a. a -> S t a)
+          -> (Maybe DirtyFree, FileState t)
+    query env cons =
+        case S.minView (getSValue $ fileStateFreedDirtyPages env) of
+            Nothing -> (Nothing, env)
+            Just (pid, s') ->
+                let env' = env { fileStateFreedDirtyPages = cons s' } in
+                (Just pid, env')
 
 -- | Get a cached free page.
 --
 -- Get a free page from the free database cache stored in 'writerReusablePages'.
 getCachedFreePageId :: (Functor m, MonadState (WriterEnv hnd) m)
-                    => m (Maybe OldFree)
-getCachedFreePageId = ifM (not . writerReusablePagesOn <$> get) (return Nothing) $
-    writerReusablePages <$> get >>= \case
-        []            -> return Nothing
-        pid : pageIds -> do
-            modify' $ \env -> env { writerReusablePages = pageIds }
-            return (Just pid)
+                    => S stateType ()
+                    -> m (Maybe OldFree)
+getCachedFreePageId stateType =
+    ifM (not . writerReusablePagesOn <$> get) (return Nothing) $
+    case stateType of
+        DataState () -> do
+            s <- writerDataFileState <$> get
+            let (pid, s') = query s
+            modify' $ \env -> env { writerDataFileState = s' }
+            return pid
+        IndexState () -> do
+            s <- writerIndexFileState <$> get
+            let (pid, s') = query s
+            modify' $ \env -> env { writerIndexFileState = s' }
+            return pid
+  where
+    query :: FileState t -> (Maybe OldFree, FileState t)
+    query env = case fileStateReusablePages env of
+        [] -> (Nothing, env)
+        pid : pageIds ->
+            let env' = env { fileStateReusablePages = pageIds } in
+            (Just pid, env')
 
 -- | Try to get a list of free pages from the free page database, return the
 -- first free one for immediate use, and store the rest in the environment.
@@ -67,31 +102,49 @@ getCachedFreePageId = ifM (not . writerReusablePagesOn <$> get) (return Nothing)
 --
 -- This function expects 'writerReusablePages' to be empty.
 queryNewFreePageIds :: (AllocM m, MonadIO m, MonadState (WriterEnv hnd) m)
-                 => m (Maybe OldFree)
-queryNewFreePageIds = ifM (not . writerReusablePagesOn <$> get) (return Nothing) $ do
-    tree    <- writerFreeTree <$> get
-    oldTxId <- writerReusablePagesTxId <$> get
+                 => S stateType ()
+                 -> m (Maybe OldFree)
+queryNewFreePageIds stateType = ifM (not . writerReusablePagesOn <$> get) (return Nothing) $
+    case stateType of
+        DataState () -> do
+            s <- writerDataFileState <$> get
+            (pid, s') <- query s DataState
+            modify' $ \env -> env { writerDataFileState = s' }
+            return pid
+        IndexState () -> do
+            s <- writerIndexFileState <$> get
+            (pid, s') <- query s IndexState
+            modify' $ \env -> env { writerIndexFileState = s' }
+            return pid
+  where
+    query :: (AllocM m, MonadIO m, MonadState (WriterEnv hnd) m)
+          => FileState t
+          -> (forall a. a -> S t a)
+          -> m (Maybe OldFree, FileState t)
+    query env cons =  do
+        let tree    = getSValue $ fileStateFreeTree env
+        let oldTxId = fileStateReusablePagesTxId env
 
-    -- Delete the previous used 'TxId' from the tree.
-    modify' $ \env -> env { writerReusablePagesOn = False }
-    tree' <- maybe (return tree) (`deleteSubtree` tree) oldTxId
-    modify' $ \env -> env { writerReusablePagesOn = True }
+        -- Delete the previous used 'TxId' from the tree.
+        modify' $ \e -> e { writerReusablePagesOn = False }
+        tree' <- maybe (return tree) (`deleteSubtree` tree) oldTxId
+        modify' $ \e -> e { writerReusablePagesOn = True }
 
-    -- Set the new free tree
-    modify' $ \env -> env { writerFreeTree = tree' }
-
-    -- Lookup the oldest free page
-    lookupValidFreePageIds tree' >>= \case
-        Nothing -> do
-            modify' $ \env -> env { writerDirtyReusablePages = S.empty
-                                  , writerReusablePages = []
-                                  , writerReusablePagesTxId = Nothing }
-            return Nothing
-        Just (txId, pid :| pageIds) -> do
-            modify' $ \ env -> env { writerDirtyReusablePages = S.empty
-                                   , writerReusablePages = map OldFree pageIds
-                                   , writerReusablePagesTxId = Just txId }
-            return (Just $ OldFree pid)
+        -- Lookup the oldest free page
+        lookupValidFreePageIds tree' >>= \case
+            Nothing -> let env' = env { fileStateDirtyReusablePages = S.empty
+                                      , fileStateReusablePages = []
+                                      , fileStateReusablePagesTxId = Nothing
+                                      , fileStateFreeTree = cons tree' }
+                       in
+                       return (Nothing, env')
+            Just (txId, pid :| pageIds) ->
+                       let env' = env { fileStateDirtyReusablePages = S.empty
+                                      , fileStateReusablePages = map OldFree pageIds
+                                      , fileStateReusablePagesTxId = Just txId
+                                      , fileStateFreeTree = cons tree' }
+                       in
+                       return (Just $ OldFree pid, env')
 
 -- | Lookup a list of free pages from the free page database, guaranteed to be old enough.
 lookupValidFreePageIds :: (MonadIO m, AllocReaderM m, MonadState (WriterEnv hnd) m)

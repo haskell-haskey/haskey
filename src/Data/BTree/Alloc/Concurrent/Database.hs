@@ -352,7 +352,6 @@ saveFreePages' :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                -> (forall hnds. WriterEnv hnds -> FileState t -> WriterEnv hnds)
                -> StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
 saveFreePages' paranoid cons getState setState
-    | True = return ()
     | paranoid >= 100 = error "paranoid: looping!"
     | otherwise
     = do

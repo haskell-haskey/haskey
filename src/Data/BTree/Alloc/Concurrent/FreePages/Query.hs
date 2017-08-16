@@ -106,45 +106,48 @@ queryNewFreePageIds :: (AllocM m, MonadIO m, MonadState (WriterEnv hnd) m)
                  -> m (Maybe OldFree)
 queryNewFreePageIds stateType = ifM (not . writerReusablePagesOn <$> get) (return Nothing) $
     case stateType of
-        DataState () -> do
-            s <- writerDataFileState <$> get
-            (pid, s') <- query s DataState
-            modify' $ \env -> env { writerDataFileState = s' }
-            return pid
-        IndexState () -> do
-            s <- writerIndexFileState <$> get
-            (pid, s') <- query s IndexState
-            modify' $ \env -> env { writerIndexFileState = s' }
-            return pid
+        DataState () ->
+            query DataState
+                  writerDataFileState
+                  (\e s -> e { writerDataFileState = s })
+
+        IndexState () ->
+            query IndexState
+                  writerIndexFileState
+                  (\e s -> e { writerIndexFileState = s })
   where
     query :: (AllocM m, MonadIO m, MonadState (WriterEnv hnd) m)
-          => FileState t
-          -> (forall a. a -> S t a)
-          -> m (Maybe OldFree, FileState t)
-    query env cons =  do
-        let tree    = getSValue $ fileStateFreeTree env
-        let oldTxId = fileStateReusablePagesTxId env
+          => (forall a. a -> S t a)
+          -> (forall h. WriterEnv h -> FileState t)
+          -> (forall h. WriterEnv h -> FileState t -> WriterEnv h)
+          -> m (Maybe OldFree)
+    query cons getState setState =  do
+        tree    <- gets $ getSValue . fileStateFreeTree . getState
+        oldTxId <- gets $ fileStateReusablePagesTxId . getState
 
         -- Delete the previous used 'TxId' from the tree.
         modify' $ \e -> e { writerReusablePagesOn = False }
         tree' <- maybe (return tree) (`deleteSubtree` tree) oldTxId
         modify' $ \e -> e { writerReusablePagesOn = True }
 
+        -- Set the new free tree
+        modify' $ \e -> setState e $
+            (getState e) { fileStateFreeTree = cons tree' }
+
         -- Lookup the oldest free page
         lookupValidFreePageIds tree' >>= \case
-            Nothing -> let env' = env { fileStateDirtyReusablePages = S.empty
-                                      , fileStateReusablePages = []
-                                      , fileStateReusablePagesTxId = Nothing
-                                      , fileStateFreeTree = cons tree' }
-                       in
-                       return (Nothing, env')
-            Just (txId, pid :| pageIds) ->
-                       let env' = env { fileStateDirtyReusablePages = S.empty
-                                      , fileStateReusablePages = map OldFree pageIds
-                                      , fileStateReusablePagesTxId = Just txId
-                                      , fileStateFreeTree = cons tree' }
-                       in
-                       return (Just $ OldFree pid, env')
+            Nothing -> do
+                modify' $ \e -> setState e $
+                    (getState e) { fileStateDirtyReusablePages = S.empty
+                                 , fileStateReusablePages = []
+                                 , fileStateReusablePagesTxId = Nothing }
+                return Nothing
+            Just (txId, pid :| pageIds) -> do
+                modify' $ \e -> setState e $
+                    (getState e) { fileStateDirtyReusablePages = S.empty
+                                 , fileStateReusablePages = map OldFree pageIds
+                                 , fileStateReusablePagesTxId = Just txId }
+                return (Just $ OldFree pid)
 
 -- | Lookup a list of free pages from the free page database, guaranteed to be old enough.
 lookupValidFreePageIds :: (MonadIO m, AllocReaderM m, MonadState (WriterEnv hnd) m)

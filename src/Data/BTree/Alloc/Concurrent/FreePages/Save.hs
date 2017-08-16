@@ -5,41 +5,44 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent.Environment
 import Data.BTree.Alloc.Concurrent.FreePages.Tree
+import Data.BTree.Primitives
 
 -- | Save the free pages from the dirty page list and the free page
 -- cache.
 saveFreePages :: AllocM m
-              => WriterEnv hnd
+              => TxId
+              -> FileState t
               -> m FreeTree
-saveFreePages env = saveNewlyFreedPages env tree
-                >>= saveCachedFreePages env
+saveFreePages tx env = saveNewlyFreedPages tx env tree
+                   >>= saveCachedFreePages env
   where
-    tree = writerFreeTree env
+    tree = getSValue $ fileStateFreeTree env
 
 -- | Save the newly free pages of the current transaction, as stored by
 -- 'writerNewlyFreedPages'.
 saveNewlyFreedPages :: AllocM m
-                            => WriterEnv hnd
-                            -> FreeTree
-                            -> m FreeTree
-saveNewlyFreedPages env tree =
+                    => TxId
+                    -> FileState t
+                    -> FreeTree
+                    -> m FreeTree
+saveNewlyFreedPages tx env tree =
     case newlyFreed of
-        [] -> deleteSubtree (writerTxId env) tree
-        x:xs -> replaceSubtree (writerTxId env) (x :| xs) tree
+        [] -> deleteSubtree tx tree
+        x:xs -> replaceSubtree tx (x :| xs) tree
   where
-    newlyFreed = map (\(NewlyFreed pid) -> pid) $ writerNewlyFreedPages env
+    newlyFreed = map (\(NewlyFreed pid) -> pid) $ fileStateNewlyFreedPages env
 
 -- | Save the free apges from the free page cache in
 -- 'writerReusablePages' using 'writerReuseablePagesTxId'.
 saveCachedFreePages :: AllocM m
-                    => WriterEnv hnd
+                    => FileState t
                     -> FreeTree
                     -> m FreeTree
-saveCachedFreePages env tree = case writerReusablePagesTxId env of
+saveCachedFreePages env tree = case fileStateReusablePagesTxId env of
     Nothing -> return tree
     Just k ->
         case freePages of
             [] -> deleteSubtree k tree
             x:xs -> replaceSubtree k (x :| xs) tree
   where
-    freePages = map (\(OldFree pid) -> pid) $ writerReusablePages env
+    freePages = map (\(OldFree pid) -> pid) $ fileStateReusablePages env

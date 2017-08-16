@@ -51,7 +51,8 @@ data ConcurrentDb k v = ConcurrentDb
 openConcurrentHandles :: ConcurrentMetaStoreM m
                       => ConcurrentHandles -> m ()
 openConcurrentHandles ConcurrentHandles{..} = do
-    openHandle concurrentHandlesMain
+    openHandle concurrentHandlesData
+    openHandle concurrentHandlesIndex
     openHandle concurrentHandlesMetadata1
     openHandle concurrentHandlesMetadata2
 
@@ -66,13 +67,17 @@ createConcurrentDb hnds = do
     setCurrentMeta meta0 db
     return db
   where
-    meta0 = ConcurrentMeta { concurrentMetaRevision = 0
-                           , concurrentMetaNumPages = 0
-                           , concurrentMetaTree = Tree zeroHeight Nothing
-                           , concurrentMetaFreeTree = Tree zeroHeight Nothing
-                           , concurrentMetaOverflowTree = Tree zeroHeight Nothing
-                           , concurrentMetaFreshUnusedPages = S.empty
-                           }
+    meta0 = ConcurrentMeta {
+        concurrentMetaRevision = 0
+      , concurrentMetaDataNumPages = DataState 0
+      , concurrentMetaIndexNumPages = IndexState 0
+      , concurrentMetaTree = Tree zeroHeight Nothing
+      , concurrentMetaDataFreeTree = DataState $ Tree zeroHeight Nothing
+      , concurrentMetaIndexFreeTree = IndexState $ Tree zeroHeight Nothing
+      , concurrentMetaOverflowTree = Tree zeroHeight Nothing
+      , concurrentMetaDataFreshUnusedPages = DataState S.empty
+      , concurrentMetaIndexFreshUnusedPages = IndexState S.empty
+      }
 
 -- | Open the an existing database, with the given handles.
 --
@@ -101,7 +106,8 @@ closeConcurrentHandles :: (MonadIO m, ConcurrentMetaStoreM m)
                        => ConcurrentHandles
                        -> m ()
 closeConcurrentHandles ConcurrentHandles{..} = do
-    closeHandle concurrentHandlesMain
+    closeHandle concurrentHandlesData
+    closeHandle concurrentHandlesIndex
     closeHandle concurrentHandlesMetadata1
     closeHandle concurrentHandlesMetadata2
 
@@ -244,10 +250,13 @@ actAndCommit db act
         ((maybeMeta, v), env) <- runConcurrentT (act meta) $
                                    newWriter hnds
                                              newRevision
-                                             (concurrentMetaNumPages meta)
                                              readers
-                                             (concurrentMetaFreshUnusedPages meta)
-                                             (concurrentMetaFreeTree meta)
+                                             (concurrentMetaDataNumPages meta)
+                                             (concurrentMetaIndexNumPages meta)
+                                             (concurrentMetaDataFreshUnusedPages meta)
+                                             (concurrentMetaIndexFreshUnusedPages meta)
+                                             (concurrentMetaDataFreeTree meta)
+                                             (concurrentMetaIndexFreeTree meta)
 
         let maybeMeta' = updateMeta env <$> maybeMeta
 
@@ -260,7 +269,12 @@ actAndCommit db act
                 -- Bookkeeping
                 (newMeta, _) <- flip execStateT (meta', env) $ do
                     saveOverflowIds
-                    saveFreePages' 0
+                    saveFreePages' 0 DataState
+                                     writerDataFileState
+                                     (\e s -> e { writerDataFileState = s })
+                    saveFreePages' 0 IndexState
+                                     writerIndexFileState
+                                     (\e s -> e { writerIndexFileState = s })
                     handleFreedDirtyPages
 
                 -- Commit
@@ -309,7 +323,9 @@ removeNewlyAllocatedOverflows env = do
 
 -- | Update the meta-data from a writer environment
 updateMeta :: WriterEnv ConcurrentHandles -> ConcurrentMeta k v -> ConcurrentMeta k v
-updateMeta env m = m { concurrentMetaFreeTree = writerFreeTree env }
+updateMeta env m = m {
+    concurrentMetaDataFreeTree = fileStateFreeTree (writerDataFileState env)
+  , concurrentMetaIndexFreeTree = fileStateFreeTree (writerIndexFileState env) }
 
 
 -- | Save the newly free'd overflow pages, for deletion on the next tx.
@@ -331,8 +347,11 @@ saveOverflowIds = do
 -- | Save the free'd pages to the free page database
 saveFreePages' :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                => Int
+               -> (forall a. a -> S t a)
+               -> (forall hnds. WriterEnv hnds -> FileState t)
+               -> (forall hnds. WriterEnv hnds -> FileState t -> WriterEnv hnds)
                -> StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
-saveFreePages' paranoid
+saveFreePages' paranoid cons getState setState
     | paranoid >= 100 = error "paranoid: looping!"
     | otherwise
     = do
@@ -364,16 +383,19 @@ saveFreePages' paranoid
     --          pages in this routine.**
 
     (meta, env) <- get
-    (tree', env') <- lift $ runConcurrentT (saveFreePages env) $
-        env { writerReusablePagesOn = False }
+    let tx = writerTxId env
+    (tree', envWithoutTree) <- lift $
+        runConcurrentT (saveFreePages tx (getState env)) $
+            env { writerReusablePagesOn = False }
 
-    let meta' = (updateMeta env meta)
-                    { concurrentMetaFreeTree = tree' }
-    put (meta', env' { writerFreeTree = tree' })
+    let state' = (getState envWithoutTree) { fileStateFreeTree = cons tree' }
+    let env'   = setState envWithoutTree state'
+    let meta'  = updateMeta env' meta
+    put (meta', env')
 
     -- Did we free any new pages? We have to put them in the free tree!
-    unless (writerNewlyFreedPages env' == writerNewlyFreedPages env) $
-       saveFreePages' (paranoid + 1)
+    unless (fileStateNewlyFreedPages state' == fileStateNewlyFreedPages (getState env)) $
+       saveFreePages' (paranoid + 1) cons getState setState
 
 -- | Handle the dirty pages.
 --
@@ -384,8 +406,24 @@ handleFreedDirtyPages :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                       => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
 handleFreedDirtyPages = do
     (meta, env) <- get
-    let meta' = meta { concurrentMetaNumPages = writerNewNumPages env
-                     , concurrentMetaFreshUnusedPages = writerFreedDirtyPages env }
+
+    let dataEnv  = writerDataFileState env
+    let indexEnv = writerIndexFileState env
+
+    let meta' = meta { concurrentMetaDataNumPages =
+                            fileStateNewNumPages dataEnv
+                     , concurrentMetaDataFreeTree =
+                            fileStateFreeTree dataEnv
+                     , concurrentMetaDataFreshUnusedPages =
+                            fileStateFreedDirtyPages dataEnv
+
+                     , concurrentMetaIndexNumPages =
+                            fileStateNewNumPages indexEnv
+                     , concurrentMetaIndexFreeTree =
+                            fileStateFreeTree indexEnv
+                     , concurrentMetaIndexFreshUnusedPages =
+                            fileStateFreedDirtyPages indexEnv
+                     }
     put (meta', env)
 
 --------------------------------------------------------------------------------

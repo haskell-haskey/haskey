@@ -40,8 +40,12 @@ data ConcurrentHandles = ConcurrentHandles {
 -- | Construct a set of 'ConcurrentHandles' from a root directory.
 concurrentHandles :: FilePath -> ConcurrentHandles
 concurrentHandles fp = ConcurrentHandles {
+<<<<<<< HEAD
     concurrentHandlesData        = fp </> "data" </> "data"
   , concurrentHandlesIndex       = fp </> "index" </> "index"
+=======
+    concurrentHandlesMain        = fp </> "index" </> "index"
+>>>>>>> master
   , concurrentHandlesMetadata1   = fp </> "meta" </> "1"
   , concurrentHandlesMetadata2   = fp </> "meta" </> "2"
   , concurrentHandlesOverflowDir = fp </> "overflow"
@@ -177,11 +181,11 @@ readOverflow' root oid = do
 getWriterHnd :: MonadState (WriterEnv ConcurrentHandles) m
              => Height height
              -> m FilePath
-getWriterHnd h | isLeafHeight h = gets $ concurrentHandlesData . writerHnds
-               | otherwise      = gets $ concurrentHandlesIndex . writerHnds
+getWriterHnd h | isLeafHeight h = concurrentHandlesData . writerHnds <$> get
+               | otherwise      = concurrentHandlesIndex . writerHnds <$> get
 
 getReaderHnd :: MonadState (ReaderEnv ConcurrentHandles) m
              => Height height
              -> m FilePath
-getReaderHnd h | isLeafHeight h = gets $ concurrentHandlesData . readerHnds
-               | otherwise      = gets $ concurrentHandlesIndex . readerHnds
+getReaderHnd h | isLeafHeight h = concurrentHandlesData . readerHnds <$> get
+               | otherwise      = concurrentHandlesIndex . readerHnds <$> get

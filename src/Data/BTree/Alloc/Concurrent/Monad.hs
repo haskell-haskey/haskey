@@ -91,12 +91,21 @@ instance
         lift $ putNodePage hnd height nid n
         return nid
       where
-        getAndTouchPid = getFreePageId' >>= \case
+        getAndTouchPid = getAndTouchFreePageId >>= \case
             Just pid -> return pid
             Nothing -> newTouchedPid
 
-        getFreePageId' | isLeafHeight height = getFreePageId (DataState ())
-                       | otherwise           = getFreePageId (IndexState ())
+        getAndTouchFreePageId
+            | isLeafHeight height = getFreePageId (DataState ()) >>= \case
+                Nothing -> return Nothing
+                Just pid -> do
+                    touchPage (DataState pid)
+                    return (Just pid)
+            | otherwise           = getFreePageId (IndexState ()) >>= \case
+                Nothing -> return Nothing
+                Just pid -> do
+                    touchPage (IndexState pid)
+                    return (Just pid)
 
         newTouchedPid
             | isLeafHeight height = do

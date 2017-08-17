@@ -136,9 +136,9 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         liftIO $ removeFile fp `catchIOError` \e ->
             unless (isDoesNotExistError e) (ioError e)
 
-    nodePageSize =
-        return $ \h ->
-            fromIntegral . BS.length . encode . NodePage h
+    nodePageSize = return $ \h -> case viewHeight h of
+        UZero -> fromIntegral . BS.length . encode . LeafNodePage h
+        USucc _ -> fromIntegral . BS.length . encode . IndexNodePage h
 
     maxPageSize = return 256
 
@@ -151,11 +151,14 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
         liftIO $ hSeek h AbsoluteSeek offset
         bs <- liftIO $ BS.hGet h (fromIntegral size)
-        n  <- decodeM (nodePage height key val) bs
 
-        case n of
-            NodePage hgtSrc tree ->
-                justErrM WrongNodeTypeError $ castNode hgtSrc height tree
+        case viewHeight height of
+            UZero -> decodeM (leafNodePage height key val) bs >>= \case
+                LeafNodePage hgtSrc tree ->
+                    justErrM WrongNodeTypeError $ castNode hgtSrc height tree
+            USucc _ -> decodeM (indexNodePage height key val) bs >>= \case
+                IndexNodePage hgtSrc tree ->
+                    justErrM WrongNodeTypeError $ castNode hgtSrc height tree
 
     putNodePage fp hgt nid node = do
         h    <- get >>= lookupHandle fp
@@ -163,11 +166,14 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
         let PageId pid = nodeIdToPageId nid
             offset     = fromIntegral $ pid * fromIntegral size
-            page       = NodePage hgt node
 
         liftIO $ hSeek h AbsoluteSeek offset
-        bs <- justErrM PageOverflowError $ encodeAndPad size page
+        bs <- justErrM PageOverflowError $ pg size
         liftIO $ BS.hPut h bs
+      where
+        pg size = case viewHeight hgt of
+            UZero -> encodeAndPad size $ LeafNodePage hgt node
+            USucc _ -> encodeAndPad size $ IndexNodePage hgt node
 
     getOverflow fp val = do
         h <- get >>= lookupHandle fp

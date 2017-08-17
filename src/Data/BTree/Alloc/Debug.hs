@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- | An in memory allocator for debugging and testing purposes.
 module Data.BTree.Alloc.Debug where
@@ -59,8 +60,9 @@ instance (Functor m, Monad m) => AllocReaderM (DebugT m) where
         return $ getSomeVal v
 
 instance (Functor m, Monad m) => AllocM (DebugT m) where
-    nodePageSize = return $ \h ->
-        fromIntegral . BS.length . encode . NodePage h
+    nodePageSize = return $ \h -> case viewHeight h of
+        UZero -> fromIntegral . BS.length . encode . LeafNodePage h
+        USucc _ -> fromIntegral . BS.length . encode . IndexNodePage h
 
     maxPageSize = return 256
 

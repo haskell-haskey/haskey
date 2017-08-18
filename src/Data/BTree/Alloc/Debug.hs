@@ -10,7 +10,7 @@ import Control.Monad.State
 
 import Data.Map (Map, (!))
 import Data.Word (Word32)
-import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -61,8 +61,8 @@ instance (Functor m, Monad m) => AllocReaderM (DebugT m) where
 
 instance (Functor m, Monad m) => AllocM (DebugT m) where
     nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BS.length . encode . LeafNodePage h
-        USucc _ -> fromIntegral . BS.length . encode . IndexNodePage h
+        UZero -> fromIntegral . BL.length . encode . LeafNodePage h
+        USucc _ -> fromIntegral . BL.length . encode . IndexNodePage h
 
     maxPageSize = return 256
 

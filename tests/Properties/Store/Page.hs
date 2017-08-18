@@ -35,14 +35,14 @@ prop_binary_pageType = forAll types $ \t ->
                       TypeIndexNode]
 
 prop_binary_emptyPage :: Bool
-prop_binary_emptyPage = case decode emptyPage (encode EmptyPage) of
+prop_binary_emptyPage = case decode' emptyPage (encode EmptyPage) of
     Right EmptyPage -> True
     Left _          -> False
 
 prop_binary_leafNodePage :: Property
 prop_binary_leafNodePage = forAll genLeafNode $ \leaf ->
-    case decode (leafNodePage zeroHeight key val)
-                (encode (LeafNodePage zeroHeight leaf)) of
+    case decode' (leafNodePage zeroHeight key val)
+                 (encode (LeafNodePage zeroHeight leaf)) of
         Right (LeafNodePage h n) -> maybe False (== leaf) $ castNode h zeroHeight n
         Left _                   -> False
  where
@@ -51,10 +51,13 @@ prop_binary_leafNodePage = forAll genLeafNode $ \leaf ->
 
 prop_binary_indexNodePage :: Property
 prop_binary_indexNodePage = forAll genIndexNode $ \(srcHgt, idx) ->
-    case decode (indexNodePage srcHgt key val)
-                (encode (IndexNodePage srcHgt idx)) of
+    case decode' (indexNodePage srcHgt key val)
+                 (encode (IndexNodePage srcHgt idx)) of
         Right (IndexNodePage h n) -> maybe False (== idx) $ castNode h srcHgt n
         Left _                    -> False
  where
    key = Proxy :: Proxy Int64
    val = Proxy :: Proxy Bool
+
+decode' :: SGet t -> BL.ByteString -> Either String (Page t)
+decode' x = decode x . BL.toStrict

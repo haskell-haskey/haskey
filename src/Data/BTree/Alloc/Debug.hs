@@ -61,8 +61,8 @@ instance (Functor m, Monad m) => AllocReaderM (DebugT m) where
 
 instance (Functor m, Monad m) => AllocM (DebugT m) where
     nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encode . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encode . IndexNodePage h
+        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
+        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
 
     maxPageSize = return 256
 

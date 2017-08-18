@@ -43,14 +43,14 @@ instance Arbitrary (Tree k v) where
 
 prop_binary_leafNode :: Property
 prop_binary_leafNode = forAll genLeafNode $ \leaf ->
-    runGet (getNode zeroHeight) (runPut (putNode leaf)) == leaf
+    runGet (getLeafNode zeroHeight) (runPut (putLeafNode leaf)) == leaf
 
 genLeafNode :: Gen (Node 'Z Int64 Bool)
 genLeafNode = Leaf <$> arbitrary
 
 prop_binary_indexNode :: Property
 prop_binary_indexNode = forAll genIndexNode $ \(h, idx) ->
-    runGet (getNode h) (runPut (putNode idx)) == idx
+    runGet (getIndexNode h) (runPut (putIndexNode idx)) == idx
 
 genIndexNode :: Gen (Height ('S h), Node ('S h) Int64 Bool)
 genIndexNode = do

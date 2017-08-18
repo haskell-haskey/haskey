@@ -3,7 +3,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 -- | Basic structures of an impure B+-tree.
@@ -15,8 +14,10 @@ module Data.BTree.Impure.Structures (
 , LeafValue(..)
 
   -- * Binary encoding
-, putNode
-, getNode
+, putLeafNode
+, getLeafNode
+, putIndexNode
+, getIndexNode
 
   -- * Casting
 , castNode
@@ -96,21 +97,21 @@ data BNode = BIdx
 
 instance Binary BNode where
 
--- | Encode a 'Node'
-putNode :: (Binary key, Binary val) => Node height key val -> Put
-putNode = \case
-    Leaf items -> put BLeaf >> put items
-    Idx idx    -> put BIdx  >> put idx
+-- | Encode a 'Leaf' 'Node'.
+putLeafNode :: (Binary key, Binary val) => Node 'Z key val -> Put
+putLeafNode (Leaf items) = put items
 
--- | Decode a 'Node' of a certain height.
-getNode :: (Binary key, Binary val) => Height height -> Get (Node height key val)
-getNode height = case viewHeight height of
-    UZero   -> do
-                   BLeaf <- get
-                   Leaf <$> get
-    USucc _ -> do
-                   BIdx <- get
-                   Idx <$> get
+-- | Decode a 'Leaf' 'Node'.
+getLeafNode :: (Binary key, Binary val) => Height 'Z -> Get (Node 'Z key val)
+getLeafNode _ = Leaf <$> get
+
+-- | Encode an 'Idx' 'Node'.
+putIndexNode :: (Binary key, Binary val) => Node ('S n) key val -> Put
+putIndexNode (Idx idx) = put idx
+
+-- | Decode an 'Idx' 'Node'.
+getIndexNode :: (Binary key, Binary val) => Height ('S n) -> Get (Node ('S n) key val)
+getIndexNode _ = Idx <$> get
 
 --------------------------------------------------------------------------------
 

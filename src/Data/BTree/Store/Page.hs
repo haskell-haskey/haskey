@@ -25,7 +25,7 @@ import Numeric (showHex)
 
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
-import Data.BTree.Impure.Structures (getNode, putNode)
+import Data.BTree.Impure.Structures (putLeafNode, getLeafNode, putIndexNode, getIndexNode)
 import Data.BTree.Primitives
 
 -- | The type of a page.
@@ -113,8 +113,8 @@ putPage :: Page t -> Put
 putPage EmptyPage              = put TypeEmpty
 putPage (ConcurrentMetaPage m) = put TypeConcurrentMeta >> put m
 putPage (OverflowPage v)       = put TypeOverflow >> put v
-putPage (LeafNodePage _ n)     = put TypeLeafNode >> putNode n
-putPage (IndexNodePage h n)    = put TypeIndexNode >> put h >> putNode n
+putPage (LeafNodePage _ n)     = put TypeLeafNode >> putLeafNode n
+putPage (IndexNodePage h n)    = put TypeIndexNode >> put h >> putIndexNode n
 
 -- | Decoder for an empty page.
 emptyPage :: SGet 'TypeEmpty
@@ -133,8 +133,8 @@ leafNodePage h k v = SGet STypeLeafNode $ get >>= \case
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeLeafNode"
   where
     get' :: (Key k, Value v)
-         => Height h -> Proxy k -> Proxy v -> Get (Node h k v)
-    get' h' _ _ = getNode h'
+         => Height 'Z -> Proxy k -> Proxy v -> Get (Node 'Z k v)
+    get' h' _ _ = getLeafNode h'
 
 -- | Decoder for a leaf node page.
 indexNodePage :: (Key k, Value v)
@@ -152,8 +152,8 @@ indexNodePage h k v = SGet STypeIndexNode $ get >>= \case
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeIndexNode"
   where
     get' :: (Key k, Value v)
-         => Height h -> Proxy k -> Proxy v -> Get (Node h k v)
-    get' h' _ _ = getNode h'
+         => Height ('S n) -> Proxy k -> Proxy v -> Get (Node ('S n) k v)
+    get' h' _ _ = getIndexNode h'
 
 -- | Decoder for an overflow page.
 overflowPage :: (Value v) => Proxy v -> SGet 'TypeOverflow

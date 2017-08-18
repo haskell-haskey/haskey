@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -20,8 +19,9 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (fromStrict, toStrict)
 import Data.Proxy
 import Data.Typeable (Typeable)
+import Data.Word (Word8)
 
-import GHC.Generics (Generic)
+import Numeric (showHex)
 
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
@@ -34,7 +34,7 @@ data PageType = TypeEmpty
               | TypeOverflow
               | TypeLeafNode
               | TypeIndexNode
-              deriving (Eq, Generic, Show)
+              deriving (Eq, Show)
 
 data SPageType t where
     STypeEmpty           :: SPageType 'TypeEmpty
@@ -44,6 +44,18 @@ data SPageType t where
     STypeIndexNode       :: SPageType 'TypeIndexNode
 
 instance Binary PageType where
+    put TypeEmpty          = put (0x00 :: Word8)
+    put TypeConcurrentMeta = put (0x20 :: Word8)
+    put TypeOverflow       = put (0x40 :: Word8)
+    put TypeLeafNode       = put (0x60 :: Word8)
+    put TypeIndexNode      = put (0x80 :: Word8)
+    get = (get :: Get Word8) >>= \case
+        0x00 -> return TypeEmpty
+        0x20 -> return TypeConcurrentMeta
+        0x40 -> return TypeOverflow
+        0x60 -> return TypeLeafNode
+        0x80 -> return TypeIndexNode
+        t    -> fail $ "unknown page type: " ++ showHex t ""
 
 -- | A decoded page, of a certain type @t@ of kind 'PageType'.
 data Page (t :: PageType) where

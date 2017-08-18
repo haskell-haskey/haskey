@@ -7,6 +7,8 @@ import Test.QuickCheck
 
 import Data.Int
 import Data.Proxy
+import qualified Data.Binary as B
+import qualified Data.ByteString.Lazy as BL
 
 import Data.BTree.Impure.Structures (castNode)
 import Data.BTree.Primitives
@@ -16,10 +18,21 @@ import Properties.Impure.Structures (genLeafNode, genIndexNode)
 
 tests :: Test
 tests = testGroup "Store.Page"
-    [ testProperty "binary emptyPage" prop_binary_emptyPage
+    [ testProperty "binary pageType" prop_binary_pageType
+    , testProperty "binary emptyPage" prop_binary_emptyPage
     , testProperty "binary nodePage leaf" prop_binary_leafNodePage
     , testProperty "binary nodePage idx" prop_binary_indexNodePage
     ]
+
+prop_binary_pageType :: Property
+prop_binary_pageType = forAll types $ \t ->
+    let bs = B.encode t in BL.length bs == 1 && B.decode bs == t
+  where
+    types = elements [TypeEmpty,
+                      TypeConcurrentMeta,
+                      TypeOverflow,
+                      TypeLeafNode,
+                      TypeIndexNode]
 
 prop_binary_emptyPage :: Bool
 prop_binary_emptyPage = case decode emptyPage (encode EmptyPage) of

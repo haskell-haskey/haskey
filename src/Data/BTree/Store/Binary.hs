@@ -36,10 +36,11 @@ import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
 import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (toStrict)
 import Data.Coerce
 import Data.Map (Map)
 import Data.Typeable (Typeable)
-import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Concurrent
@@ -111,8 +112,8 @@ instance (Applicative m, Monad m, MonadThrow m,
         modify $ M.delete fp
 
     nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BS.length . encode . LeafNodePage h
-        USucc _ -> fromIntegral . BS.length . encode . IndexNodePage h
+        UZero -> fromIntegral . BL.length . encode . LeafNodePage h
+        USucc _ -> fromIntegral . BL.length . encode . IndexNodePage h
 
     maxPageSize = return 256
 
@@ -130,8 +131,8 @@ instance (Applicative m, Monad m, MonadThrow m,
         modify $ M.update (Just . M.insert (nodeIdToPageId nid) pg) hnd
       where
         pg = case viewHeight height of
-            UZero -> encode $ LeafNodePage height node
-            USucc _ -> encode $ IndexNodePage height node
+            UZero -> toStrict . encode $ LeafNodePage height node
+            USucc _ -> toStrict . encode $ IndexNodePage height node
 
     getOverflow hnd val = do
         bs <- get >>= lookupPage hnd 0
@@ -141,7 +142,7 @@ instance (Applicative m, Monad m, MonadThrow m,
     putOverflow hnd val =
         modify $ M.update (Just . M.insert 0 pg) hnd
       where
-        pg = encode $ OverflowPage val
+        pg = toStrict . encode $ OverflowPage val
 
     listOverflows _ = gets M.keys
 
@@ -153,7 +154,7 @@ instance (Applicative m, Monad m, MonadThrow m) =>
     putConcurrentMeta h meta =
         modify $ M.update (Just . M.insert 0 pg) h
       where
-        pg = encode $ ConcurrentMetaPage meta
+        pg = toStrict . encode $ ConcurrentMetaPage meta
 
     readConcurrentMeta hnd k v = do
         Just bs <- StoreT $ gets (M.lookup hnd >=> M.lookup 0)

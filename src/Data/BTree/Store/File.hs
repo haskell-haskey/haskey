@@ -36,12 +36,12 @@ import Control.Monad.IO.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
-import Data.ByteString (ByteString)
 import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Monoid ((<>))
 import Data.Typeable (Typeable)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
 import System.Directory (createDirectoryIfMissing, removeFile, getDirectoryContents)
@@ -62,14 +62,14 @@ import Data.BTree.Utils.Monad.Catch (justErrM)
 -- | Encode a page padding it to the maxim page size.
 --
 -- Return 'Nothing' of the page is too large to fit into one page size.
-encodeAndPad :: PageSize -> Page t -> Maybe ByteString
+encodeAndPad :: PageSize -> Page t -> Maybe BL.ByteString
 encodeAndPad size page
     | Just n <- padding = Just $
-        enc <> BS.replicate n 0
+        enc <> BL.replicate n 0
     | otherwise = Nothing
   where
     enc = encode page
-    padding | n <- fromIntegral size - BS.length enc, n >= 0 = Just n
+    padding | n <- fromIntegral size - BL.length enc, n >= 0 = Just n
             | otherwise = Nothing
 
 --------------------------------------------------------------------------------
@@ -137,8 +137,8 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
             unless (isDoesNotExistError e) (ioError e)
 
     nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BS.length . encode . LeafNodePage h
-        USucc _ -> fromIntegral . BS.length . encode . IndexNodePage h
+        UZero -> fromIntegral . BL.length . encode . LeafNodePage h
+        USucc _ -> fromIntegral . BL.length . encode . IndexNodePage h
 
     maxPageSize = return 256
 
@@ -169,7 +169,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
         liftIO $ hSeek h AbsoluteSeek offset
         bs <- justErrM PageOverflowError $ pg size
-        liftIO $ BS.hPut h bs
+        liftIO $ BL.hPut h bs
       where
         pg size = case viewHeight hgt of
             UZero -> encodeAndPad size $ LeafNodePage hgt node
@@ -187,7 +187,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
     putOverflow fp val = do
         h <- get >>= lookupHandle fp
         liftIO $ hSeek h AbsoluteSeek 0
-        liftIO $ BS.hPut h (encode $ OverflowPage val)
+        liftIO $ BL.hPut h (encode $ OverflowPage val)
 
     listOverflows dir = liftIO $ getDirectoryContents dir `catch` catch'
       where catch' e | isDoesNotExistError e = return []
@@ -203,9 +203,9 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
         let page = ConcurrentMetaPage meta
             bs   = encode page
-        liftIO $ hSetFileSize h (fromIntegral $ BS.length bs)
+        liftIO $ hSetFileSize h (fromIntegral $ BL.length bs)
         liftIO $ hSeek h AbsoluteSeek 0
-        liftIO $ BS.hPut h bs
+        liftIO $ BL.hPut h bs
 
     readConcurrentMeta fp k v = do
         fh       <- get >>=  lookupHandle fp

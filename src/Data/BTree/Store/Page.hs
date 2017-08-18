@@ -9,17 +9,23 @@
 -- pages.
 module Data.BTree.Store.Page where
 
+import Codec.Compression.LZ4
+
 import Control.Applicative ((<$>))
 import Control.Monad.Catch
 
 import Data.Binary (Binary(..), Put, Get)
 import Data.Binary.Get (runGetOrFail)
 import Data.Binary.Put (runPut)
+import Data.Bits ((.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (fromStrict, toStrict)
+import Data.Maybe (fromMaybe)
 import Data.Proxy
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 
 import Numeric (showHex)
 
@@ -87,8 +93,19 @@ pageType STypeLeafNode       = TypeLeafNode
 pageType STypeIndexNode      = TypeIndexNode
 
 -- | Encode a page to a lazy byte string.
-encode :: Page t -> ByteString
-encode = toStrict . runPut . putPage
+encode :: Page t -> BL.ByteString
+encode = runPut . putPage
+  -- let bs = runPut (putPage p) in fromMaybe bs (tryCompress bs)
+  where
+    _tryCompress bs = do
+        (t, body) <- BL.uncons bs
+        c         <- compress (toStrict body)
+        if BS.length c < fromIntegral (BL.length bs)
+            then Just $ maskCompressed t `BL.cons` fromStrict c
+            else Nothing
+
+    maskCompressed t = t .|. 0x01
+
 
 -- | Decode a page with a specific decoder, or return the error.
 decode :: SGet t -> ByteString -> Either String (Page t)
@@ -100,6 +117,17 @@ decode (SGet t g) bs = case runGetOrFail g (fromStrict bs) of
         "could not decode " ++ show (pageType t) ++ ": " ++ err ++
         "at pos " ++ show offset ++ ", remaining bytes: " ++ show bs' ++
         ", full body: " ++ show bs
+
+    _decompressed = fromMaybe (fromStrict bs) $ do
+        (tb, body) <- BS.uncons bs
+        if isCompressed tb
+            then do
+                c <- decompress body
+                Just $ unmaskCompressed tb `BL.cons` fromStrict c
+            else Nothing
+
+    isCompressed b = b .&. 0x01 == 0x01
+    unmaskCompressed b = b .&. 0xFE
 
 
 -- | Monadic wrapper around 'decode'

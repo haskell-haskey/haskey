@@ -26,11 +26,15 @@ module Data.BTree.Impure.Structures (
 ) where
 
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad (replicateM)
 
 import Data.Binary (Binary(..), Put, Get)
+import Data.Bits ((.|.), shiftL, shiftR)
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep, cast)
+import Data.Word (Word8, Word32)
+import qualified Data.Map as M
 
 import GHC.Generics (Generic)
 
@@ -99,11 +103,30 @@ instance Binary BNode where
 
 -- | Encode a 'Leaf' 'Node'.
 putLeafNode :: (Binary key, Binary val) => Node 'Z key val -> Put
-putLeafNode (Leaf items) = put items
+putLeafNode (Leaf items) = do
+    encodeSize $ fromIntegral (M.size items)
+    mapM_ put $ M.toList items
+  where
+    encodeSize :: Word32 -> Put
+    encodeSize s = put msb1 >> put msb2 >> put msb3
+      where
+        msb1 = fromIntegral $ s `shiftR` 16 :: Word8
+        msb2 = fromIntegral $ s `shiftR`  8 :: Word8
+        msb3 = fromIntegral   s             :: Word8
 
 -- | Decode a 'Leaf' 'Node'.
-getLeafNode :: (Binary key, Binary val) => Height 'Z -> Get (Node 'Z key val)
-getLeafNode _ = Leaf <$> get
+getLeafNode :: (Ord key, Binary key, Binary val) => Height 'Z -> Get (Node 'Z key val)
+getLeafNode _ = do
+    v <- decodeSize <$> get
+    l <- replicateM (fromIntegral v) get
+    return $ Leaf (M.fromList l)
+  where
+    decodeSize :: (Word8, Word8, Word8) -> Word32
+    decodeSize (msb1, msb2, msb3) = msb1' .|. msb2' .|. msb3'
+      where
+        msb1' = (fromIntegral msb1 :: Word32) `shiftL` 16
+        msb2' = (fromIntegral msb2 :: Word32) `shiftL`  8
+        msb3' = (fromIntegral msb3 :: Word32)
 
 -- | Encode an 'Idx' 'Node'.
 putIndexNode :: (Binary key, Binary val) => Node ('S n) key val -> Put

@@ -1,8 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 -- | Basic structures of an impure B+-tree.
@@ -36,7 +36,7 @@ import Data.Typeable (Typeable, typeRep, cast)
 import Data.Word (Word8, Word32)
 import qualified Data.Map as M
 
-import GHC.Generics (Generic)
+import Numeric (showHex)
 
 import Unsafe.Coerce
 
@@ -58,9 +58,16 @@ data Tree key val where
     deriving (Typeable)
 
 data LeafValue v = RawValue v | OverflowValue OverflowId
-                 deriving (Eq, Generic, Show)
+                 deriving (Eq, Show)
 
 instance Binary v => Binary (LeafValue v) where
+    put (RawValue v) = put (0x00 :: Word8) >> put v
+    put (OverflowValue v) = put (0x01 :: Word8) >> put v
+
+    get = (get :: Get Word8) >>= \case
+        0x00 -> RawValue <$> get
+        0x01 -> OverflowValue <$> get
+        t -> fail $ "unknown leaf value: " ++ showHex t ""
 
 type LeafItems k v = Map k (LeafValue v)
 
@@ -95,12 +102,6 @@ instance Binary (Tree key val) where
     put (Tree height rootId) = put height >> put rootId
     get = Tree <$> get <*> get
 
-data BNode = BIdx
-           | BLeaf
-           deriving (Generic)
-
-instance Binary BNode where
-
 -- | Encode a 'Leaf' 'Node'.
 putLeafNode :: (Binary key, Binary val) => Node 'Z key val -> Put
 putLeafNode (Leaf items) = do
@@ -126,7 +127,7 @@ getLeafNode _ = do
       where
         msb1' = (fromIntegral msb1 :: Word32) `shiftL` 16
         msb2' = (fromIntegral msb2 :: Word32) `shiftL`  8
-        msb3' = (fromIntegral msb3 :: Word32)
+        msb3' =  fromIntegral msb3 :: Word32
 
 -- | Encode an 'Idx' 'Node'.
 putIndexNode :: (Binary key, Binary val) => Node ('S n) key val -> Put

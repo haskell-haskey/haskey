@@ -24,7 +24,8 @@ import Properties.Primitives.Ids ()    -- Arbitrary instance of NodeId
 
 tests :: Test
 tests = testGroup "Impure.Structures"
-    [ testProperty "binary leafNode" prop_binary_leafNode
+    [ testProperty "binary leafValue" prop_binary_leafValue
+    , testProperty "binary leafNode" prop_binary_leafNode
     , testProperty "binary indexNode" prop_binary_indexNode
     , testProperty "binary tree" prop_binary_tree
     ]
@@ -40,6 +41,9 @@ instance (Key k, Arbitrary k) => Arbitrary (Node ('S height) k v) where
 
 instance Arbitrary (Tree k v) where
     arbitrary = Tree <$> arbitrary <*> arbitrary
+
+prop_binary_leafValue :: LeafValue Int64 -> Bool
+prop_binary_leafValue xs = B.decode (B.encode xs) == xs
 
 prop_binary_leafNode :: Property
 prop_binary_leafNode = forAll genLeafNode $ \leaf ->

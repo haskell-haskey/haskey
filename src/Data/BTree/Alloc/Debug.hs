@@ -9,7 +9,7 @@ import Control.Monad.Identity
 import Control.Monad.State
 
 import Data.Map (Map, (!))
-import Data.Word (Word64)
+import Data.Word (Word32)
 import qualified Data.ByteString as BS
 import qualified Data.Map as M
 
@@ -32,7 +32,7 @@ getSomeVal (SomeVal v) = unsafeCoerce v
 
 data Pages = Pages {
     pagesNodes :: Map PageId SomeNode
-  , pagesOverflow :: Map Word64 SomeVal
+  , pagesOverflow :: Map Word32 SomeVal
   }
 
 emptyPages :: Pages

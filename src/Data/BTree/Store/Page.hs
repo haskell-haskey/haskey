@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -20,42 +19,61 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (fromStrict, toStrict)
 import Data.Proxy
 import Data.Typeable (Typeable)
+import Data.Word (Word8)
 
-import GHC.Generics (Generic)
+import Numeric (showHex)
 
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
-import Data.BTree.Impure.Structures (getNode, putNode)
+import Data.BTree.Impure.Structures (putLeafNode, getLeafNode, putIndexNode, getIndexNode)
 import Data.BTree.Primitives
 
 -- | The type of a page.
 data PageType = TypeEmpty
-              | TypeNode
-              | TypeOverflow
               | TypeConcurrentMeta
-              deriving (Eq, Generic, Show)
+              | TypeOverflow
+              | TypeLeafNode
+              | TypeIndexNode
+              deriving (Eq, Show)
 
 data SPageType t where
     STypeEmpty           :: SPageType 'TypeEmpty
-    STypeNode            :: SPageType 'TypeNode
-    STypeOverflow        :: SPageType 'TypeOverflow
     STypeConcurrentMeta  :: SPageType 'TypeConcurrentMeta
+    STypeOverflow        :: SPageType 'TypeOverflow
+    STypeLeafNode        :: SPageType 'TypeLeafNode
+    STypeIndexNode       :: SPageType 'TypeIndexNode
 
 instance Binary PageType where
+    put TypeEmpty          = put (0x00 :: Word8)
+    put TypeConcurrentMeta = put (0x20 :: Word8)
+    put TypeOverflow       = put (0x40 :: Word8)
+    put TypeLeafNode       = put (0x60 :: Word8)
+    put TypeIndexNode      = put (0x80 :: Word8)
+    get = (get :: Get Word8) >>= \case
+        0x00 -> return TypeEmpty
+        0x20 -> return TypeConcurrentMeta
+        0x40 -> return TypeOverflow
+        0x60 -> return TypeLeafNode
+        0x80 -> return TypeIndexNode
+        t    -> fail $ "unknown page type: " ++ showHex t ""
 
 -- | A decoded page, of a certain type @t@ of kind 'PageType'.
 data Page (t :: PageType) where
     EmptyPage :: Page 'TypeEmpty
-    NodePage  :: (Key k, Value v)
-              => Height h
-              -> Node h k v
-              -> Page 'TypeNode
-    OverflowPage :: (Value v)
-                 => v
-                 -> Page 'TypeOverflow
     ConcurrentMetaPage :: (Key k, Value v)
                        => ConcurrentMeta k v
                        -> Page 'TypeConcurrentMeta
+    OverflowPage :: (Value v)
+                 => v
+                 -> Page 'TypeOverflow
+    LeafNodePage  :: (Key k, Value v)
+                  => Height 'Z
+                  -> Node 'Z k v
+                  -> Page 'TypeLeafNode
+    IndexNodePage  :: (Key k, Value v)
+                   => Height ('S h)
+                   -> Node ('S h) k v
+                   -> Page 'TypeIndexNode
 
 -- | A decoder with its type.
 data SGet t = SGet (SPageType t) (Get (Page t))
@@ -63,9 +81,10 @@ data SGet t = SGet (SPageType t) (Get (Page t))
 -- | Get the type of a 'Page'.
 pageType :: SPageType t -> PageType
 pageType STypeEmpty          = TypeEmpty
-pageType STypeNode           = TypeNode
-pageType STypeOverflow       = TypeOverflow
 pageType STypeConcurrentMeta = TypeConcurrentMeta
+pageType STypeOverflow       = TypeOverflow
+pageType STypeLeafNode       = TypeLeafNode
+pageType STypeIndexNode      = TypeIndexNode
 
 -- | Encode a page to a lazy byte string.
 encode :: Page t -> ByteString
@@ -92,9 +111,10 @@ decodeM g bs = case decode g bs of
 -- | The encoder of a 'Page'.
 putPage :: Page t -> Put
 putPage EmptyPage              = put TypeEmpty
-putPage (NodePage h n)         = put TypeNode >> put h >> putNode n
-putPage (OverflowPage v)       = put TypeOverflow >> put v
 putPage (ConcurrentMetaPage m) = put TypeConcurrentMeta >> put m
+putPage (OverflowPage v)       = put TypeOverflow >> put v
+putPage (LeafNodePage _ n)     = put TypeLeafNode >> putLeafNode n
+putPage (IndexNodePage h n)    = put TypeIndexNode >> put h >> putIndexNode n
 
 -- | Decoder for an empty page.
 emptyPage :: SGet 'TypeEmpty
@@ -102,25 +122,40 @@ emptyPage = SGet STypeEmpty $ get >>= \case
     TypeEmpty -> return EmptyPage
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeEmpty"
 
--- | Decoder for a node page.
-nodePage :: (Key k, Value v)
-         => Height h
-         -> Proxy k
-         -> Proxy v
-         -> SGet 'TypeNode
-nodePage h k v = SGet STypeNode $ get >>= \case
-    TypeNode -> do
-        h' <- get
-        if fromHeight h == fromHeight h'
-            then NodePage h <$> get' h k v
-            else fail $ "expected height " ++ show h ++ " but got "
-                     ++ show h' ++ " while decoding TypeNode"
-    x -> fail $ "unexpected " ++ show x ++ " while decoding TypeNode"
+-- | Decoder for a leaf node page.
+leafNodePage :: (Key k, Value v)
+             => Height 'Z
+             -> Proxy k
+             -> Proxy v
+             -> SGet 'TypeLeafNode
+leafNodePage h k v = SGet STypeLeafNode $ get >>= \case
+    TypeLeafNode -> LeafNodePage h <$> get' h k v
+    x -> fail $ "unexpected " ++ show x ++ " while decoding TypeLeafNode"
   where
     get' :: (Key k, Value v)
-         => Height h -> Proxy k -> Proxy v -> Get (Node h k v)
-    get' h' _ _ = getNode h'
+         => Height 'Z -> Proxy k -> Proxy v -> Get (Node 'Z k v)
+    get' h' _ _ = getLeafNode h'
 
+-- | Decoder for a leaf node page.
+indexNodePage :: (Key k, Value v)
+              => Height ('S n)
+              -> Proxy k
+              -> Proxy v
+              -> SGet 'TypeIndexNode
+indexNodePage h k v = SGet STypeIndexNode $ get >>= \case
+    TypeIndexNode -> do
+        h' <- get
+        if fromHeight h == fromHeight h'
+            then IndexNodePage h <$> get' h k v
+            else fail $ "expected height " ++ show h ++ " but got "
+                     ++ show h' ++ " while decoding TypeNode"
+    x -> fail $ "unexpected " ++ show x ++ " while decoding TypeIndexNode"
+  where
+    get' :: (Key k, Value v)
+         => Height ('S n) -> Proxy k -> Proxy v -> Get (Node ('S n) k v)
+    get' h' _ _ = getIndexNode h'
+
+-- | Decoder for an overflow page.
 overflowPage :: (Value v) => Proxy v -> SGet 'TypeOverflow
 overflowPage v = SGet STypeOverflow $ get >>= \case
     TypeOverflow -> OverflowPage <$> get' v

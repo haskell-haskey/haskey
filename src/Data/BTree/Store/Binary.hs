@@ -110,21 +110,28 @@ instance (Applicative m, Monad m, MonadThrow m,
     removeHandle fp =
         modify $ M.delete fp
 
-    nodePageSize = return $ \h ->
-        fromIntegral . BS.length . encode . NodePage h
+    nodePageSize = return $ \h -> case viewHeight h of
+        UZero -> fromIntegral . BS.length . encode . LeafNodePage h
+        USucc _ -> fromIntegral . BS.length . encode . IndexNodePage h
 
     maxPageSize = return 256
 
     getNodePage hnd h key val nid = do
         bs <- get >>= lookupPage hnd (nodeIdToPageId nid)
-        decodeM (nodePage h key val) bs >>= \case
-            NodePage heightSrc n ->
-                justErrM WrongNodeTypeError $ castNode heightSrc h n
+        case viewHeight h of
+            UZero -> decodeM (leafNodePage h key val) bs >>= \case
+                LeafNodePage heightSrc n ->
+                    justErrM WrongNodeTypeError $ castNode heightSrc h n
+            USucc _ -> decodeM (indexNodePage h key val) bs >>= \case
+                IndexNodePage heightSrc n ->
+                    justErrM WrongNodeTypeError $ castNode heightSrc h n
 
     putNodePage hnd height nid node =
         modify $ M.update (Just . M.insert (nodeIdToPageId nid) pg) hnd
       where
-        pg = encode $ NodePage height node
+        pg = case viewHeight height of
+            UZero -> encode $ LeafNodePage height node
+            USucc _ -> encode $ IndexNodePage height node
 
     getOverflow hnd val = do
         bs <- get >>= lookupPage hnd 0

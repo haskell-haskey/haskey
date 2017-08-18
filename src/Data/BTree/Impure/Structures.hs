@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
@@ -15,8 +14,10 @@ module Data.BTree.Impure.Structures (
 , LeafValue(..)
 
   -- * Binary encoding
-, putNode
-, getNode
+, putLeafNode
+, getLeafNode
+, putIndexNode
+, getIndexNode
 
   -- * Casting
 , castNode
@@ -25,13 +26,17 @@ module Data.BTree.Impure.Structures (
 ) where
 
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad (replicateM)
 
 import Data.Binary (Binary(..), Put, Get)
+import Data.Bits ((.|.), shiftL, shiftR)
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable, typeRep, cast)
+import Data.Word (Word8, Word32)
+import qualified Data.Map as M
 
-import GHC.Generics (Generic)
+import Numeric (showHex)
 
 import Unsafe.Coerce
 
@@ -53,9 +58,16 @@ data Tree key val where
     deriving (Typeable)
 
 data LeafValue v = RawValue v | OverflowValue OverflowId
-                 deriving (Eq, Generic, Show)
+                 deriving (Eq, Show)
 
 instance Binary v => Binary (LeafValue v) where
+    put (RawValue v) = put (0x00 :: Word8) >> put v
+    put (OverflowValue v) = put (0x01 :: Word8) >> put v
+
+    get = (get :: Get Word8) >>= \case
+        0x00 -> RawValue <$> get
+        0x01 -> OverflowValue <$> get
+        t -> fail $ "unknown leaf value: " ++ showHex t ""
 
 type LeafItems k v = Map k (LeafValue v)
 
@@ -90,27 +102,40 @@ instance Binary (Tree key val) where
     put (Tree height rootId) = put height >> put rootId
     get = Tree <$> get <*> get
 
-data BNode = BIdx
-           | BLeaf
-           deriving (Generic)
+-- | Encode a 'Leaf' 'Node'.
+putLeafNode :: (Binary key, Binary val) => Node 'Z key val -> Put
+putLeafNode (Leaf items) = do
+    encodeSize $ fromIntegral (M.size items)
+    mapM_ put $ M.toList items
+  where
+    encodeSize :: Word32 -> Put
+    encodeSize s = put msb1 >> put msb2 >> put msb3
+      where
+        msb1 = fromIntegral $ s `shiftR` 16 :: Word8
+        msb2 = fromIntegral $ s `shiftR`  8 :: Word8
+        msb3 = fromIntegral   s             :: Word8
 
-instance Binary BNode where
+-- | Decode a 'Leaf' 'Node'.
+getLeafNode :: (Ord key, Binary key, Binary val) => Height 'Z -> Get (Node 'Z key val)
+getLeafNode _ = do
+    v <- decodeSize <$> get
+    l <- replicateM (fromIntegral v) get
+    return $ Leaf (M.fromList l)
+  where
+    decodeSize :: (Word8, Word8, Word8) -> Word32
+    decodeSize (msb1, msb2, msb3) = msb1' .|. msb2' .|. msb3'
+      where
+        msb1' = (fromIntegral msb1 :: Word32) `shiftL` 16
+        msb2' = (fromIntegral msb2 :: Word32) `shiftL`  8
+        msb3' =  fromIntegral msb3 :: Word32
 
--- | Encode a 'Node'
-putNode :: (Binary key, Binary val) => Node height key val -> Put
-putNode = \case
-    Leaf items -> put BLeaf >> put items
-    Idx idx    -> put BIdx  >> put idx
+-- | Encode an 'Idx' 'Node'.
+putIndexNode :: (Binary key, Binary val) => Node ('S n) key val -> Put
+putIndexNode (Idx idx) = put idx
 
--- | Decode a 'Node' of a certain height.
-getNode :: (Binary key, Binary val) => Height height -> Get (Node height key val)
-getNode height = case viewHeight height of
-    UZero   -> do
-                   BLeaf <- get
-                   Leaf <$> get
-    USucc _ -> do
-                   BIdx <- get
-                   Idx <$> get
+-- | Decode an 'Idx' 'Node'.
+getIndexNode :: (Binary key, Binary val) => Height ('S n) -> Get (Node ('S n) key val)
+getIndexNode _ = Idx <$> get
 
 --------------------------------------------------------------------------------
 

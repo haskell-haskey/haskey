@@ -15,7 +15,7 @@ import Control.Monad.State
 
 import Data.Binary (Binary)
 import Data.Set (Set)
-import Data.Word (Word64)
+import Data.Word (Word32)
 import qualified Data.Binary as B
 import qualified Data.Set as S
 
@@ -107,7 +107,7 @@ data WriterEnv hnds = WriterEnv
     , writerDirtyOverflows :: !(Set DirtyOverflow)
     -- ^ Newly allocated overflow pages in this transaction.
 
-    , writerOverflowCounter :: !Word64
+    , writerOverflowCounter :: !Word32
     -- ^ Counts how many overflow pages were already allocated in this transaction.
 
     , writerRemovedOverflows :: ![OldOverflow]

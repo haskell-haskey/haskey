@@ -25,7 +25,7 @@ newtype PageId = PageId { fromPageId :: Word64 }
 --
 -- An overflow id is the combination of the transaction id that
 -- generated it, and a counter.
-type OverflowId = (TxId, Word64)
+type OverflowId = (TxId, Word32)
 
 -- | Type used to indicate the size of storage pools.
 newtype PageCount = PageCount { fromPageCount :: Word64 }

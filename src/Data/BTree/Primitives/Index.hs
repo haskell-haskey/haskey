@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 
 module Data.BTree.Primitives.Index where
@@ -8,16 +7,15 @@ module Data.BTree.Primitives.Index where
 import Control.Applicative ((<$>))
 import Control.Monad.Identity (runIdentity)
 
-import Data.Binary (Binary)
+import Data.Binary (Binary(..), Put)
+import Data.Bits ((.|.), shiftL, shiftR)
 import Data.Foldable (Foldable)
 import Data.Monoid
 import Data.Traversable (Traversable)
 import Data.Vector (Vector)
-import Data.Vector.Binary ()
+import Data.Word (Word8, Word32)
 import qualified Data.Map as M
 import qualified Data.Vector as V
-
-import GHC.Generics (Generic)
 
 import Data.BTree.Utils.List (safeLast)
 import Data.BTree.Utils.Vector (isStrictlyIncreasing, vecUncons, vecUnsnoc)
@@ -32,9 +30,33 @@ import Data.BTree.Utils.Vector (isStrictlyIncreasing, vecUncons, vecUnsnoc)
 -- keys. Hence structurally the smallest 'Index' has one sub-tree and no keys,
 -- but a valid B+-tree index node will have at least two sub-trees and one key.
 data Index key node = Index !(Vector key) !(Vector node)
-  deriving (Eq, Functor, Foldable, Generic, Show, Traversable)
+  deriving (Eq, Functor, Foldable, Show, Traversable)
 
 instance (Binary k, Binary n) => Binary (Index k n) where
+    put (Index keys nodes) = do
+        encodeSize $ fromIntegral (V.length keys)
+        V.mapM_ put keys
+        V.mapM_ put nodes
+      where
+        encodeSize :: Word32 -> Put
+        encodeSize s = put msb1 >> put msb2 >> put msb3
+          where
+            msb1 = fromIntegral $ s `shiftR` 16 :: Word8
+            msb2 = fromIntegral $ s `shiftR`  8 :: Word8
+            msb3 = fromIntegral   s             :: Word8
+
+    get = do
+        numKeys <- decodeSize <$> get
+        keys <- V.replicateM (fromIntegral numKeys) get
+        values <- V.replicateM (fromIntegral numKeys + 1) get
+        return $ Index keys values
+      where
+        decodeSize :: (Word8, Word8, Word8) -> Word32
+        decodeSize (msb1, msb2, msb3) = msb1' .|. msb2' .|. msb3'
+          where
+            msb1' = (fromIntegral msb1 :: Word32) `shiftL` 16
+            msb2' = (fromIntegral msb2 :: Word32) `shiftL`  8
+            msb3' =  fromIntegral msb3 :: Word32
 
 -- | Return the number of keys in this 'Index'.
 indexNumKeys :: Index key val -> Int

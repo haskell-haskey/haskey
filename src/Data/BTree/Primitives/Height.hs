@@ -6,14 +6,14 @@
 module Data.BTree.Primitives.Height where
 
 import Data.Binary (Binary)
-import Data.Int
+import Data.Word (Word8)
 import Unsafe.Coerce
 
 --------------------------------------------------------------------------------
 
 data Nat = Z | S Nat
 
-newtype Height (h :: Nat) = Height { fromHeight :: Int64 }
+newtype Height (h :: Nat) = Height { fromHeight :: Word8 }
     deriving (Binary, Eq, Ord)
 
 isLeafHeight :: Height h -> Bool

@@ -95,34 +95,34 @@ instance
             Just pid -> return pid
             Nothing -> newTouchedPid
 
-        getAndTouchFreePageId
-            | isLeafHeight height = getFreePageId (DataState ()) >>= \case
+        getAndTouchFreePageId = case viewHeight height of
+            UZero -> getFreePageId (DataState ()) >>= \case
                 Nothing -> return Nothing
                 Just pid -> do
                     touchPage (DataState pid)
                     return (Just pid)
-            | otherwise           = getFreePageId (IndexState ()) >>= \case
+            USucc _ -> getFreePageId (IndexState ()) >>= \case
                 Nothing -> return Nothing
                 Just pid -> do
                     touchPage (IndexState pid)
                     return (Just pid)
 
-        newTouchedPid
-            | isLeafHeight height = do
+        newTouchedPid = case viewHeight height of
+            UZero -> do
                 pid <- fileStateNewNumPages . writerDataFileState <$> get
                 let pid' = FreshFreePage . Fresh <$> pid
                 touchPage pid'
                 return $ getSValue pid'
-            | otherwise = do
+            USucc _ -> do
                 pid <- fileStateNewNumPages . writerIndexFileState <$> get
                 let pid'' = FreshFreePage . Fresh <$> pid
                 touchPage pid''
                 return $ getSValue pid''
 
 
-    freeNode height nid
-        | isLeafHeight height = freePage (DataState  $ nodeIdToPageId nid)
-        | otherwise           = freePage (IndexState $ nodeIdToPageId nid)
+    freeNode height nid = case viewHeight height of
+        UZero -> freePage (DataState  $ nodeIdToPageId nid)
+        USucc _ -> freePage (IndexState $ nodeIdToPageId nid)
 
     allocOverflow v = do
         root <- concurrentHandlesOverflowDir . writerHnds <$> get
@@ -177,11 +177,13 @@ readOverflow' root oid = do
 getWriterHnd :: MonadState (WriterEnv ConcurrentHandles) m
              => Height height
              -> m FilePath
-getWriterHnd h | isLeafHeight h = gets $ concurrentHandlesData . writerHnds
-               | otherwise      = gets $ concurrentHandlesIndex . writerHnds
+getWriterHnd h = case viewHeight h of
+    UZero -> gets $ concurrentHandlesData . writerHnds
+    USucc _ -> gets $ concurrentHandlesIndex . writerHnds
 
 getReaderHnd :: MonadState (ReaderEnv ConcurrentHandles) m
              => Height height
              -> m FilePath
-getReaderHnd h | isLeafHeight h = gets $ concurrentHandlesData . readerHnds
-               | otherwise      = gets $ concurrentHandlesIndex . readerHnds
+getReaderHnd h = case viewHeight h of
+    UZero -> gets $ concurrentHandlesData . readerHnds
+    USucc _ -> gets $ concurrentHandlesIndex . readerHnds

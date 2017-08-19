@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- | This module contains structures and functions to decode and encode
 -- pages.
 module Data.BTree.Store.Page where
@@ -20,10 +21,12 @@ import Data.Binary.Put (runPut)
 import Data.Bits ((.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (fromStrict, toStrict)
+import Data.Digest.Adler32 (adler32)
 import Data.Maybe (fromMaybe)
 import Data.Proxy
 import Data.Typeable (Typeable)
-import Data.Word (Word8)
+import Data.Word (Word8, Word32)
+import qualified Data.Binary as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 
@@ -92,9 +95,21 @@ pageType STypeOverflow       = TypeOverflow
 pageType STypeLeafNode       = TypeLeafNode
 pageType STypeIndexNode      = TypeIndexNode
 
--- | Encode a page to a lazy byte string.
+-- | Encode a page to a lazy byte string, but with the checksum set to zero.
+encodeZeroChecksum :: Page t -> BL.ByteString
+encodeZeroChecksum p = "\NUL\NUL\NUL\NUL" `BL.append` encodeNoChecksum p
+
+-- | Encode a page to a lazy byte string, and prepend the calculated checksum.
 encode :: Page t -> BL.ByteString
-encode = runPut . putPage
+encode = prependChecksum . encodeNoChecksum
+
+-- | Prepend the adler32 checksum of a bytestring to itself.
+prependChecksum :: BL.ByteString -> BL.ByteString
+prependChecksum bs = B.encode (adler32 bs :: Word32) `BL.append` bs
+
+-- | Encode a page to a lazy byte string, without prepending the checksum.
+encodeNoChecksum :: Page t -> BL.ByteString
+encodeNoChecksum = runPut . putPage
   -- let bs = runPut (putPage p) in fromMaybe bs (tryCompress bs)
   where
     _tryCompress bs = do
@@ -107,9 +122,25 @@ encode = runPut . putPage
     maskCompressed t = t .|. 0x01
 
 
--- | Decode a page with a specific decoder, or return the error.
+-- | Decode a page, and verify the checksum.
 decode :: SGet t -> ByteString -> Either String (Page t)
-decode (SGet t g) bs = case runGetOrFail g (fromStrict bs) of
+decode g@(SGet t _) bs = do
+    let (cksumBs, body) = BS.splitAt 4 bs
+    cksum <- if BS.length cksumBs < 4
+                then Left $ "could not decode " ++ show (pageType t) ++ ": "
+                        ++ "not enough checksum bytes"
+                else Right $ B.decode (fromStrict cksumBs)
+    let cksum' = adler32 body
+    if cksum' /= cksum
+        then Left $ "could not decode " ++ show (pageType t) ++ ": "
+                 ++ "expected checksum " ++ show cksum' ++ " but checksum "
+                 ++ "field contains " ++ show cksum
+        else decodeNoChecksum g body
+
+
+-- | Decode a page with a specific decoder, or return the error.
+decodeNoChecksum :: SGet t -> ByteString -> Either String (Page t)
+decodeNoChecksum (SGet t g) bs = case runGetOrFail g (fromStrict bs) of
     Left  err       -> Left $ err' err
     Right (_, _, v) -> Right v
   where

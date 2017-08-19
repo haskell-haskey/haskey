@@ -64,12 +64,14 @@ import Data.BTree.Utils.Monad.Catch (justErrM)
 -- Return 'Nothing' of the page is too large to fit into one page size.
 encodeAndPad :: PageSize -> Page t -> Maybe BL.ByteString
 encodeAndPad size page
-    | Just n <- padding = Just $
+    | Just n <- padding = Just . prependChecksum $
         enc <> BL.replicate n 0
     | otherwise = Nothing
   where
-    enc = encode page
-    padding | n <- fromIntegral size - BL.length enc, n >= 0 = Just n
+    enc = encodeNoChecksum page
+
+    -- Reserve 4 bytes for the checksum
+    padding | n <- fromIntegral size - BL.length enc - 4, n >= 0 = Just n
             | otherwise = Nothing
 
 --------------------------------------------------------------------------------
@@ -137,8 +139,8 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
             unless (isDoesNotExistError e) (ioError e)
 
     nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encode . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encode . IndexNodePage h
+        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
+        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
 
     maxPageSize = return 256
 
@@ -186,8 +188,11 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
     putOverflow fp val = do
         h <- get >>= lookupHandle fp
+        liftIO $ hSetFileSize h (fromIntegral $ BL.length bs)
         liftIO $ hSeek h AbsoluteSeek 0
-        liftIO $ BL.hPut h (encode $ OverflowPage val)
+        liftIO $ BL.hPut h bs
+      where
+        bs = encode $ OverflowPage val
 
     listOverflows dir = liftIO $ getDirectoryContents dir `catch` catch'
       where catch' e | isDoesNotExistError e = return []

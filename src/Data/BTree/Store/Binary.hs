@@ -112,8 +112,8 @@ instance (Applicative m, Monad m, MonadThrow m,
         modify $ M.delete fp
 
     nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encode . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encode . IndexNodePage h
+        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
+        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
 
     maxPageSize = return 256
 

@@ -14,11 +14,14 @@ module Data.BTree.Store.File (
   -- * Storage
   Page(..)
 , Files
-, StoreT
-, runStoreT
-, evalStoreT
-, execStoreT
-, emptyStore
+, FileStoreConfig(..)
+, defFileStoreConfig
+, fileStoreConfigWithPageSize
+, FileStoreT
+, runFileStoreT
+, evalFileStoreT
+, execFileStoreT
+, emptyFileStore
 
   -- * Binary encoding
 , encodeAndPad
@@ -34,13 +37,16 @@ import Control.Applicative (Applicative, (<$>))
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
 import Data.Coerce (coerce)
 import Data.Map (Map)
+import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
 import Data.Typeable (Typeable)
+import Data.Word (Word64)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
@@ -84,7 +90,6 @@ encodeAndPad size page
 -- collection of physical pages.
 type Files fp = Map fp IO.FHandle
 
-
 lookupHandle :: (Functor m, MonadThrow m, Ord fp, Show fp, Typeable fp)
              => fp -> Files fp -> m IO.FHandle
 lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
@@ -94,35 +99,82 @@ lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 -- Two important instances are 'StoreM' making it a storage back-end, and
 -- 'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 -- concurrent page allocator.
-newtype StoreT fp m a = StoreT
-    { fromStoreT :: StateT (Files fp) m a
+newtype FileStoreT fp m a = FileStoreT
+    { fromFileStoreT :: ReaderT FileStoreConfig (StateT (Files fp) m) a
     } deriving (Applicative, Functor, Monad,
                 MonadIO, MonadThrow, MonadCatch, MonadMask,
-                MonadState (Files fp))
+                MonadReader FileStoreConfig, MonadState (Files fp))
 
--- | Run the storage operations in the 'StoreT' monad, given a collection of
+-- | File store configuration.
+--
+-- The default configuration can be obtained by using 'defFileStoreConfig'
+--
+-- A configuration with a specific page size can be obtained by using
+-- 'fileStoreConfigWithPageSize'.
+data FileStoreConfig = FileStoreConfig {
+    fileStoreConfigPageSize :: !PageSize
+  , fileStoreConfigMaxKeySize :: !Word64
+  , fileStoreConfigMaxValueSize :: !Word64
+  } deriving (Show)
+
+-- | The default configuration
+--
+-- This is an unwrapped 'fileStoreConfigWithPageSize' with a page size of 4096
+-- bytes.
+defFileStoreConfig :: FileStoreConfig
+defFileStoreConfig = fromJust (fileStoreConfigWithPageSize 4096)
+
+-- | Create a configuration with a specific page size.
+--
+-- The maximum key and value sizes are calculated using 'calculateMaxKeySize'
+-- and 'calculateMaxValueSize'.
+--
+-- If the page size is too small, 'Nothing' is returned.
+fileStoreConfigWithPageSize :: PageSize -> Maybe FileStoreConfig
+fileStoreConfigWithPageSize pageSize
+    | keySize < 8 && valueSize < 8 = Nothing
+    | otherwise = Just FileStoreConfig {
+          fileStoreConfigPageSize = pageSize
+        , fileStoreConfigMaxKeySize = keySize
+        , fileStoreConfigMaxValueSize = valueSize }
+  where
+    keySize = calculateMaxKeySize pageSize (encodedPageSize zeroHeight)
+    valueSize = calculateMaxValueSize pageSize keySize (encodedPageSize zeroHeight)
+
+-- | Run the storage operations in the 'FileStoreT' monad, given a collection of
 -- open files.
-runStoreT :: StoreT fp m a -> Files fp -> m (a, Files fp)
-runStoreT = runStateT . fromStoreT
+runFileStoreT :: FileStoreT fp m a -- ^ Action
+              -> FileStoreConfig   -- ^ Configuration
+              -> Files fp          -- ^ Open files
+              -> m (a, Files fp)
+runFileStoreT m config = runStateT (runReaderT (fromFileStoreT m) config)
 
--- | Evaluate the storage operations in the 'StoreT' monad, given a collection
+-- | Evaluate the storage operations in the 'FileStoreT' monad, given a collection
 -- of open files.
-evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m a
-evalStoreT = evalStateT . fromStoreT
+evalFileStoreT :: Monad m
+               => FileStoreT fp m a -- ^ Action
+               -> FileStoreConfig   -- ^ Configuration
+               -> Files fp          -- ^ Open files
+               -> m a
+evalFileStoreT m config = evalStateT (runReaderT (fromFileStoreT m) config)
 
--- | Execute the storage operations in the 'StoreT' monad, given a collection
+-- | Execute the storage operations in the 'FileStoreT' monad, given a collection
 -- of open files.
-execStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Files fp)
-execStoreT = execStateT . fromStoreT
+execFileStoreT :: Monad m
+               => FileStoreT fp m a -- ^ Action
+               -> FileStoreConfig   -- ^ Configuration
+               -> Files fp          -- ^ Open files
+               -> m (Files fp)
+execFileStoreT m config = execStateT (runReaderT (fromFileStoreT m) config)
 
 -- | An empty file store, with no open files.
-emptyStore :: Files fp
-emptyStore = M.empty
+emptyFileStore :: Files fp
+emptyFileStore = M.empty
 
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
-    StoreM FilePath (StoreT FilePath m)
+    StoreM FilePath (FileStoreT FilePath m)
   where
     openHandle fp = do
         alreadyOpen <- M.member fp <$> get
@@ -146,11 +198,10 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
             unless (isDoesNotExistError e) (ioError e)
 
 
-    nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
-
-    maxPageSize = return 256
+    nodePageSize = return encodedPageSize
+    maxPageSize = asks fileStoreConfigPageSize
+    maxKeySize = asks fileStoreConfigMaxKeySize
+    maxValueSize = asks fileStoreConfigMaxValueSize
 
     getNodePage fp height key val nid = do
         h    <- get >>= lookupHandle fp
@@ -211,7 +262,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
-    ConcurrentMetaStoreM (StoreT FilePath m)
+    ConcurrentMetaStoreM (FileStoreT FilePath m)
   where
     putConcurrentMeta fp meta = do
         h <- get >>= lookupHandle fp

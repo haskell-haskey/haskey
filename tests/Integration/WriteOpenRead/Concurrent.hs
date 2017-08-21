@@ -21,7 +21,7 @@ import Control.Monad.Trans.Maybe
 import Data.Binary (Binary(..))
 import Data.Foldable (foldlM)
 import Data.Map (Map)
-import Data.Maybe (isJust, fromMaybe)
+import Data.Maybe (isJust, fromJust, fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import qualified Data.Map as M
@@ -37,9 +37,9 @@ import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
 import Data.BTree.Primitives
-import Data.BTree.Store.Binary
+import Data.BTree.Store.File
+import Data.BTree.Store.InMemory
 import qualified Data.BTree.Impure as Tree
-import qualified Data.BTree.Store.File as FS
 
 import Integration.WriteOpenRead.Transactions
 
@@ -70,10 +70,10 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
   where
 
     writeReadTest :: ConcurrentDb Integer TestValue
-                  -> Files String
+                  -> MemoryFiles String
                   -> TestTransaction Integer TestValue
                   -> Map Integer TestValue
-                  -> IO (Files String, Map Integer TestValue)
+                  -> IO (MemoryFiles String, Map Integer TestValue)
     writeReadTest db files tx m = do
         files'   <- openAndWrite db files tx
         read'    <- openAndRead db files'
@@ -85,16 +85,20 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: IO (ConcurrentDb Integer TestValue, Files String)
-    create = flip runStoreT emptyStore $ do
-        openConcurrentHandles hnds
-        createConcurrentDb hnds
+    create :: IO (ConcurrentDb Integer TestValue, MemoryFiles String)
+    create = runMemoryStoreT m config emptyMemoryStore
       where
+        m = do
+            openConcurrentHandles hnds
+            createConcurrentDb hnds
         hnds = concurrentHandles ""
 
-    openAndRead db = evalStoreT (readAll db)
+    openAndRead db = evalMemoryStoreT (readAll db) config
 
-    openAndWrite db files tx = execStoreT (writeTransaction tx db) files
+    openAndWrite db files tx =
+        execMemoryStoreT (writeTransaction tx db) config files
+
+    config = fromJust $ memoryStoreConfigWithPageSize 256
 
 --------------------------------------------------------------------------------
 
@@ -113,14 +117,14 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                                       M.empty
                                       txs
 
-    _ <- run $ FS.runStoreT (closeConcurrentHandles hnds) files
+    _ <- run $ runFileStoreT (closeConcurrentHandles hnds) config files
 
     run $ removeDirectoryRecursive fp
 
     assert $ isJust result
   where
     writeReadTest :: ConcurrentDb Integer TestValue
-                  -> FS.Files FilePath
+                  -> Files FilePath
                   -> Map Integer TestValue
                   -> TestTransaction Integer TestValue
                   -> MaybeT IO (Map Integer TestValue)
@@ -137,21 +141,24 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                     ++ "\n    got:     " ++ show read'
 
     create :: ConcurrentHandles
-           -> IO (ConcurrentDb Integer TestValue, FS.Files FilePath)
-    create hnds = flip FS.runStoreT FS.emptyStore $ do
-        openConcurrentHandles hnds
-        createConcurrentDb hnds
+           -> IO (ConcurrentDb Integer TestValue, Files FilePath)
+    create hnds = runFileStoreT m config emptyFileStore
+        where m = do openConcurrentHandles hnds
+                     createConcurrentDb hnds
 
     openAndRead :: ConcurrentDb Integer TestValue
-                -> FS.Files FilePath
+                -> Files FilePath
                 -> IO [(Integer, TestValue)]
-    openAndRead db = FS.evalStoreT (readAll db)
+    openAndRead db = evalFileStoreT (readAll db) config
 
     openAndWrite :: ConcurrentDb Integer TestValue
-                 -> FS.Files FilePath
+                 -> Files FilePath
                  -> TestTransaction Integer TestValue
-                 -> IO (FS.Files FilePath)
-    openAndWrite db files tx = FS.execStoreT (void $ writeTransaction tx db) files
+                 -> IO (Files FilePath)
+    openAndWrite db files tx =
+        execFileStoreT (void $ writeTransaction tx db) config files
+
+    config = fromJust $ fileStoreConfigWithPageSize 256
 
 --------------------------------------------------------------------------------
 

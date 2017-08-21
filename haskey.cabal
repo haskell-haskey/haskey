@@ -51,9 +51,9 @@ library
     Data.BTree.Pure
     Data.BTree.Pure.Setup
     Data.BTree.Store
-    Data.BTree.Store.Binary
     Data.BTree.Store.Class
     Data.BTree.Store.File
+    Data.BTree.Store.InMemory
     Data.BTree.Store.Page
 
   other-modules:

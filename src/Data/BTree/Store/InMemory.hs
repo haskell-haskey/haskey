@@ -10,16 +10,19 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Binary in-memory storage back-end. Can be used as a storage back-end for
 -- the append-only page allocator (see "Data.BTree.Alloc").
-module Data.BTree.Store.Binary (
+module Data.BTree.Store.InMemory (
   -- * Storage
   Page(..)
-, File
-, Files
-, StoreT
-, runStoreT
-, evalStoreT
-, execStoreT
-, emptyStore
+, MemoryFile
+, MemoryFiles
+, MemoryStoreConfig(..)
+, defMemoryStoreConfig
+, memoryStoreConfigWithPageSize
+, MemoryStoreT
+, runMemoryStoreT
+, evalMemoryStoreT
+, execMemoryStoreT
+, emptyMemoryStore
 
   -- * Exceptions
 , FileNotFoundError(..)
@@ -32,6 +35,7 @@ import Control.Applicative (Applicative, (<$>))
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
@@ -39,8 +43,9 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce
 import Data.Map (Map)
+import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
-import qualified Data.ByteString.Lazy as BL
+import Data.Word (Word64)
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Concurrent
@@ -53,17 +58,17 @@ import Data.BTree.Utils.Monad.Catch (justErrM)
 --------------------------------------------------------------------------------
 
 -- | A file containing a collection of pages.
-type File     = Map PageId ByteString
+type MemoryFile = Map PageId ByteString
 
 -- | A collection of 'File's, each associated with a certain @fp@ handle.
-type Files fp = Map fp File
+type MemoryFiles fp = Map fp MemoryFile
 
 lookupFile :: (MonadThrow m, Ord fp, Show fp, Typeable fp)
-           => fp -> Files fp -> m File
+           => fp -> MemoryFiles fp -> m MemoryFile
 lookupFile fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 
 lookupPage :: (Functor m, MonadThrow m, Ord fp, Show fp, Typeable fp)
-           => fp -> PageId -> Files fp -> m ByteString
+           => fp -> PageId -> MemoryFiles fp -> m ByteString
 lookupPage fp pid m = M.lookup pid <$> lookupFile fp m
                   >>= justErrM (PageNotFoundError fp pid)
 
@@ -72,36 +77,83 @@ lookupPage fp pid m = M.lookup pid <$> lookupFile fp m
 --  Two important instances are 'StoreM' making it a storage back-end, and
 --  'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 --  concurrent page allocator.
-newtype StoreT fp m a = StoreT
-    { fromStoreT :: StateT (Files fp) m a
+newtype MemoryStoreT fp m a = MemoryStoreT
+    { fromMemoryStoreT :: ReaderT MemoryStoreConfig (StateT (MemoryFiles fp) m) a
     } deriving (Applicative, Functor, Monad,
                 MonadIO, MonadThrow, MonadCatch, MonadMask,
-                MonadState (Files fp))
+                MonadReader MemoryStoreConfig, MonadState (MemoryFiles fp))
 
--- | Run the storage operations in the 'StoreT' monad, given a collection of
+-- | Memory store configuration.
+--
+-- The default configuration can be obtained by using 'defMemoryStoreConfig'.
+--
+-- A configuration with a specific page size can be obtained by using
+-- 'memoryStoreConfigWithPageSize'.
+data MemoryStoreConfig = MemoryStoreConfig {
+    memoryStoreConfigPageSize :: !PageSize
+  , memoryStoreConfigMaxKeySize :: !Word64
+  , memoryStoreConfigMaxValueSize :: !Word64
+  } deriving (Show)
+
+-- | The default configuration.
+--
+-- This is an unwrapped 'memoryStoreConfigWithPageSize' with a page size of
+-- 4096.
+defMemoryStoreConfig :: MemoryStoreConfig
+defMemoryStoreConfig = fromJust (memoryStoreConfigWithPageSize 4096)
+
+-- | Create a configuration with a specific page size.
+--
+-- The maximum key and value sizes are calculated using 'calculateMaxKeySize'
+-- and 'calculateMaxValueSize'.
+--
+-- If the page size is too small, 'Nothing' is returned.
+memoryStoreConfigWithPageSize :: PageSize -> Maybe MemoryStoreConfig
+memoryStoreConfigWithPageSize pageSize
+    | keySize < 8 && valueSize < 8 = Nothing
+    | otherwise = Just MemoryStoreConfig {
+          memoryStoreConfigPageSize = pageSize
+        , memoryStoreConfigMaxKeySize = keySize
+        , memoryStoreConfigMaxValueSize = valueSize }
+  where
+    keySize = calculateMaxKeySize pageSize (encodedPageSize zeroHeight)
+    valueSize = calculateMaxValueSize pageSize keySize (encodedPageSize zeroHeight)
+
+-- | Run the storage operations in the 'MemoryStoreT' monad, given a collection of
 -- 'File's.
-runStoreT :: StoreT fp m a -> Files fp -> m (a, Files fp)
-runStoreT = runStateT . fromStoreT
+runMemoryStoreT :: MemoryStoreT fp m a    -- ^ Action to run
+                -> MemoryStoreConfig      -- ^ Configuration
+                -> MemoryFiles fp         -- ^ Data
+                -> m (a, MemoryFiles fp)
+runMemoryStoreT m config = runStateT (runReaderT (fromMemoryStoreT m) config)
 
--- | Evaluate the storage operations in the 'StoreT' monad, given a colletion
+-- | Evaluate the storage operations in the 'MemoryStoreT' monad, given a colletion
 -- of 'File's.
-evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m a
-evalStoreT = evalStateT . fromStoreT
+evalMemoryStoreT :: Monad m
+                 => MemoryStoreT fp m a -- ^ Action to run
+                 -> MemoryStoreConfig   -- ^ Configuration
+                 -> MemoryFiles fp      -- ^ Data
+                 -> m a
+evalMemoryStoreT m config = evalStateT (runReaderT (fromMemoryStoreT m) config)
 
--- | Execute the storage operations in the 'StoreT' monad, given a colletion of
+-- | Execute the storage operations in the 'MemoryStoreT' monad, given a colletion of
 -- 'File's.
-execStoreT :: Monad m => StoreT fp m a -> Files fp-> m (Files fp)
-execStoreT = execStateT . fromStoreT
+execMemoryStoreT :: Monad m
+                 => MemoryStoreT fp m a -- ^ Action to run
+                 -> MemoryStoreConfig   -- ^ Configuration
+                 -> MemoryFiles fp      -- ^ Data
+                 -> m (MemoryFiles fp)
+execMemoryStoreT m config = execStateT (runReaderT (fromMemoryStoreT m) config)
 
 -- | Construct a store with an empty database with name of type @hnd@.
-emptyStore :: Files hnd
-emptyStore = M.empty
+emptyMemoryStore :: MemoryFiles hnd
+emptyMemoryStore = M.empty
 
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadThrow m,
           Ord fp, Show fp, Typeable fp) =>
-    StoreM fp (StoreT fp m)
+    StoreM fp (MemoryStoreT fp m)
   where
     openHandle fp =
         modify $ M.insertWith (flip const) fp M.empty
@@ -113,11 +165,10 @@ instance (Applicative m, Monad m, MonadThrow m,
     removeHandle fp =
         modify $ M.delete fp
 
-    nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
-
-    maxPageSize = return 256
+    nodePageSize = return encodedPageSize
+    maxPageSize = asks memoryStoreConfigPageSize
+    maxKeySize = asks memoryStoreConfigMaxKeySize
+    maxValueSize = asks memoryStoreConfigMaxValueSize
 
     getNodePage hnd h key val nid = do
         bs <- get >>= lookupPage hnd (nodeIdToPageId nid)
@@ -151,7 +202,7 @@ instance (Applicative m, Monad m, MonadThrow m,
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadThrow m) =>
-    ConcurrentMetaStoreM (StoreT FilePath m)
+    ConcurrentMetaStoreM (MemoryStoreT FilePath m)
   where
     putConcurrentMeta h meta =
         modify $ M.update (Just . M.insert 0 pg) h
@@ -159,7 +210,7 @@ instance (Applicative m, Monad m, MonadThrow m) =>
         pg = toStrict . encode $ ConcurrentMetaPage meta
 
     readConcurrentMeta hnd k v = do
-        Just bs <- StoreT $ gets (M.lookup hnd >=> M.lookup 0)
+        Just bs <- MemoryStoreT $ gets (M.lookup hnd >=> M.lookup 0)
         decodeM (concurrentMetaPage k v) bs >>= \case
             ConcurrentMetaPage meta -> return . Just $! coerce meta
 

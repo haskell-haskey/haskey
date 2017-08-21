@@ -1,7 +1,18 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 -- | A page allocator manages all physical pages.
-module Data.BTree.Alloc.Class where
+module Data.BTree.Alloc.Class (
+  -- * Classes
+  AllocReaderM(..)
+, AllocM(..)
+
+  -- * Helpers
+, arbitrarySearch
+, calculateMaxKeySize
+, calculateMaxValueSize
+, ZeroEncoded(..)
+) where
 
 import Prelude hiding (max, min, pred)
 
@@ -61,36 +72,61 @@ class AllocReaderM m => AllocM m where
 
     -- | Get the maximum key size
     --
-    -- The default implementation will return the size for which at least 4
-    -- key-value pairs with keys and values of that size can fit in a leaf
-    -- node
+    -- The default implementation will repeatedly call 'calculateMaxKeySize'.
+    -- You might want to cache this value in your own implementation.
     maxKeySize :: m Word64
     maxKeySize =  do
         f    <- nodePageSize
         fmax <- maxPageSize
-        return $ arbitrarySearch 2 (pred f) fmax
-      where
-        pred f n = f zeroHeight (Leaf $ kvs n)
-        kvs n = M.fromList
-            [(ZeroEncoded n i, RawValue $ ZeroEncoded n i) | i <- [1..4]]
+        return $ calculateMaxKeySize fmax (f zeroHeight)
 
     -- | Get the maximum value size
     --
-    -- The default implementation will return the size for which at least 4
-    -- key-value pairs with key of size 'maxKeySize' and values of the returned
-    -- size can fit in a leaf node.
+    -- The default implementation will repeatedly call 'calculateMaxValueSize'.
+    -- You might want to cache this value in your own implementation.
     maxValueSize :: m Word64
     maxValueSize = do
         f    <- nodePageSize
         key  <- maxKeySize
         fmax <- maxPageSize
-        return $ arbitrarySearch 2 (pred key f) fmax
-      where
-        pred key f n = f zeroHeight (Leaf $ kvs key n)
-        kvs key n = M.fromList
-            [(ZeroEncoded key i, RawValue $ ZeroEncoded n i) | i <- [1..4]]
+        return $ calculateMaxValueSize fmax key (f zeroHeight)
 
 --------------------------------------------------------------------------------
+
+-- | Calculate the maximum key size.
+--
+-- Return the size for which at least 4 key-value pairs with keys and values of
+-- that size can fit in a leaf node.
+calculateMaxKeySize :: PageSize
+                    -- ^ Maximum pages size
+                    -> (Node 'Z ZeroEncoded ZeroEncoded -> PageSize)
+                    -- ^ Function that calculates the page size of a node
+                    -> Word64
+                    -- ^ Maximum key size
+calculateMaxKeySize fmax f = arbitrarySearch 2 pred fmax
+  where
+    pred n = f (Leaf $ kvs n)
+    kvs n = M.fromList
+        [(ZeroEncoded n i, RawValue $ ZeroEncoded n i) | i <- [1..4]]
+
+-- | Calculate the maximum value size.
+--
+-- Return the size for which at least 4 key-value pairs of the specified
+-- maximum key size and values of the returned size can fit in a leaf node.
+-- that size can fit in a leaf node.
+calculateMaxValueSize :: PageSize
+                      -- ^ Maximum page size
+                      -> Word64
+                      -- ^ Maximum key size
+                      -> (Node 'Z ZeroEncoded ZeroEncoded -> PageSize)
+                      -- ^ Function that calculates the page size of a node
+                      -> Word64
+                      -- ^ Maximum value size
+calculateMaxValueSize fmax keySize f = arbitrarySearch 2 pred fmax
+  where
+    pred n = f (Leaf $ kvs n)
+    kvs n = M.fromList
+        [(ZeroEncoded keySize i, RawValue $ ZeroEncoded n i) | i <- [1..4]]
 
 -- | Search an arbitrary number, less than a limit, greater than a starting
 -- value.

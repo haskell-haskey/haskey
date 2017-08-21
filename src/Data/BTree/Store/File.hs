@@ -14,11 +14,11 @@ module Data.BTree.Store.File (
   -- * Storage
   Page(..)
 , Files
-, StoreT
-, runStoreT
-, evalStoreT
-, execStoreT
-, emptyStore
+, FileStoreT
+, runFileStoreT
+, evalFileStoreT
+, execFileStoreT
+, emptyFileStore
 
   -- * Binary encoding
 , encodeAndPad
@@ -94,35 +94,35 @@ lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 -- Two important instances are 'StoreM' making it a storage back-end, and
 -- 'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 -- concurrent page allocator.
-newtype StoreT fp m a = StoreT
-    { fromStoreT :: StateT (Files fp) m a
+newtype FileStoreT fp m a = FileStoreT
+    { fromFileStoreT :: StateT (Files fp) m a
     } deriving (Applicative, Functor, Monad,
                 MonadIO, MonadThrow, MonadCatch, MonadMask,
                 MonadState (Files fp))
 
--- | Run the storage operations in the 'StoreT' monad, given a collection of
+-- | Run the storage operations in the 'FileStoreT' monad, given a collection of
 -- open files.
-runStoreT :: StoreT fp m a -> Files fp -> m (a, Files fp)
-runStoreT = runStateT . fromStoreT
+runFileStoreT :: FileStoreT fp m a -> Files fp -> m (a, Files fp)
+runFileStoreT = runStateT . fromFileStoreT
 
--- | Evaluate the storage operations in the 'StoreT' monad, given a collection
+-- | Evaluate the storage operations in the 'FileStoreT' monad, given a collection
 -- of open files.
-evalStoreT :: Monad m => StoreT fp m a -> Files fp -> m a
-evalStoreT = evalStateT . fromStoreT
+evalFileStoreT :: Monad m => FileStoreT fp m a -> Files fp -> m a
+evalFileStoreT = evalStateT . fromFileStoreT
 
--- | Execute the storage operations in the 'StoreT' monad, given a collection
+-- | Execute the storage operations in the 'FileStoreT' monad, given a collection
 -- of open files.
-execStoreT :: Monad m => StoreT fp m a -> Files fp -> m (Files fp)
-execStoreT = execStateT . fromStoreT
+execFileStoreT :: Monad m => FileStoreT fp m a -> Files fp -> m (Files fp)
+execFileStoreT = execStateT . fromFileStoreT
 
 -- | An empty file store, with no open files.
-emptyStore :: Files fp
-emptyStore = M.empty
+emptyFileStore :: Files fp
+emptyFileStore = M.empty
 
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
-    StoreM FilePath (StoreT FilePath m)
+    StoreM FilePath (FileStoreT FilePath m)
   where
     openHandle fp = do
         alreadyOpen <- M.member fp <$> get
@@ -211,7 +211,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 --------------------------------------------------------------------------------
 
 instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
-    ConcurrentMetaStoreM (StoreT FilePath m)
+    ConcurrentMetaStoreM (FileStoreT FilePath m)
   where
     putConcurrentMeta fp meta = do
         h <- get >>= lookupHandle fp

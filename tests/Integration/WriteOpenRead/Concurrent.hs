@@ -37,9 +37,9 @@ import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
 import Data.BTree.Primitives
+import Data.BTree.Store.File
 import Data.BTree.Store.InMemory
 import qualified Data.BTree.Impure as Tree
-import qualified Data.BTree.Store.File as FS
 
 import Integration.WriteOpenRead.Transactions
 
@@ -113,14 +113,14 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                                       M.empty
                                       txs
 
-    _ <- run $ FS.runStoreT (closeConcurrentHandles hnds) files
+    _ <- run $ runFileStoreT (closeConcurrentHandles hnds) files
 
     run $ removeDirectoryRecursive fp
 
     assert $ isJust result
   where
     writeReadTest :: ConcurrentDb Integer TestValue
-                  -> FS.Files FilePath
+                  -> Files FilePath
                   -> Map Integer TestValue
                   -> TestTransaction Integer TestValue
                   -> MaybeT IO (Map Integer TestValue)
@@ -137,21 +137,21 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                     ++ "\n    got:     " ++ show read'
 
     create :: ConcurrentHandles
-           -> IO (ConcurrentDb Integer TestValue, FS.Files FilePath)
-    create hnds = flip FS.runStoreT FS.emptyStore $ do
+           -> IO (ConcurrentDb Integer TestValue, Files FilePath)
+    create hnds = flip runFileStoreT emptyFileStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
 
     openAndRead :: ConcurrentDb Integer TestValue
-                -> FS.Files FilePath
+                -> Files FilePath
                 -> IO [(Integer, TestValue)]
-    openAndRead db = FS.evalStoreT (readAll db)
+    openAndRead db = evalFileStoreT (readAll db)
 
     openAndWrite :: ConcurrentDb Integer TestValue
-                 -> FS.Files FilePath
+                 -> Files FilePath
                  -> TestTransaction Integer TestValue
-                 -> IO (FS.Files FilePath)
-    openAndWrite db files tx = FS.execStoreT (void $ writeTransaction tx db) files
+                 -> IO (Files FilePath)
+    openAndWrite db files tx = execFileStoreT (void $ writeTransaction tx db) files
 
 --------------------------------------------------------------------------------
 

@@ -37,7 +37,7 @@ import Data.BTree.Alloc.Class
 import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
 import Data.BTree.Primitives
-import Data.BTree.Store.Binary
+import Data.BTree.Store.InMemory
 import qualified Data.BTree.Impure as Tree
 import qualified Data.BTree.Store.File as FS
 
@@ -70,10 +70,10 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
   where
 
     writeReadTest :: ConcurrentDb Integer TestValue
-                  -> Files String
+                  -> MemoryFiles String
                   -> TestTransaction Integer TestValue
                   -> Map Integer TestValue
-                  -> IO (Files String, Map Integer TestValue)
+                  -> IO (MemoryFiles String, Map Integer TestValue)
     writeReadTest db files tx m = do
         files'   <- openAndWrite db files tx
         read'    <- openAndRead db files'
@@ -85,16 +85,16 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: IO (ConcurrentDb Integer TestValue, Files String)
-    create = flip runStoreT emptyStore $ do
+    create :: IO (ConcurrentDb Integer TestValue, MemoryFiles String)
+    create = flip runMemoryStoreT emptyMemoryStore $ do
         openConcurrentHandles hnds
         createConcurrentDb hnds
       where
         hnds = concurrentHandles ""
 
-    openAndRead db = evalStoreT (readAll db)
+    openAndRead db = evalMemoryStoreT (readAll db)
 
-    openAndWrite db files tx = execStoreT (writeTransaction tx db) files
+    openAndWrite db files tx = execMemoryStoreT (writeTransaction tx db) files
 
 --------------------------------------------------------------------------------
 

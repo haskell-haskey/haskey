@@ -16,6 +16,7 @@ module Data.BTree.Store.File (
 , Files
 , FileStoreConfig(..)
 , defFileStoreConfig
+, fileStoreConfigWithPageSize
 , FileStoreT
 , runFileStoreT
 , evalFileStoreT
@@ -42,8 +43,10 @@ import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runSt
 
 import Data.Coerce (coerce)
 import Data.Map (Map)
+import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
 import Data.Typeable (Typeable)
+import Data.Word (Word64)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
@@ -105,15 +108,38 @@ newtype FileStoreT fp m a = FileStoreT
 -- | File store configuration.
 --
 -- The default configuration can be obtained by using 'defFileStoreConfig'
-newtype FileStoreConfig = FileStoreConfig {
-    fileStoreConfigPageSize :: PageSize
+--
+-- A configuration with a specific page size can be obtained by using
+-- 'fileStoreConfigWithPageSize'.
+data FileStoreConfig = FileStoreConfig {
+    fileStoreConfigPageSize :: !PageSize
+  , fileStoreConfigMaxKeySize :: !Word64
+  , fileStoreConfigMaxValueSize :: !Word64
   } deriving (Show)
 
 -- | The default configuration
 --
--- The default page size is 4096 bytes.
+-- This is an unwrapped 'fileStoreConfigWithPageSize' with a page size of 4096
+-- bytes.
 defFileStoreConfig :: FileStoreConfig
-defFileStoreConfig = FileStoreConfig 4096
+defFileStoreConfig = fromJust (fileStoreConfigWithPageSize 4096)
+
+-- | Create a configuration with a specific page size.
+--
+-- The maximum key and value sizes are calculated using 'calculateMaxKeySize'
+-- and 'calculateMaxValueSize'.
+--
+-- If the page size is too small, 'Nothing' is returned.
+fileStoreConfigWithPageSize :: PageSize -> Maybe FileStoreConfig
+fileStoreConfigWithPageSize pageSize
+    | keySize < 8 && valueSize < 8 = Nothing
+    | otherwise = Just FileStoreConfig {
+          fileStoreConfigPageSize = pageSize
+        , fileStoreConfigMaxKeySize = keySize
+        , fileStoreConfigMaxValueSize = valueSize }
+  where
+    keySize = calculateMaxKeySize pageSize (encodedPageSize zeroHeight)
+    valueSize = calculateMaxValueSize pageSize keySize (encodedPageSize zeroHeight)
 
 -- | Run the storage operations in the 'FileStoreT' monad, given a collection of
 -- open files.
@@ -173,8 +199,9 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
 
     nodePageSize = return encodedPageSize
-
     maxPageSize = asks fileStoreConfigPageSize
+    maxKeySize = asks fileStoreConfigMaxKeySize
+    maxValueSize = asks fileStoreConfigMaxValueSize
 
     getNodePage fp height key val nid = do
         h    <- get >>= lookupHandle fp

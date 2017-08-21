@@ -17,6 +17,7 @@ module Data.BTree.Store.InMemory (
 , MemoryFiles
 , MemoryStoreConfig(..)
 , defMemoryStoreConfig
+, memoryStoreConfigWithPageSize
 , MemoryStoreT
 , runMemoryStoreT
 , evalMemoryStoreT
@@ -42,7 +43,9 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce
 import Data.Map (Map)
+import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
+import Data.Word (Word64)
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Concurrent
@@ -83,15 +86,38 @@ newtype MemoryStoreT fp m a = MemoryStoreT
 -- | Memory store configuration.
 --
 -- The default configuration can be obtained by using 'defMemoryStoreConfig'.
-newtype MemoryStoreConfig = MemoryStoreConfig {
-    memoryStoreConfigPageSize :: PageSize
+--
+-- A configuration with a specific page size can be obtained by using
+-- 'memoryStoreConfigWithPageSize'.
+data MemoryStoreConfig = MemoryStoreConfig {
+    memoryStoreConfigPageSize :: !PageSize
+  , memoryStoreConfigMaxKeySize :: !Word64
+  , memoryStoreConfigMaxValueSize :: !Word64
   } deriving (Show)
 
 -- | The default configuration.
 --
--- The default page size is 4096 bytes.
+-- This is an unwrapped 'memoryStoreConfigWithPageSize' with a page size of
+-- 4096.
 defMemoryStoreConfig :: MemoryStoreConfig
-defMemoryStoreConfig = MemoryStoreConfig 4096
+defMemoryStoreConfig = fromJust (memoryStoreConfigWithPageSize 4096)
+
+-- | Create a configuration with a specific page size.
+--
+-- The maximum key and value sizes are calculated using 'calculateMaxKeySize'
+-- and 'calculateMaxValueSize'.
+--
+-- If the page size is too small, 'Nothing' is returned.
+memoryStoreConfigWithPageSize :: PageSize -> Maybe MemoryStoreConfig
+memoryStoreConfigWithPageSize pageSize
+    | keySize < 8 && valueSize < 8 = Nothing
+    | otherwise = Just MemoryStoreConfig {
+          memoryStoreConfigPageSize = pageSize
+        , memoryStoreConfigMaxKeySize = keySize
+        , memoryStoreConfigMaxValueSize = valueSize }
+  where
+    keySize = calculateMaxKeySize pageSize (encodedPageSize zeroHeight)
+    valueSize = calculateMaxValueSize pageSize keySize (encodedPageSize zeroHeight)
 
 -- | Run the storage operations in the 'MemoryStoreT' monad, given a collection of
 -- 'File's.
@@ -140,8 +166,9 @@ instance (Applicative m, Monad m, MonadThrow m,
         modify $ M.delete fp
 
     nodePageSize = return encodedPageSize
-
     maxPageSize = asks memoryStoreConfigPageSize
+    maxKeySize = asks memoryStoreConfigMaxKeySize
+    maxValueSize = asks memoryStoreConfigMaxValueSize
 
     getNodePage hnd h key val nid = do
         bs <- get >>= lookupPage hnd (nodeIdToPageId nid)

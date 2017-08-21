@@ -21,7 +21,7 @@ import Control.Monad.Trans.Maybe
 import Data.Binary (Binary(..))
 import Data.Foldable (foldlM)
 import Data.Map (Map)
-import Data.Maybe (isJust, fromMaybe)
+import Data.Maybe (isJust, fromJust, fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import qualified Data.Map as M
@@ -98,7 +98,7 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
     openAndWrite db files tx =
         execMemoryStoreT (writeTransaction tx db) config files
 
-    config = defMemoryStoreConfig { memoryStoreConfigPageSize = 256 }
+    config = fromJust $ memoryStoreConfigWithPageSize 256
 
 --------------------------------------------------------------------------------
 
@@ -158,7 +158,7 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
     openAndWrite db files tx =
         execFileStoreT (void $ writeTransaction tx db) config files
 
-    config = defFileStoreConfig { fileStoreConfigPageSize = 256 }
+    config = fromJust $ fileStoreConfigWithPageSize 256
 
 --------------------------------------------------------------------------------
 

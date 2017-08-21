@@ -106,6 +106,8 @@ instance (Applicative m, Monad m, MonadThrow m,
     openHandle fp =
         modify $ M.insertWith (flip const) fp M.empty
 
+    flushHandle _ = return ()
+
     closeHandle _ = return ()
 
     removeHandle fp =

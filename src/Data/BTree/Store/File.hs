@@ -29,6 +29,7 @@ module Data.BTree.Store.File (
 , WrongNodeTypeError(..)
 , WrongOverflowValueError(..)
 ) where
+
 import Control.Applicative (Applicative, (<$>))
 import Control.Monad
 import Control.Monad.Catch
@@ -40,13 +41,13 @@ import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Monoid ((<>))
 import Data.Typeable (Typeable)
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
+import qualified FileIO as IO
+
 import System.Directory (createDirectoryIfMissing, removeFile, getDirectoryContents)
 import System.FilePath (takeDirectory)
-import System.IO
 import System.IO.Error (ioError, isDoesNotExistError)
 
 import Data.BTree.Alloc.Concurrent
@@ -55,6 +56,7 @@ import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 import Data.BTree.Store.Class
 import Data.BTree.Store.Page
+import Data.BTree.Utils.IO (readByteString, writeLazyByteString)
 import Data.BTree.Utils.Monad.Catch (justErrM)
 
 --------------------------------------------------------------------------------
@@ -80,11 +82,11 @@ encodeAndPad size page
 --
 -- Each file is a 'Handle' opened in 'System.IO.ReadWriteMode' and contains a
 -- collection of physical pages.
-type Files fp = Map fp Handle
+type Files fp = Map fp IO.FHandle
 
 
 lookupHandle :: (Functor m, MonadThrow m, Ord fp, Show fp, Typeable fp)
-             => fp -> Files fp -> m Handle
+             => fp -> Files fp -> m IO.FHandle
 lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 
 -- | Monad in which on-disk storage operations can take place.
@@ -126,17 +128,23 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         alreadyOpen <- M.member fp <$> get
         unless alreadyOpen $ do
             liftIO $ createDirectoryIfMissing True (takeDirectory fp)
-            fh <- liftIO $ openFile fp ReadWriteMode
+            fh <- liftIO $ IO.openReadWrite fp
             modify $ M.insert fp fh
+
+    flushHandle fp = do
+        fh <- get >>= lookupHandle fp
+        liftIO $ IO.flush fh
 
     closeHandle fp = do
         fh <- get >>= lookupHandle fp
-        liftIO $ hClose fh
+        liftIO $ IO.flush fh
+        liftIO $ IO.close fh
         modify (M.delete fp)
 
     removeHandle fp =
         liftIO $ removeFile fp `catchIOError` \e ->
             unless (isDoesNotExistError e) (ioError e)
+
 
     nodePageSize = return $ \h -> case viewHeight h of
         UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
@@ -151,8 +159,8 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         let PageId pid = nodeIdToPageId nid
             offset     = fromIntegral $ pid * fromIntegral size
 
-        liftIO $ hSeek h AbsoluteSeek offset
-        bs <- liftIO $ BS.hGet h (fromIntegral size)
+        liftIO $ IO.seek h offset
+        bs <- liftIO $ readByteString h (fromIntegral size)
 
         case viewHeight height of
             UZero -> decodeM (leafNodePage height key val) bs >>= \case
@@ -169,9 +177,9 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         let PageId pid = nodeIdToPageId nid
             offset     = fromIntegral $ pid * fromIntegral size
 
-        liftIO $ hSeek h AbsoluteSeek offset
+        liftIO $ IO.seek h offset
         bs <- justErrM PageOverflowError $ pg size
-        liftIO $ BL.hPut h bs
+        liftIO $ writeLazyByteString h bs
       where
         pg size = case viewHeight hgt of
             UZero -> encodeAndPad size $ LeafNodePage hgt node
@@ -179,18 +187,20 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
     getOverflow fp val = do
         h <- get >>= lookupHandle fp
-        liftIO $ hSeek h AbsoluteSeek 0
-        bs <- liftIO $ BS.hGetContents h
+
+        len <- liftIO $ IO.getFileSize h
+        liftIO $ IO.seek h 0
+        bs <- liftIO $ readByteString h (fromIntegral len)
         n <- decodeM (overflowPage val) bs
         case n of
             OverflowPage v -> justErrM WrongOverflowValueError $ castValue v
 
 
     putOverflow fp val = do
-        h <- get >>= lookupHandle fp
-        liftIO $ hSetFileSize h (fromIntegral $ BL.length bs)
-        liftIO $ hSeek h AbsoluteSeek 0
-        liftIO $ BL.hPut h bs
+        fh <- get >>= lookupHandle fp
+        liftIO $ IO.setFileSize fh (fromIntegral $ BL.length bs)
+        liftIO $ IO.seek fh 0
+        liftIO $ writeLazyByteString fh bs
       where
         bs = encode $ OverflowPage val
 
@@ -208,14 +218,16 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
         let page = ConcurrentMetaPage meta
             bs   = encode page
-        liftIO $ hSetFileSize h (fromIntegral $ BL.length bs)
-        liftIO $ hSeek h AbsoluteSeek 0
-        liftIO $ BL.hPut h bs
+        liftIO $ IO.setFileSize h (fromIntegral $ BL.length bs)
+        liftIO $ IO.seek h 0
+        liftIO $ writeLazyByteString h bs
 
     readConcurrentMeta fp k v = do
-        fh       <- get >>=  lookupHandle fp
-        liftIO $ hSeek fh AbsoluteSeek 0
-        bs <- liftIO $ BS.hGetContents fh
+        fh <- get >>=  lookupHandle fp
+
+        len <- liftIO $ IO.getFileSize fh
+        liftIO $ IO.seek fh 0
+        bs <- liftIO $ readByteString fh (fromIntegral len)
         decodeM (concurrentMetaPage k v) bs >>= \case
             ConcurrentMetaPage meta -> return $ Just (coerce meta)
 

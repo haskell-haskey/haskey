@@ -17,6 +17,7 @@ import Data.Word (Word8, Word32)
 import qualified Data.Map as M
 import qualified Data.Vector as V
 
+import Data.BTree.Primitives.Exception
 import Data.BTree.Utils.List (safeLast)
 import Data.BTree.Utils.Vector (isStrictlyIncreasing, vecUncons, vecUnsnoc)
 
@@ -91,7 +92,8 @@ splitIndexAt numLeftKeys (Index keys vals)
     = case vecUncons middleKeyAndRightKeys of
         Just (middleKey,rightKeys) ->
             (Index leftKeys leftVals, middleKey, Index rightKeys rightVals)
-        Nothing -> error "splitIndex: empty Index"
+        Nothing -> throw $
+            TreeAlgorithmError "splitIndex" "cannot split an empty index"
 
 -- | Split an index many times.
 --
@@ -133,7 +135,8 @@ extendIndexPred p f = go
         , p indexEnc
         = Just (singletonIndex indexEnc)
         | indexNumKeys index <= 2
-        = error "cannot split node with only 2 keys, increase page size"
+        = -- Cannot split node with only 2 keys, increase page size
+        throw KeyTooLargeError
         | otherwise
         = do
             let numKeys = indexNumKeys index
@@ -201,7 +204,7 @@ bindIndexM (Index ks vs) f = case vecUncons vs of
       where
         g acc (k , w) = mergeIndex acc k <$> f w
     Nothing ->
-        error "bindIndexM: empty Index"
+        throw $ TreeAlgorithmError "bindIndexM" "cannot bind an empty Index"
 
 --------------------------------------------------------------------------------
 
@@ -246,7 +249,7 @@ valView key (Index keys vals)
         val
       )
     | otherwise
-    = error "valView: empty Index"
+    = throw $ TreeAlgorithmError "valView" "cannot split an empty index"
 
 valViewMin :: Index key val -> (IndexCtx key val, val)
 valViewMin (Index keys vals)
@@ -260,7 +263,7 @@ valViewMin (Index keys vals)
         val
       )
     | otherwise
-    = error "valVeiwMin: empty Index"
+    = throw $ TreeAlgorithmError "valViewMin" "cannot split an empty index"
 
 -- | Distribute a map of key-value pairs over an index.
 distribute :: Ord k => M.Map k v -> Index k node -> Index k (M.Map k v, node)

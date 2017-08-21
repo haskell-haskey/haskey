@@ -36,6 +36,7 @@ module Data.BTree.Pure (
 
 import Prelude hiding (lookup, null)
 
+import Data.BTree.Primitives.Exception
 import Data.BTree.Primitives.Height
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
@@ -208,8 +209,8 @@ deleteRec setup key (Idx children)
     -- this couldn't be the root because it would've been shrunk
     -- before.
     | childNeedsMerge
-    = error "deleteRec: constraint violation, found an index \
-            \node with a single child"
+    = throw $ TreeAlgorithmError "deleteRec" 
+        "constraint violation, found an index node with a single child"
     | otherwise = Idx (putVal ctx newChild)
   where
     (ctx, child)    = valView key children

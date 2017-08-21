@@ -1,13 +1,14 @@
 
 module Data.BTree.Primitives.Key where
 
-import           Data.BTree.Primitives.Value
-
-import           Data.ByteString        (ByteString)
-import qualified Data.ByteString        as BS
+import Data.ByteString (ByteString)
+import Data.Int
+import Data.Word
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
-import           Data.Int
-import           Data.Word
+
+import Data.BTree.Primitives.Exception
+import Data.BTree.Primitives.Value
 
 --------------------------------------------------------------------------------
 
@@ -42,12 +43,8 @@ instance Key ByteString where
         -- can shorten 'b'.
         (EQ,LT) -> (a, BS.unsafeTake (n+1) b)
         -- Inputs violate the invariant a<b
-        _  -> error $ concat
-              [ "Key ByteString: can't narrow "
-              , show a
-              , " and "
-              , show b
-              ]
+        _  -> throw $ TreeAlgorithmError "narrow (Binary)" $ concat
+              ["Key ByteString: can't narrow ", show a, " and ", show b]
       where
         na = BS.length a
         nb = BS.length b

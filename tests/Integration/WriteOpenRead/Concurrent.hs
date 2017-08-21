@@ -117,7 +117,7 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                                       M.empty
                                       txs
 
-    _ <- run $ runFileStoreT (closeConcurrentHandles hnds) files
+    _ <- run $ runFileStoreT (closeConcurrentHandles hnds) config files
 
     run $ removeDirectoryRecursive fp
 
@@ -142,20 +142,23 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
 
     create :: ConcurrentHandles
            -> IO (ConcurrentDb Integer TestValue, Files FilePath)
-    create hnds = flip runFileStoreT emptyFileStore $ do
-        openConcurrentHandles hnds
-        createConcurrentDb hnds
+    create hnds = runFileStoreT m config emptyFileStore
+        where m = do openConcurrentHandles hnds
+                     createConcurrentDb hnds
 
     openAndRead :: ConcurrentDb Integer TestValue
                 -> Files FilePath
                 -> IO [(Integer, TestValue)]
-    openAndRead db = evalFileStoreT (readAll db)
+    openAndRead db = evalFileStoreT (readAll db) config
 
     openAndWrite :: ConcurrentDb Integer TestValue
                  -> Files FilePath
                  -> TestTransaction Integer TestValue
                  -> IO (Files FilePath)
-    openAndWrite db files tx = execFileStoreT (void $ writeTransaction tx db) files
+    openAndWrite db files tx =
+        execFileStoreT (void $ writeTransaction tx db) config files
+
+    config = defFileStoreConfig { fileStoreConfigPageSize = 256 }
 
 --------------------------------------------------------------------------------
 

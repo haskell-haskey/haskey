@@ -14,6 +14,8 @@ module Data.BTree.Store.File (
   -- * Storage
   Page(..)
 , Files
+, FileStoreConfig(..)
+, defFileStoreConfig
 , FileStoreT
 , runFileStoreT
 , evalFileStoreT
@@ -34,6 +36,7 @@ import Control.Applicative (Applicative, (<$>))
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
@@ -84,7 +87,6 @@ encodeAndPad size page
 -- collection of physical pages.
 type Files fp = Map fp IO.FHandle
 
-
 lookupHandle :: (Functor m, MonadThrow m, Ord fp, Show fp, Typeable fp)
              => fp -> Files fp -> m IO.FHandle
 lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
@@ -95,25 +97,49 @@ lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 -- 'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 -- concurrent page allocator.
 newtype FileStoreT fp m a = FileStoreT
-    { fromFileStoreT :: StateT (Files fp) m a
+    { fromFileStoreT :: ReaderT FileStoreConfig (StateT (Files fp) m) a
     } deriving (Applicative, Functor, Monad,
                 MonadIO, MonadThrow, MonadCatch, MonadMask,
-                MonadState (Files fp))
+                MonadReader FileStoreConfig, MonadState (Files fp))
+
+-- | File store configuration.
+--
+-- The default configuration can be obtained by using 'defFileStoreConfig'
+newtype FileStoreConfig = FileStoreConfig {
+    fileStoreConfigPageSize :: PageSize
+  } deriving (Show)
+
+-- | The default configuration
+--
+-- The default page size is 4096 bytes.
+defFileStoreConfig :: FileStoreConfig
+defFileStoreConfig = FileStoreConfig 4096
 
 -- | Run the storage operations in the 'FileStoreT' monad, given a collection of
 -- open files.
-runFileStoreT :: FileStoreT fp m a -> Files fp -> m (a, Files fp)
-runFileStoreT = runStateT . fromFileStoreT
+runFileStoreT :: FileStoreT fp m a -- ^ Action
+              -> FileStoreConfig   -- ^ Configuration
+              -> Files fp          -- ^ Open files
+              -> m (a, Files fp)
+runFileStoreT m config = runStateT (runReaderT (fromFileStoreT m) config)
 
 -- | Evaluate the storage operations in the 'FileStoreT' monad, given a collection
 -- of open files.
-evalFileStoreT :: Monad m => FileStoreT fp m a -> Files fp -> m a
-evalFileStoreT = evalStateT . fromFileStoreT
+evalFileStoreT :: Monad m
+               => FileStoreT fp m a -- ^ Action
+               -> FileStoreConfig   -- ^ Configuration
+               -> Files fp          -- ^ Open files
+               -> m a
+evalFileStoreT m config = evalStateT (runReaderT (fromFileStoreT m) config)
 
 -- | Execute the storage operations in the 'FileStoreT' monad, given a collection
 -- of open files.
-execFileStoreT :: Monad m => FileStoreT fp m a -> Files fp -> m (Files fp)
-execFileStoreT = execStateT . fromFileStoreT
+execFileStoreT :: Monad m
+               => FileStoreT fp m a -- ^ Action
+               -> FileStoreConfig   -- ^ Configuration
+               -> Files fp          -- ^ Open files
+               -> m (Files fp)
+execFileStoreT m config = execStateT (runReaderT (fromFileStoreT m) config)
 
 -- | An empty file store, with no open files.
 emptyFileStore :: Files fp
@@ -148,7 +174,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
     nodePageSize = return encodedPageSize
 
-    maxPageSize = return 256
+    maxPageSize = asks fileStoreConfigPageSize
 
     getNodePage fp height key val nid = do
         h    <- get >>= lookupHandle fp

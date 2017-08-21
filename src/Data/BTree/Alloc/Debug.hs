@@ -65,6 +65,8 @@ instance (Functor m, Monad m) => AllocM (DebugT m) where
         USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
 
     maxPageSize = return 256
+    maxKeySize = return 20
+    maxValueSize = return 20
 
     allocNode h n = do
         pid <- fromIntegral <$> gets (M.size . pagesNodes)

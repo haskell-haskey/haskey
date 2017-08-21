@@ -80,8 +80,9 @@ instance
     => AllocM (ConcurrentT WriterEnv ConcurrentHandles m)
   where
     nodePageSize = ConcurrentT Store.nodePageSize
-
     maxPageSize = ConcurrentT Store.maxPageSize
+    maxKeySize = ConcurrentT Store.maxKeySize
+    maxValueSize = ConcurrentT Store.maxValueSize
 
     allocNode height n = do
         hnd <- getWriterHnd height

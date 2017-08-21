@@ -121,6 +121,11 @@ encodeNoChecksum = runPut . putPage
 
     maskCompressed t = t .|. 0x01
 
+-- | Size of a node, if it were to be encoded.
+encodedPageSize :: (Key k, Value v) => Height h -> Node h k v -> PageSize
+encodedPageSize h = case viewHeight h of
+        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
+        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
 
 -- | Decode a page, and verify the checksum.
 decode :: SGet t -> ByteString -> Either String (Page t)

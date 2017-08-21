@@ -146,9 +146,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
             unless (isDoesNotExistError e) (ioError e)
 
 
-    nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
+    nodePageSize = return encodedPageSize
 
     maxPageSize = return 256
 

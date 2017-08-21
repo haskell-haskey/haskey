@@ -40,7 +40,6 @@ import Data.ByteString.Lazy (toStrict)
 import Data.Coerce
 import Data.Map (Map)
 import Data.Typeable (Typeable)
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
 
 import Data.BTree.Alloc.Concurrent
@@ -113,9 +112,7 @@ instance (Applicative m, Monad m, MonadThrow m,
     removeHandle fp =
         modify $ M.delete fp
 
-    nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
+    nodePageSize = return encodedPageSize
 
     maxPageSize = return 256
 

@@ -86,15 +86,19 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
                     ++ "\n    got:     " ++ show read'
 
     create :: IO (ConcurrentDb Integer TestValue, MemoryFiles String)
-    create = flip runMemoryStoreT emptyMemoryStore $ do
-        openConcurrentHandles hnds
-        createConcurrentDb hnds
+    create = runMemoryStoreT m config emptyMemoryStore
       where
+        m = do
+            openConcurrentHandles hnds
+            createConcurrentDb hnds
         hnds = concurrentHandles ""
 
-    openAndRead db = evalMemoryStoreT (readAll db)
+    openAndRead db = evalMemoryStoreT (readAll db) config
 
-    openAndWrite db files tx = execMemoryStoreT (writeTransaction tx db) files
+    openAndWrite db files tx =
+        execMemoryStoreT (writeTransaction tx db) config files
+
+    config = defMemoryStoreConfig { memoryStoreConfigPageSize = 256 }
 
 --------------------------------------------------------------------------------
 

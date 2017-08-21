@@ -15,6 +15,8 @@ module Data.BTree.Store.InMemory (
   Page(..)
 , MemoryFile
 , MemoryFiles
+, MemoryStoreConfig(..)
+, defMemoryStoreConfig
 , MemoryStoreT
 , runMemoryStoreT
 , evalMemoryStoreT
@@ -32,6 +34,7 @@ import Control.Applicative (Applicative, (<$>))
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
@@ -72,25 +75,49 @@ lookupPage fp pid m = M.lookup pid <$> lookupFile fp m
 --  'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 --  concurrent page allocator.
 newtype MemoryStoreT fp m a = MemoryStoreT
-    { fromMemoryStoreT :: StateT (MemoryFiles fp) m a
+    { fromMemoryStoreT :: ReaderT MemoryStoreConfig (StateT (MemoryFiles fp) m) a
     } deriving (Applicative, Functor, Monad,
                 MonadIO, MonadThrow, MonadCatch, MonadMask,
-                MonadState (MemoryFiles fp))
+                MonadReader MemoryStoreConfig, MonadState (MemoryFiles fp))
+
+-- | Memory store configuration.
+--
+-- The default configuration can be obtained by using 'defMemoryStoreConfig'.
+newtype MemoryStoreConfig = MemoryStoreConfig {
+    memoryStoreConfigPageSize :: PageSize
+  } deriving (Show)
+
+-- | The default configuration.
+--
+-- The default page size is 4096 bytes.
+defMemoryStoreConfig :: MemoryStoreConfig
+defMemoryStoreConfig = MemoryStoreConfig 4096
 
 -- | Run the storage operations in the 'MemoryStoreT' monad, given a collection of
 -- 'File's.
-runMemoryStoreT :: MemoryStoreT fp m a -> MemoryFiles fp -> m (a, MemoryFiles fp)
-runMemoryStoreT = runStateT . fromMemoryStoreT
+runMemoryStoreT :: MemoryStoreT fp m a    -- ^ Action to run
+                -> MemoryStoreConfig      -- ^ Configuration
+                -> MemoryFiles fp         -- ^ Data
+                -> m (a, MemoryFiles fp)
+runMemoryStoreT m config = runStateT (runReaderT (fromMemoryStoreT m) config)
 
 -- | Evaluate the storage operations in the 'MemoryStoreT' monad, given a colletion
 -- of 'File's.
-evalMemoryStoreT :: Monad m => MemoryStoreT fp m a -> MemoryFiles fp -> m a
-evalMemoryStoreT = evalStateT . fromMemoryStoreT
+evalMemoryStoreT :: Monad m
+                 => MemoryStoreT fp m a -- ^ Action to run
+                 -> MemoryStoreConfig   -- ^ Configuration
+                 -> MemoryFiles fp      -- ^ Data
+                 -> m a
+evalMemoryStoreT m config = evalStateT (runReaderT (fromMemoryStoreT m) config)
 
 -- | Execute the storage operations in the 'MemoryStoreT' monad, given a colletion of
 -- 'File's.
-execMemoryStoreT :: Monad m => MemoryStoreT fp m a -> MemoryFiles fp-> m (MemoryFiles fp)
-execMemoryStoreT = execStateT . fromMemoryStoreT
+execMemoryStoreT :: Monad m
+                 => MemoryStoreT fp m a -- ^ Action to run
+                 -> MemoryStoreConfig   -- ^ Configuration
+                 -> MemoryFiles fp      -- ^ Data
+                 -> m (MemoryFiles fp)
+execMemoryStoreT m config = execStateT (runReaderT (fromMemoryStoreT m) config)
 
 -- | Construct a store with an empty database with name of type @hnd@.
 emptyMemoryStore :: MemoryFiles hnd
@@ -114,7 +141,7 @@ instance (Applicative m, Monad m, MonadThrow m,
 
     nodePageSize = return encodedPageSize
 
-    maxPageSize = return 256
+    maxPageSize = asks memoryStoreConfigPageSize
 
     getNodePage hnd h key val nid = do
         bs <- get >>= lookupPage hnd (nodeIdToPageId nid)

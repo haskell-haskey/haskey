@@ -5,6 +5,7 @@ import Control.Applicative ((<$>))
 import Data.Map (Map)
 import qualified Data.Map as M
 
+import Data.BTree.Primitives.Exception
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 import Data.BTree.Utils.List (safeLast)
@@ -71,6 +72,7 @@ splitLeafMany maxLeafItems f items
         | M.null m
         = (reverse keys, reverse leafs)
         | otherwise
-        = error "splitLeafMany: constraint violation, got a Map with <= maxLeafItems"
+        = throw $ TreeAlgorithmError "splitLeafMany"
+            "constraint violation, got a Map with <= maxLeafItems"
 
 --------------------------------------------------------------------------------

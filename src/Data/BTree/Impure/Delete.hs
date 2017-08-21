@@ -14,6 +14,7 @@ import Data.BTree.Alloc.Class
 import Data.BTree.Impure.Insert
 import Data.BTree.Impure.Setup
 import Data.BTree.Impure.Structures
+import Data.BTree.Primitives.Exception
 import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
@@ -77,9 +78,8 @@ deleteRec key = fetchAndGo
            -- No left or right sibling? This is a constraint violation. Also
            -- this couldn't be the root because it would've been shrunk
            -- before.
-           | childNeedsMerge ->
-                 error "deleteRec: constraint violation, found an index \
-                       \node with a single child"
+           | childNeedsMerge -> throw $ TreeAlgorithmError "deleteRec"
+                 "constraint violation, found an index node with a single child"
            | otherwise -> do
                  newChildId <- allocNode subHeight newChild
                  return (Idx (putVal ctx newChildId))

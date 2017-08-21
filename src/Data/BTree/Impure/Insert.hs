@@ -11,6 +11,7 @@ import qualified Data.Map as M
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure.Overflow
 import Data.BTree.Impure.Structures
+import Data.BTree.Primitives.Exception
 import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------
@@ -29,7 +30,8 @@ splitIndex h index = do
     let binPred n = nodePageSize' h n <= m
     case extendIndexPred binPred Idx index of
         Just extIndex -> return extIndex
-        Nothing       -> error "Splitting failed!? Underflow "
+        Nothing -> throw $ TreeAlgorithmError "splitIndex"
+            "splitting failed, underflow"
 
 -- | Split a leaf node.
 --
@@ -44,9 +46,8 @@ splitLeaf items = do
     let binPred n = nodePageSize' zeroHeight n <= m
     case splitLeafManyPred binPred Leaf items of
         Just v  -> return v
-        Nothing -> error $ "Split leaf: underflow: could not split "
-                        ++ "(increase pages size or use page overflow): "
-                        ++ show items
+        Nothing -> throw $ TreeAlgorithmError "splitLeaf"
+            "splitting failed, underflow"
 
 --------------------------------------------------------------------------------
 
@@ -98,6 +99,9 @@ insertRecMany h kvs nid
 --------------------------------------------------------------------------------
 
 -- | Insert a key-value pair in an impure B+-tree.
+--
+-- You are responsible to make sure the key is smaller than 'maxKeySize',
+-- otherwise a 'KeyTooLargeError' can (but not always will) be thrown.
 insertTree :: (AllocM m, Key key, Value val)
     => key
     -> val
@@ -139,6 +143,9 @@ insertTree key val tree
               }
 
 -- | Bulk insert a bunch of key-value pairs in an impure B+-tree.
+--
+-- You are responsible to make sure all keys is smaller than 'maxKeySize',
+-- otherwise a 'KeyTooLargeError' can (but not always will) be thrown.
 insertTreeMany :: (AllocM m, Key key, Value val)
     => Map key val
     -> Tree key val

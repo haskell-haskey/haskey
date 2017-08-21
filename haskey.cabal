@@ -41,6 +41,7 @@ library
     Data.BTree.Impure.Setup
     Data.BTree.Impure.Structures
     Data.BTree.Primitives
+    Data.BTree.Primitives.Exception
     Data.BTree.Primitives.Height
     Data.BTree.Primitives.Ids
     Data.BTree.Primitives.Index

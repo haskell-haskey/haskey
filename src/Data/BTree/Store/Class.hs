@@ -22,6 +22,9 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
     -- | Open a database handle for reading and writing.
     openHandle :: hnd -> m ()
 
+    -- | Flush the contents of a handle to disk (or other storage).
+    flushHandle :: hnd -> m ()
+
     -- | Close a database handle.
     closeHandle :: hnd -> m ()
 
@@ -76,6 +79,7 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
 
 instance StoreM hnd m => StoreM hnd (StateT s m) where
     openHandle    = lift.             openHandle
+    flushHandle   = lift.             flushHandle
     closeHandle   = lift.             closeHandle
     removeHandle  = lift.             closeHandle
     nodePageSize  = lift              nodePageSize
@@ -88,6 +92,7 @@ instance StoreM hnd m => StoreM hnd (StateT s m) where
 
 instance StoreM hnd m => StoreM hnd (ReaderT s m) where
     openHandle    = lift.             openHandle
+    flushHandle   = lift.             flushHandle
     closeHandle   = lift.             closeHandle
     removeHandle  = lift.             closeHandle
     nodePageSize  = lift              nodePageSize

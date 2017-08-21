@@ -131,6 +131,10 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
             fh <- liftIO $ IO.openReadWrite fp
             modify $ M.insert fp fh
 
+    flushHandle fp = do
+        fh <- get >>= lookupHandle fp
+        liftIO $ IO.flush fh
+
     closeHandle fp = do
         fh <- get >>= lookupHandle fp
         liftIO $ IO.flush fh
@@ -140,6 +144,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
     removeHandle fp =
         liftIO $ removeFile fp `catchIOError` \e ->
             unless (isDoesNotExistError e) (ioError e)
+
 
     nodePageSize = return $ \h -> case viewHeight h of
         UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h

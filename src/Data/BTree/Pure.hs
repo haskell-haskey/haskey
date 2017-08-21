@@ -7,7 +7,8 @@
 -- | A pure in-memory B+-tree implementation.
 module Data.BTree.Pure (
   -- * Structures
-  Tree(..)
+  module Data.BTree.Pure.Setup
+, Tree(..)
 , Node(..)
 
   -- * Manipulations
@@ -31,9 +32,6 @@ module Data.BTree.Pure (
   -- * Folds
 , foldrWithKey
 , toList
-
-  -- * Configuration
-, module Data.BTree.Pure.TwoThree
 ) where
 
 import Prelude hiding (lookup, null)
@@ -42,7 +40,7 @@ import Data.BTree.Primitives.Height
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
 import Data.BTree.Primitives.Leaf
-import Data.BTree.Pure.TwoThree
+import Data.BTree.Pure.Setup
 
 import Data.Map (Map)
 import Data.Maybe (isJust, isNothing, fromMaybe)
@@ -59,7 +57,8 @@ import qualified Data.Map as M
 -- by 'Nothing'. Otherwise it's 'Just' the root. The height is existentially
 -- quantified.
 data Tree key val where
-    Tree :: Maybe (Node height key val)
+    Tree :: !TreeSetup
+         -> Maybe (Node height key val)
          -> Tree key val
 
 
@@ -79,19 +78,19 @@ deriving instance (Show key, Show val) => Show (Node height key val)
 deriving instance (Show key, Show val) => Show (Tree key val)
 
 -- | The empty tree.
-empty :: Tree key val
-empty = Tree Nothing
+empty :: TreeSetup -> Tree key val
+empty setup = Tree setup Nothing
 
 -- | Construct a tree containg one element.
-singleton :: Key k => k -> v -> Tree k v
-singleton k v = insert k v empty
+singleton :: Key k => TreeSetup -> k -> v -> Tree k v
+singleton s k v = insert k v (empty s)
 
 -- | /O(n*log n)/. Construct a B-tree from a list of key\/value pairs.
 --
 -- If the list contains duplicate keys, the last pair for a duplicate key is
 -- kept.
-fromList :: Key k => [(k,v)] -> Tree k v
-fromList = L.foldl' (flip $ uncurry insert) empty
+fromList :: Key k => TreeSetup -> [(k,v)] -> Tree k v
+fromList s = L.foldl' (flip $ uncurry insert) (empty s)
 
 --------------------------------------------------------------------------------
 
@@ -104,73 +103,76 @@ fromList = L.foldl' (flip $ uncurry insert) empty
 --
 -- If the key already existed in the tree, it is overwritten.
 insert :: Key k => k -> v -> Tree k v -> Tree k v
-insert k d (Tree (Just rootNode))
-    | newRootIdx <- insertRec k d rootNode
+insert k d (Tree setup (Just rootNode))
+    | newRootIdx <- insertRec setup k d rootNode
     = case fromSingletonIndex newRootIdx of
           Just newRootNode ->
               -- The result from the recursive insert is a single node. Use
               -- this as a new root.
-              Tree (Just newRootNode)
+              Tree setup (Just newRootNode)
           Nothing          ->
               -- The insert resulted in a index with multiple nodes, i.e.
               -- the splitting propagated to the root. Create a new 'Idx'
               -- node with the index. This increments the height.
-              Tree (Just (Idx newRootIdx))
-insert k d (Tree Nothing)
+              Tree setup (Just (Idx newRootIdx))
+insert k d (Tree setup Nothing)
     = -- Inserting into an empty tree creates a new singleton tree.
-      Tree (Just (Leaf (M.singleton k d)))
+      Tree setup (Just (Leaf (M.singleton k d)))
 
-insertRec ::
-       Key key
-    => key
-    -> val
-    -> Node height key val
-    -> Index key (Node height key val)
-insertRec key val (Idx children)
+insertRec :: Key key
+          => TreeSetup
+          -> key
+          -> val
+          -> Node height key val
+          -> Index key (Node height key val)
+insertRec setup key val (Idx children)
     | -- Punch a hole into the index at the sub-tree we recurse into.
       (ctx, child) <- valView key children
-    , newChildIdx  <- insertRec key val child
+    , newChildIdx  <- insertRec setup key val child
     = -- Fill the hole with the resulting 'Index' from the recursive call
       -- and then check if the split needs to be propagated.
-      splitIndex (putIdx ctx newChildIdx)
-insertRec key val (Leaf items)
-    = splitLeaf (M.insert key val items)
+      splitIndex setup (putIdx ctx newChildIdx)
+insertRec setup key val (Leaf items)
+    = splitLeaf setup (M.insert key val items)
 
 -- | Insert a bunch of key-value pairs simultaneously.
 insertMany :: Key k => Map k v -> Tree k v -> Tree k v
-insertMany kvs (Tree (Just rootNode))
-    = fixUp $ insertRecMany kvs rootNode
-insertMany kvs (Tree Nothing)
-    = fixUp $ splitLeaf kvs
+insertMany kvs (Tree setup (Just rootNode))
+    = fixUp setup $ insertRecMany setup kvs rootNode
+insertMany kvs (Tree setup Nothing)
+    = fixUp setup $ splitLeaf setup kvs
 
-insertRecMany ::
-       Key key
-    => Map key val
-    -> Node height key val
-    -> Index key (Node height key val)
-insertRecMany kvs (Idx idx)
+insertRecMany :: Key key
+              => TreeSetup
+              -> Map key val
+              -> Node height key val
+              -> Index key (Node height key val)
+insertRecMany setup kvs (Idx idx)
     | M.null kvs
     = singletonIndex (Idx idx)
     | dist            <- distribute kvs idx
-    = splitIndex (dist `bindIndex` uncurry insertRecMany)
-insertRecMany kvs (Leaf items)
-    = splitLeaf (M.union kvs items)
+    = splitIndex setup (dist `bindIndex` uncurry (insertRecMany setup))
+insertRecMany setup kvs (Leaf items)
+    = splitLeaf setup (M.union kvs items)
 
 -- | Fix up the root node of a tree.
 --
 -- Fix up the root node of a tree, where all other nodes are valid, but the
 -- root node may contain more items than allowed. Do this by repeatedly
 -- splitting up the root node.
-fixUp :: Key key => Index key (Node height key val) -> Tree key val
-fixUp idx = case fromSingletonIndex idx of
-    Just newRootNode -> Tree (Just newRootNode)
-    Nothing          -> fixUp (splitIndex idx)
+fixUp :: Key key
+      => TreeSetup
+      -> Index key (Node height key val)
+      -> Tree key val
+fixUp setup idx = case fromSingletonIndex idx of
+    Just newRootNode -> Tree setup (Just newRootNode)
+    Nothing          -> fixUp setup (splitIndex setup idx)
 
 --------------------------------------------------------------------------------
 
 -- | /O(n)/. Fold key\/value pairs in the B-tree.
 foldrWithKey :: forall k v w. (k -> v -> w -> w) -> w -> Tree k v -> w
-foldrWithKey f z0 (Tree mbRoot) = maybe z0 (go z0) mbRoot
+foldrWithKey f z0 (Tree _ mbRoot) = maybe z0 (go z0) mbRoot
   where
     go :: w -> Node h k v -> w
     go z1 (Leaf items) = M.foldrWithKey f z1 items
@@ -184,24 +186,24 @@ toList = foldrWithKey (\k v kvs -> (k,v):kvs) []
 
 -- | Delete a key-value pair from the tree.
 delete :: Key k => k -> Tree k v -> Tree k v
-delete _key (Tree Nothing)  = Tree Nothing
-delete key  (Tree (Just rootNode)) = case deleteRec key rootNode of
+delete _key (Tree setup Nothing)  = Tree setup Nothing
+delete key  (Tree setup (Just rootNode)) = case deleteRec setup key rootNode of
     Idx index
-      | Just childNode <- fromSingletonIndex index -> Tree (Just childNode)
+      | Just childNode <- fromSingletonIndex index -> Tree setup (Just childNode)
     Leaf items
-      | M.null items -> Tree Nothing
-    newRootNode -> Tree (Just newRootNode)
+      | M.null items -> Tree setup Nothing
+    newRootNode -> Tree setup (Just newRootNode)
 
-deleteRec ::
-       Key k
-    => k
-    -> Node n k v
-    -> Node n k v
-deleteRec key (Idx children)
+deleteRec :: Key k
+          => TreeSetup
+          -> k
+          -> Node n k v
+          -> Node n k v
+deleteRec setup key (Idx children)
     | childNeedsMerge, Just (rKey, rChild, rCtx) <- rightView ctx
-    = Idx (putIdx rCtx (mergeNodes newChild rKey rChild))
+    = Idx (putIdx rCtx (mergeNodes setup newChild rKey rChild))
     | childNeedsMerge, Just (lCtx, lChild, lKey) <- leftView ctx
-    = Idx (putIdx lCtx (mergeNodes lChild lKey newChild))
+    = Idx (putIdx lCtx (mergeNodes setup lChild lKey newChild))
     -- No left or right sibling? This is a constraint violation. Also
     -- this couldn't be the root because it would've been shrunk
     -- before.
@@ -211,32 +213,33 @@ deleteRec key (Idx children)
     | otherwise = Idx (putVal ctx newChild)
   where
     (ctx, child)    = valView key children
-    newChild        = deleteRec key child
-    childNeedsMerge = nodeNeedsMerge newChild
-deleteRec key (Leaf items)
+    newChild        = deleteRec setup key child
+    childNeedsMerge = nodeNeedsMerge setup newChild
+deleteRec _ key (Leaf items)
     = Leaf (M.delete key items)
 
-nodeNeedsMerge :: Node height key value -> Bool
-nodeNeedsMerge = \case
-    Idx children -> indexNumKeys children < minIdxKeys
-    Leaf items   -> M.size items < minLeafItems
+nodeNeedsMerge :: TreeSetup -> Node height key value -> Bool
+nodeNeedsMerge setup = \case
+    Idx children -> indexNumKeys children < minIdxKeys setup
+    Leaf items   -> M.size items < minLeafItems setup
 
 mergeNodes :: Key key
-    => Node height key val
-    -> key
-    -> Node height key val
-    -> Index key (Node height key val)
-mergeNodes (Leaf leftItems) _middleKey (Leaf rightItems) =
-    splitLeaf (leftItems <> rightItems)
-mergeNodes (Idx leftIdx) middleKey (Idx rightIdx) =
-    splitIndex (mergeIndex leftIdx middleKey rightIdx)
+           => TreeSetup
+           -> Node height key val
+           -> key
+           -> Node height key val
+           -> Index key (Node height key val)
+mergeNodes setup (Leaf leftItems) _middleKey (Leaf rightItems) =
+    splitLeaf setup (leftItems <> rightItems)
+mergeNodes setup (Idx leftIdx) middleKey (Idx rightIdx) =
+    splitIndex setup (mergeIndex leftIdx middleKey rightIdx)
 
 --------------------------------------------------------------------------------
 
 lookupRec :: Key key
-    => key
-    -> Node height key val
-    -> Maybe val
+          => key
+          -> Node height key val
+          -> Maybe val
 lookupRec key (Idx children)
     | (_, childNode) <- valView key children
     = lookupRec key childNode
@@ -245,8 +248,8 @@ lookupRec key (Leaf items)
 
 -- | Lookup a value in the tree.
 lookup :: Key k => k -> Tree k v -> Maybe v
-lookup _ (Tree Nothing) = Nothing
-lookup k (Tree (Just n)) = lookupRec k n
+lookup _ (Tree _ Nothing) = Nothing
+lookup k (Tree _ (Just n)) = lookupRec k n
 
 -- | Lookup a value in the tree, or return a default.
 findWithDefault :: Key k => v -> k -> Tree k v -> v
@@ -264,7 +267,7 @@ notMember k = isNothing . lookup k
 
 -- | Check whether the tree is empty.
 null :: Tree k v -> Bool
-null (Tree n) = isNothing n
+null (Tree _ n) = isNothing n
 
 sizeNode :: Node n k v -> Int
 sizeNode (Leaf items) = M.size items
@@ -272,15 +275,15 @@ sizeNode (Idx nodes)  = F.sum (fmap sizeNode nodes)
 
 -- | The size of a tree.
 size :: Tree k v -> Int
-size (Tree Nothing) = 0
-size (Tree (Just n)) = sizeNode n
+size (Tree _ Nothing) = 0
+size (Tree _ (Just n)) = sizeNode n
 
 --------------------------------------------------------------------------------
 
 -- | Make a tree node foldable over its value.
 instance F.Foldable (Tree key) where
-    foldMap _ (Tree Nothing) = mempty
-    foldMap f (Tree (Just n)) = F.foldMap f n
+    foldMap _ (Tree _ Nothing) = mempty
+    foldMap f (Tree _ (Just n)) = F.foldMap f n
 
 instance F.Foldable (Node height key) where
     foldMap f (Idx idx) =
@@ -290,14 +293,15 @@ instance F.Foldable (Node height key) where
 
 --------------------------------------------------------------------------------
 
-splitIndex ::
-    Index key (Node height key val) ->
-    Index key (Node ('S height) key val)
-splitIndex = extendedIndex maxIdxKeys Idx
+splitIndex :: TreeSetup
+           -> Index key (Node height key val)
+           -> Index key (Node ('S height) key val)
+splitIndex setup = extendedIndex (maxIdxKeys setup) Idx
 
-splitLeaf :: Key key =>
-    Map key val ->
-    Index key (Node 'Z key val)
-splitLeaf = splitLeafMany maxLeafItems Leaf
+splitLeaf :: Key key
+          => TreeSetup
+          -> Map key val
+          -> Index key (Node 'Z key val)
+splitLeaf setup = splitLeafMany (maxLeafItems setup) Leaf
 
 --------------------------------------------------------------------------------

@@ -38,6 +38,7 @@ library
     Data.BTree.Impure.Lookup
     Data.BTree.Impure.NonEmpty
     Data.BTree.Impure.Overflow
+    Data.BTree.Impure.Setup
     Data.BTree.Impure.Structures
     Data.BTree.Primitives
     Data.BTree.Primitives.Height
@@ -47,7 +48,7 @@ library
     Data.BTree.Primitives.Leaf
     Data.BTree.Primitives.Value
     Data.BTree.Pure
-    Data.BTree.Pure.TwoThree
+    Data.BTree.Pure.Setup
     Data.BTree.Store
     Data.BTree.Store.Binary
     Data.BTree.Store.Class

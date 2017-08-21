@@ -33,24 +33,24 @@ tests = testGroup "Pure"
     ]
 
 instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Tree.Tree k v) where
-    arbitrary = Tree.fromList <$> arbitrary
-    shrink = map Tree.fromList . shrink . Tree.toList
+    arbitrary = Tree.fromList testSetup <$> arbitrary
+    shrink = map (Tree.fromList testSetup) . shrink . Tree.toList
 
 prop_foldable :: [(Int64, Int)] -> Bool
-prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList xs')
+prop_foldable xs = F.foldMap snd xs' == F.foldMap id (Tree.fromList testSetup xs')
   where xs' = nubByFstEq . map(\x -> (fst x, Sum $ snd x)) $ xs
 
 prop_validTree_fromList :: [(Int64, Int)] -> Bool
-prop_validTree_fromList xs = validTree (Tree.fromList xs)
+prop_validTree_fromList xs = validTree (Tree.fromList testSetup xs)
 
 prop_foldableToList_fromList :: [(Int64, Int)] -> Bool
 prop_foldableToList_fromList xs =
-    F.toList (Tree.fromList xs) ==
+    F.toList (Tree.fromList testSetup xs) ==
     F.toList (M.fromList xs)
 
 prop_toList_fromList :: [(Int64, Int)] -> Bool
 prop_toList_fromList xs =
-    Tree.toList (Tree.fromList xs) ==
+    Tree.toList (Tree.fromList testSetup xs) ==
     M.toList    (M.fromList xs)
 
 prop_insertMany :: [(Int64, Int)] -> [(Int64, Int)] -> Bool
@@ -61,7 +61,7 @@ prop_insertMany xs ys
   where
     (mx, my) = (M.fromList xs, M.fromList ys)
     mxy = M.union mx my
-    ty = Tree.fromList ys
+    ty = Tree.fromList testSetup ys
     txy = Tree.insertMany mx ty
 
 prop_insert_insertMany :: M.Map Int64 Int -> Tree.Tree Int64 Int -> Bool
@@ -77,15 +77,18 @@ nubByFstEq = nubBy ((==) `on` fst)
 
 -- | Check whether a given tree is valid.
 validTree :: Ord key => Tree key val -> Bool
-validTree (Tree Nothing) = True
-validTree (Tree (Just (Leaf items))) = M.size items <= maxLeafItems
-validTree (Tree (Just (Idx idx))) =
-    validIndexSize 1 maxIdxKeys idx && F.all validNode idx
+validTree (Tree _ Nothing) = True
+validTree (Tree setup (Just (Leaf items))) = M.size items <= maxLeafItems setup
+validTree (Tree setup (Just (Idx idx))) =
+    validIndexSize 1 (maxIdxKeys setup) idx && F.all (validNode setup) idx
 
 -- | Check whether a (non-root) node is valid.
-validNode :: Ord key => Node height key val -> Bool
-validNode = \case
-    Leaf items -> M.size items >= minLeafItems &&
-                  M.size items <= maxLeafItems
-    Idx idx    -> validIndexSize minIdxKeys maxIdxKeys idx &&
-                  F.all validNode idx
+validNode :: Ord key => TreeSetup -> Node height key val -> Bool
+validNode setup = \case
+    Leaf items -> M.size items >= minLeafItems setup &&
+                  M.size items <= maxLeafItems setup
+    Idx idx    -> validIndexSize (minIdxKeys setup) (maxIdxKeys setup) idx &&
+                  F.all (validNode setup) idx
+
+testSetup :: TreeSetup
+testSetup = twoThreeSetup

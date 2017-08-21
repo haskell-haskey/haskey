@@ -12,9 +12,9 @@ import qualified Data.Map as M
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure.Insert
+import Data.BTree.Impure.Setup
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
-import Data.BTree.Pure.TwoThree
 
 --------------------------------------------------------------------------------
 

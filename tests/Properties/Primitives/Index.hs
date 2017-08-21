@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-
+{-# LANGUAGE RecordWildCards #-}
 module Properties.Primitives.Index (tests) where
 
 import Test.Framework                       (Test, testGroup)
@@ -22,7 +22,7 @@ import qualified Data.Vector as V
 import Data.BTree.Primitives.Ids
 import Data.BTree.Primitives.Index
 import Data.BTree.Primitives.Key
-import qualified Data.BTree.Pure.TwoThree as Tree
+import Data.BTree.Pure.Setup
 
 import Properties.Primitives.Ids () -- Arbitrary instance of PageSize
 
@@ -99,7 +99,7 @@ prop_extendedIndex idx
     , joinedNodesOK   <- concatMap F.toList (V.toList idxs) == F.toList idx
     = numKeyIdxsOK && validIdxs && keysMaxOK && keysMinOK && keysOrderOK && joinedNodesOK
   where
-    maxIdxKeys = Tree.maxFanout - 1
+    TreeSetup{..} = twoThreeSetup
 
 prop_extendIndexPred :: PageSize -> Index Int64 Int -> Bool
 prop_extendIndexPred (PageSize pageSize) idx

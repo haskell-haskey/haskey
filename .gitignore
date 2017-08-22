@@ -5,7 +5,9 @@
 *.hi
 *.hp
 *.o
+*.orig
 *.prof
+*.prof.html
 *~
 .DS_Store
 .cabal-sandbox/

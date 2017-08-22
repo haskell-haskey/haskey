@@ -8,6 +8,7 @@ import Control.Applicative (Applicative, (<$>))
 import Control.Monad.Identity
 import Control.Monad.State
 
+import Data.Binary.Put (runPut)
 import Data.Map (Map, (!))
 import Data.Word (Word32)
 import qualified Data.ByteString.Lazy as BL
@@ -17,8 +18,8 @@ import Unsafe.Coerce (unsafeCoerce)
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure
+import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
-import Data.BTree.Store.Page
 
 data SomeNode = forall h k v. SomeNode (Height h) (Node h k v)
 
@@ -61,8 +62,8 @@ instance (Functor m, Monad m) => AllocReaderM (DebugT m) where
 
 instance (Functor m, Monad m) => AllocM (DebugT m) where
     nodePageSize = return $ \h -> case viewHeight h of
-        UZero -> fromIntegral . BL.length . encodeZeroChecksum . LeafNodePage h
-        USucc _ -> fromIntegral . BL.length . encodeZeroChecksum . IndexNodePage h
+        UZero -> fromIntegral . BL.length . runPut . putLeafNode
+        USucc _ -> fromIntegral . BL.length . runPut . putIndexNode
 
     maxPageSize = return 256
     maxKeySize = return 20

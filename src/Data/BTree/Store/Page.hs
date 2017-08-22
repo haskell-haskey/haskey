@@ -21,11 +21,11 @@ import Data.Binary.Put (runPut)
 import Data.Bits ((.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (fromStrict, toStrict)
-import Data.Digest.Adler32 (adler32)
+import Data.Digest.XXHash.FFI (xxh64)
 import Data.Maybe (fromMaybe)
 import Data.Proxy
 import Data.Typeable (Typeable)
-import Data.Word (Word8, Word32)
+import Data.Word (Word8, Word64)
 import qualified Data.Binary as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
@@ -97,15 +97,16 @@ pageType STypeIndexNode      = TypeIndexNode
 
 -- | Encode a page to a lazy byte string, but with the checksum set to zero.
 encodeZeroChecksum :: Page t -> BL.ByteString
-encodeZeroChecksum p = "\NUL\NUL\NUL\NUL" `BL.append` encodeNoChecksum p
+encodeZeroChecksum p = zero `BL.append` encodeNoChecksum p
+  where zero = "\NUL\NUL\NUL\NUL\NUL\NUL\NUL\NUL"
 
 -- | Encode a page to a lazy byte string, and prepend the calculated checksum.
 encode :: Page t -> BL.ByteString
 encode = prependChecksum . encodeNoChecksum
 
--- | Prepend the adler32 checksum of a bytestring to itself.
+-- | Prepend the xxHash 64-bit checksum of a bytestring to itself.
 prependChecksum :: BL.ByteString -> BL.ByteString
-prependChecksum bs = B.encode (adler32 bs :: Word32) `BL.append` bs
+prependChecksum bs = B.encode (xxh64 bs checksumSeed :: Word64) `BL.append` bs
 
 -- | Encode a page to a lazy byte string, without prepending the checksum.
 encodeNoChecksum :: Page t -> BL.ByteString
@@ -130,12 +131,12 @@ encodedPageSize h = case viewHeight h of
 -- | Decode a page, and verify the checksum.
 decode :: SGet t -> ByteString -> Either String (Page t)
 decode g@(SGet t _) bs = do
-    let (cksumBs, body) = BS.splitAt 4 bs
-    cksum <- if BS.length cksumBs < 4
+    let (cksumBs, body) = BS.splitAt 8 bs
+    cksum <- if BS.length cksumBs < 8
                 then Left $ "could not decode " ++ show (pageType t) ++ ": "
                         ++ "not enough checksum bytes"
                 else Right $ B.decode (fromStrict cksumBs)
-    let cksum' = adler32 body
+    let cksum' = xxh64 body checksumSeed
     if cksum' /= cksum
         then Left $ "could not decode " ++ show (pageType t) ++ ": "
                  ++ "expected checksum " ++ show cksum' ++ " but checksum "
@@ -243,3 +244,6 @@ concurrentMetaPage k v = SGet STypeConcurrentMeta $ get >>= \ case
 newtype DecodeError = DecodeError String deriving (Show, Typeable)
 
 instance Exception DecodeError where
+
+checksumSeed :: Word64
+checksumSeed = 0

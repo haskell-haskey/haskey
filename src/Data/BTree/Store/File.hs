@@ -78,8 +78,8 @@ encodeAndPad size page
   where
     enc = encodeNoChecksum page
 
-    -- Reserve 4 bytes for the checksum
-    padding | n <- fromIntegral size - BL.length enc - 4, n >= 0 = Just n
+    -- Reserve 8 bytes for the checksum
+    padding | n <- fromIntegral size - BL.length enc - 8, n >= 0 = Just n
             | otherwise = Nothing
 
 --------------------------------------------------------------------------------

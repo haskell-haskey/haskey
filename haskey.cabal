@@ -80,7 +80,6 @@ library
 
   build-depends:
     base                    >=4.7  && <5,
-    adler32                 >=0.1  && <1,
     binary                  >=0.6  && <0.9 || >0.9 && <1,
     bytestring              >=0.10 && <1,
     containers              >=0.5  && <1,
@@ -97,7 +96,8 @@ library
     stm-containers          >=0.2  && <1,
     transformers            >=0.3  && <1,
     unix                    >=2.7.1.0 && <3,
-    vector                  >=0.10 && <1
+    vector                  >=0.10 && <1,
+    xxhash-ffi              >=0.1.0.1 && <1
 
   default-language:    Haskell2010
   ghc-options:         -Wall
@@ -129,8 +129,10 @@ test-suite haskey-properties
     transformers  >=0.3  && <1,
     vector        >=0.10 && <1,
 
+    HUnit                      >=1.3  && <2,
     QuickCheck                 >=2    && <3,
     test-framework             >=0.8  && <1,
+    test-framework-hunit       >=0.3  && <1,
     test-framework-quickcheck2 >=0.3  && <1,
     haskey
 

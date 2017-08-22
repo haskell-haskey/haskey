@@ -1,16 +1,21 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Properties.Store.Page where
 
 import Test.Framework (Test, testGroup)
+import Test.Framework.Providers.HUnit (testCase)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
+import Test.HUnit hiding (Test, Node)
 import Test.QuickCheck
 
 import Data.Int
 import Data.Proxy
 import qualified Data.Binary as B
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.Map as M
 
-import Data.BTree.Impure.Structures (castNode)
+import Data.BTree.Impure.Structures (Node(..), castNode)
 import Data.BTree.Primitives
 import Data.BTree.Store.Page
 
@@ -22,6 +27,7 @@ tests = testGroup "Store.Page"
     , testProperty "binary emptyPage" prop_binary_emptyPage
     , testProperty "binary nodePage leaf" prop_binary_leafNodePage
     , testProperty "binary nodePage idx" prop_binary_indexNodePage
+    , testCase "zero checksum length" case_zero_checksum_length
     ]
 
 prop_binary_pageType :: Property
@@ -58,6 +64,20 @@ prop_binary_indexNodePage = forAll genIndexNode $ \(srcHgt, idx) ->
  where
    key = Proxy :: Proxy Int64
    val = Proxy :: Proxy Bool
+
+case_zero_checksum_length :: Assertion
+case_zero_checksum_length = do
+    assertEqual "zero checksum should prepend 8 bytes" 8 $
+        BL.length withZero' - BL.length without'
+    assertEqual "zero checksum length should equal regular checksum lenth"
+        (BL.length withZero')
+        (BL.length with')
+  where
+    withZero' = encodeZeroChecksum pg
+    without'  = encodeNoChecksum pg
+    with'     = encode pg
+
+    pg = LeafNodePage zeroHeight $ (Leaf M.empty :: Node 'Z Int64 Int64)
 
 decode' :: SGet t -> BL.ByteString -> Either String (Page t)
 decode' x = decode x . BL.toStrict

@@ -2,7 +2,7 @@ resolver: lts-9.0
 packages:
 - '.'
 extra-deps:
-- adler32-0.1.1.0
+- xxhash-ffi-0.1.0.1
 - lz4-0.2.3.1
 flags: {}
 extra-package-dbs: []

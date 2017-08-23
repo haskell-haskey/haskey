@@ -67,7 +67,9 @@ get :: MonadIO m => MemoryStoreT fp m (Map fp MemoryFile)
 get = MemoryStoreT . lift $ ask >>= liftIO . readIORef
 
 -- | Access the files.
-gets :: MonadIO m => (Map fp MemoryFile -> a) -> MemoryStoreT fp m a
+gets :: (Functor m, MonadIO m)
+     => (Map fp MemoryFile -> a)
+     -> MemoryStoreT fp m a
 gets f = f <$> get
 
 -- | Modify the files.

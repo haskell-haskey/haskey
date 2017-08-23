@@ -111,9 +111,10 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
     tmpDir <- if w then return "/var/run/shm"
                    else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
-    let hnds = concurrentHandles fp
 
-    (db, files) <- run $ create hnds
+    let hnds = concurrentHandles fp
+    files  <- run newFileStore
+    db     <- run $ create files hnds
     result <- run . runMaybeT $ foldM (writeReadTest db files)
                                       M.empty
                                       txs
@@ -141,23 +142,24 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: ConcurrentHandles
-           -> IO (ConcurrentDb Integer TestValue, Files FilePath)
-    create hnds = runFileStoreT m config emptyFileStore
+    create :: Files FilePath
+           -> ConcurrentHandles
+           -> IO (ConcurrentDb Integer TestValue)
+    create files hnds = runFileStoreT m config files
         where m = do openConcurrentHandles hnds
                      createConcurrentDb hnds
 
     openAndRead :: ConcurrentDb Integer TestValue
                 -> Files FilePath
                 -> IO [(Integer, TestValue)]
-    openAndRead db = evalFileStoreT (readAll db) config
+    openAndRead db = runFileStoreT (readAll db) config
 
     openAndWrite :: ConcurrentDb Integer TestValue
                  -> Files FilePath
                  -> TestTransaction Integer TestValue
-                 -> IO (Files FilePath)
+                 -> IO ()
     openAndWrite db files tx =
-        execFileStoreT (void $ writeTransaction tx db) config files
+        runFileStoreT (void $ writeTransaction tx db) config files
 
     config = fromJust $ fileStoreConfigWithPageSize 256
 

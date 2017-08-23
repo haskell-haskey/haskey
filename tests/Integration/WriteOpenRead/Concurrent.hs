@@ -88,11 +88,8 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
                     ++ "\n    got:     " ++ show read'
 
     create :: MemoryFiles String -> IO (ConcurrentDb Integer TestValue)
-    create = runMemoryStoreT m config
+    create = runMemoryStoreT (createConcurrentDb hnds) config
       where
-        m = do
-            openConcurrentHandles hnds
-            createConcurrentDb hnds
         hnds = concurrentHandles ""
 
     openAndRead db = runMemoryStoreT (readAll db) config
@@ -146,9 +143,7 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
     create :: Files FilePath
            -> ConcurrentHandles
            -> IO (ConcurrentDb Integer TestValue)
-    create files hnds = runFileStoreT m config files
-        where m = do openConcurrentHandles hnds
-                     createConcurrentDb hnds
+    create files hnds = runFileStoreT (createConcurrentDb hnds) config files
 
     openAndRead :: ConcurrentDb Integer TestValue
                 -> Files FilePath

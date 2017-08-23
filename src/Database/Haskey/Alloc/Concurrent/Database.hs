@@ -58,11 +58,10 @@ openConcurrentHandles ConcurrentHandles{..} = do
     openHandle concurrentHandlesMetadata2
 
 -- | Open a new concurrent database, with the given handles.
---
--- The handles should already have been opened using 'openConcurrentHandles'.
 createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM m)
                    => ConcurrentHandles -> m (ConcurrentDb k v)
 createConcurrentDb hnds = do
+    openConcurrentHandles hnds
     db <- newConcurrentDb hnds meta0
     setCurrentMeta meta0 db
     setCurrentMeta meta0 db
@@ -81,11 +80,10 @@ createConcurrentDb hnds = do
       }
 
 -- | Open the an existing database, with the given handles.
---
--- The handles should already have been opened using 'openConcurrentHandles'.
 openConcurrentDb :: (Key k, Value v, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                  => ConcurrentHandles -> m (Maybe (ConcurrentDb k v))
 openConcurrentDb hnds@ConcurrentHandles{..} = do
+    openConcurrentHandles hnds
     m1 <- readConcurrentMeta concurrentHandlesMetadata1 Proxy Proxy
     m2 <- readConcurrentMeta concurrentHandlesMetadata2 Proxy Proxy
     maybeDb <- case (m1, m2) of

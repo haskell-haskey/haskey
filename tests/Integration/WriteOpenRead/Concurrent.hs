@@ -62,41 +62,42 @@ case_bad_seed = do
 
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> do
-    (db, files) <- run create
-    _ <- run $ foldlM (\(files', m) tx -> writeReadTest db files' tx m)
-                      (files, M.empty)
-                      txs
+    files <- run newEmptyMemoryStore
+    db    <- run $ create files
+    _     <- run $ foldlM (writeReadTest db files)
+                          M.empty
+                          txs
     return ()
   where
 
     writeReadTest :: ConcurrentDb Integer TestValue
                   -> MemoryFiles String
-                  -> TestTransaction Integer TestValue
                   -> Map Integer TestValue
-                  -> IO (MemoryFiles String, Map Integer TestValue)
-    writeReadTest db files tx m = do
-        files'   <- openAndWrite db files tx
-        read'    <- openAndRead db files'
+                  -> TestTransaction Integer TestValue
+                  -> IO (Map Integer TestValue)
+    writeReadTest db files m tx = do
+        openAndWrite db files tx
+        read' <- openAndRead db files
         let expected = fromMaybe m $ testTransactionResult m tx
         if read' == M.toList expected
-            then return (files', expected)
+            then return expected
             else error $ "error:"
                     ++ "\n    after:   " ++ show tx
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: IO (ConcurrentDb Integer TestValue, MemoryFiles String)
-    create = runMemoryStoreT m config emptyMemoryStore
+    create :: MemoryFiles String -> IO (ConcurrentDb Integer TestValue)
+    create = runMemoryStoreT m config
       where
         m = do
             openConcurrentHandles hnds
             createConcurrentDb hnds
         hnds = concurrentHandles ""
 
-    openAndRead db = evalMemoryStoreT (readAll db) config
+    openAndRead db = runMemoryStoreT (readAll db) config
 
     openAndWrite db files tx =
-        execMemoryStoreT (writeTransaction tx db) config files
+        runMemoryStoreT (writeTransaction tx db) config files
 
     config = fromJust $ memoryStoreConfigWithPageSize 256
 

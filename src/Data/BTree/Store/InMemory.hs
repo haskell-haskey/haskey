@@ -20,9 +20,7 @@ module Data.BTree.Store.InMemory (
 , memoryStoreConfigWithPageSize
 , MemoryStoreT
 , runMemoryStoreT
-, evalMemoryStoreT
-, execMemoryStoreT
-, emptyMemoryStore
+, newEmptyMemoryStore
 
   -- * Exceptions
 , FileNotFoundError(..)
@@ -36,12 +34,11 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-import Control.Monad.State.Class
-import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
 
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce
+import Data.IORef
 import Data.Map (Map)
 import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
@@ -61,14 +58,30 @@ import Data.BTree.Utils.Monad.Catch (justErrM)
 type MemoryFile = Map PageId ByteString
 
 -- | A collection of 'File's, each associated with a certain @fp@ handle.
-type MemoryFiles fp = Map fp MemoryFile
+--
+-- This is shareable amongst multiple threads.
+type MemoryFiles fp = IORef (Map fp MemoryFile)
+
+-- | Access the files.
+get :: MonadIO m => MemoryStoreT fp m (Map fp MemoryFile)
+get = MemoryStoreT . lift $ ask >>= liftIO . readIORef
+
+-- | Access the files.
+gets :: MonadIO m => (Map fp MemoryFile -> a) -> MemoryStoreT fp m a
+gets f = f <$> get
+
+-- | Modify the files.
+modify' :: MonadIO m =>
+        (Map fp MemoryFile -> Map fp MemoryFile)
+        -> MemoryStoreT fp m ()
+modify' f = MemoryStoreT . lift $ ask >>= liftIO . flip modifyIORef' f
 
 lookupFile :: (MonadThrow m, Ord fp, Show fp, Typeable fp)
-           => fp -> MemoryFiles fp -> m MemoryFile
+           => fp -> Map fp MemoryFile -> m MemoryFile
 lookupFile fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 
 lookupPage :: (Functor m, MonadThrow m, Ord fp, Show fp, Typeable fp)
-           => fp -> PageId -> MemoryFiles fp -> m ByteString
+           => fp -> PageId -> Map fp MemoryFile -> m ByteString
 lookupPage fp pid m = M.lookup pid <$> lookupFile fp m
                   >>= justErrM (PageNotFoundError fp pid)
 
@@ -78,10 +91,10 @@ lookupPage fp pid m = M.lookup pid <$> lookupFile fp m
 --  'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 --  concurrent page allocator.
 newtype MemoryStoreT fp m a = MemoryStoreT
-    { fromMemoryStoreT :: ReaderT MemoryStoreConfig (StateT (MemoryFiles fp) m) a
+    { fromMemoryStoreT :: ReaderT MemoryStoreConfig (ReaderT (MemoryFiles fp) m) a
     } deriving (Applicative, Functor, Monad,
                 MonadIO, MonadThrow, MonadCatch, MonadMask,
-                MonadReader MemoryStoreConfig, MonadState (MemoryFiles fp))
+                MonadReader MemoryStoreConfig)
 
 -- | Memory store configuration.
 --
@@ -124,46 +137,28 @@ memoryStoreConfigWithPageSize pageSize
 runMemoryStoreT :: MemoryStoreT fp m a    -- ^ Action to run
                 -> MemoryStoreConfig      -- ^ Configuration
                 -> MemoryFiles fp         -- ^ Data
-                -> m (a, MemoryFiles fp)
-runMemoryStoreT m config = runStateT (runReaderT (fromMemoryStoreT m) config)
-
--- | Evaluate the storage operations in the 'MemoryStoreT' monad, given a colletion
--- of 'File's.
-evalMemoryStoreT :: Monad m
-                 => MemoryStoreT fp m a -- ^ Action to run
-                 -> MemoryStoreConfig   -- ^ Configuration
-                 -> MemoryFiles fp      -- ^ Data
-                 -> m a
-evalMemoryStoreT m config = evalStateT (runReaderT (fromMemoryStoreT m) config)
-
--- | Execute the storage operations in the 'MemoryStoreT' monad, given a colletion of
--- 'File's.
-execMemoryStoreT :: Monad m
-                 => MemoryStoreT fp m a -- ^ Action to run
-                 -> MemoryStoreConfig   -- ^ Configuration
-                 -> MemoryFiles fp      -- ^ Data
-                 -> m (MemoryFiles fp)
-execMemoryStoreT m config = execStateT (runReaderT (fromMemoryStoreT m) config)
+                -> m a
+runMemoryStoreT m config = runReaderT (runReaderT (fromMemoryStoreT m) config)
 
 -- | Construct a store with an empty database with name of type @hnd@.
-emptyMemoryStore :: MemoryFiles hnd
-emptyMemoryStore = M.empty
+newEmptyMemoryStore :: IO (MemoryFiles hnd)
+newEmptyMemoryStore = newIORef M.empty
 
 --------------------------------------------------------------------------------
 
-instance (Applicative m, Monad m, MonadThrow m,
+instance (Applicative m, Monad m, MonadIO m, MonadThrow m,
           Ord fp, Show fp, Typeable fp) =>
     StoreM fp (MemoryStoreT fp m)
   where
     openHandle fp =
-        modify $ M.insertWith (flip const) fp M.empty
+        modify' $ M.insertWith (flip const) fp M.empty
 
     flushHandle _ = return ()
 
     closeHandle _ = return ()
 
     removeHandle fp =
-        modify $ M.delete fp
+        modify' $ M.delete fp
 
     nodePageSize = return encodedPageSize
     maxPageSize = asks memoryStoreConfigPageSize
@@ -181,7 +176,7 @@ instance (Applicative m, Monad m, MonadThrow m,
                     justErrM WrongNodeTypeError $ castNode heightSrc h n
 
     putNodePage hnd height nid node =
-        modify $ M.update (Just . M.insert (nodeIdToPageId nid) pg) hnd
+        modify' $ M.update (Just . M.insert (nodeIdToPageId nid) pg) hnd
       where
         pg = case viewHeight height of
             UZero -> toStrict . encode $ LeafNodePage height node
@@ -193,7 +188,7 @@ instance (Applicative m, Monad m, MonadThrow m,
             OverflowPage v -> justErrM WrongOverflowValueError $ castValue v
 
     putOverflow hnd val =
-        modify $ M.update (Just . M.insert 0 pg) hnd
+        modify' $ M.update (Just . M.insert 0 pg) hnd
       where
         pg = toStrict . encode $ OverflowPage val
 
@@ -201,16 +196,16 @@ instance (Applicative m, Monad m, MonadThrow m,
 
 --------------------------------------------------------------------------------
 
-instance (Applicative m, Monad m, MonadThrow m) =>
+instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
     ConcurrentMetaStoreM (MemoryStoreT FilePath m)
   where
     putConcurrentMeta h meta =
-        modify $ M.update (Just . M.insert 0 pg) h
+        modify' $ M.update (Just . M.insert 0 pg) h
       where
         pg = toStrict . encode $ ConcurrentMetaPage meta
 
     readConcurrentMeta hnd k v = do
-        Just bs <- MemoryStoreT $ gets (M.lookup hnd >=> M.lookup 0)
+        Just bs <- gets (M.lookup hnd >=> M.lookup 0)
         decodeM (concurrentMetaPage k v) bs >>= \case
             ConcurrentMetaPage meta -> return . Just $! coerce meta
 

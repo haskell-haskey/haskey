@@ -34,12 +34,13 @@ import System.Directory (removeDirectoryRecursive,
 import System.IO.Temp (createTempDirectory)
 
 import Data.BTree.Alloc.Class
-import Data.BTree.Alloc.Concurrent
 import Data.BTree.Impure
 import Data.BTree.Primitives
-import Data.BTree.Store.File
-import Data.BTree.Store.InMemory
 import qualified Data.BTree.Impure as Tree
+
+import Database.Haskey.Alloc.Concurrent
+import Database.Haskey.Store.File
+import Database.Haskey.Store.InMemory
 
 import Integration.WriteOpenRead.Transactions
 

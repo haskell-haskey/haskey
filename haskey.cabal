@@ -4,6 +4,9 @@ synopsis:            A transcatoinal, ACID compliant, embeddable key-value store
 description:
     Haskey is a transactional, ACID compliant, embeddable, scalable key-value
     store written entirely in Haskell.
+    .
+    For more information on how to use this package, visit
+    <https://github.com/haskell-haskey/haskey>
 homepage:            https://github.com/haskell-haskey
 license:             BSD3
 license-file:        LICENSE

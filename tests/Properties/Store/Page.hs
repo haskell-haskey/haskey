@@ -1,6 +1,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Properties.Store.Page where
 
 import Test.Framework (Test, testGroup)
@@ -9,17 +12,23 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.HUnit hiding (Test, Node)
 import Test.QuickCheck
 
+import Control.Applicative ((<$>))
+
 import Data.Int
+import Data.List (nub)
+import Data.Monoid ((<>))
 import Data.Proxy
 import qualified Data.Binary as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
+import qualified Data.Vector as V
 
-import Data.BTree.Impure.Structures (Node(..), castNode)
+import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
-import Data.BTree.Store.Page
 
-import Properties.Impure.Structures (genLeafNode, genIndexNode)
+import Database.Haskey.Store.Page
+
+--------------------------------------------------------------------------------
 
 tests :: Test
 tests = testGroup "Store.Page"
@@ -77,7 +86,47 @@ case_zero_checksum_length = do
     without'  = encodeNoChecksum pg
     with'     = encode pg
 
-    pg = LeafNodePage zeroHeight $ (Leaf M.empty :: Node 'Z Int64 Int64)
+    pg = LeafNodePage zeroHeight (Leaf M.empty :: Node 'Z Int64 Int64)
 
 decode' :: SGet t -> BL.ByteString -> Either String (Page t)
 decode' x = decode x . BL.toStrict
+
+--------------------------------------------------------------------------------
+
+genIndexNode :: Gen (Height ('S h), Node ('S h) Int64 Bool)
+genIndexNode = do
+    h <- genNonZeroHeight
+    n <- Idx <$> arbitrary
+    return (h, n)
+
+genLeafNode :: Gen (Node 'Z Int64 Bool)
+genLeafNode = Leaf <$> arbitrary
+
+instance Arbitrary v => Arbitrary (LeafValue v) where
+    arbitrary = oneof [RawValue <$> arbitrary, OverflowValue <$> arbitrary]
+
+instance Arbitrary TxId where
+    arbitrary = TxId <$> arbitrary
+
+deriving instance Arbitrary (Height h)
+
+genNonZeroHeight :: Gen (Height h)
+genNonZeroHeight = suchThat arbitrary $ \h -> case viewHeight h of
+    UZero   -> False
+    USucc _ -> True
+
+instance (Key k, Arbitrary k, Arbitrary v) => Arbitrary (Index k v) where
+  arbitrary = do
+      keys <- V.fromList . nub <$> orderedList
+      vals <- V.fromList <$> vector (V.length keys + 1)
+      return (Index keys vals)
+  shrink (Index keys vals) =
+      [ Index newKeys newVals
+      | k <- [0..V.length keys - 1]
+      , let (preKeys,sufKeys) = V.splitAt k keys
+            newKeys           = preKeys <> V.drop 1 sufKeys
+            (preVals,sufVals) = V.splitAt k vals
+            newVals           = preVals <> V.drop 1 sufVals
+      ]
+
+deriving instance Arbitrary (NodeId height key val)

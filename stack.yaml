@@ -5,5 +5,6 @@ extra-deps:
 - xxhash-ffi-0.1.0.1
 - lz4-0.2.3.1
 - haskey-btree-0.1.0.0
+- numerals-0.4.1
 flags: {}
 extra-package-dbs: []

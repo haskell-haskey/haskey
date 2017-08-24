@@ -252,7 +252,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
 --------------------------------------------------------------------------------
 
-instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
+instance (Applicative m, Monad m, MonadIO m, MonadCatch m) =>
     ConcurrentMetaStoreM (FileStoreT FilePath m)
   where
     putConcurrentMeta fp meta = do
@@ -270,8 +270,11 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         len <- liftIO $ IO.getFileSize fh
         liftIO $ IO.seek fh 0
         bs <- liftIO $ readByteString fh (fromIntegral len)
-        decodeM (concurrentMetaPage k v) bs >>= \case
-            ConcurrentMetaPage meta -> return $ Just (coerce meta)
+        handle handle' (Just <$> decodeM (concurrentMetaPage k v) bs) >>= \case
+            Just (ConcurrentMetaPage meta) -> return $ Just (coerce meta)
+            Nothing -> return Nothing
+      where
+        handle' (DecodeError _) = return Nothing
 
 --------------------------------------------------------------------------------
 

@@ -199,7 +199,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m,
 
 --------------------------------------------------------------------------------
 
-instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
+instance (Applicative m, Monad m, MonadIO m, MonadCatch m) =>
     ConcurrentMetaStoreM (MemoryStoreT FilePath m)
   where
     putConcurrentMeta h meta =
@@ -209,8 +209,11 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
 
     readConcurrentMeta hnd k v = do
         Just bs <- gets (M.lookup hnd >=> M.lookup 0)
-        decodeM (concurrentMetaPage k v) bs >>= \case
-            ConcurrentMetaPage meta -> return . Just $! coerce meta
+        handle handle' (Just <$> decodeM (concurrentMetaPage k v) bs) >>= \case
+            Just (ConcurrentMetaPage meta) -> return . Just $! coerce meta
+            Nothing -> return Nothing
+      where
+        handle' (DecodeError _) = return Nothing
 
 --------------------------------------------------------------------------------
 

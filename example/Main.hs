@@ -1,28 +1,24 @@
 module Main where
 
-import Control.Applicative ((<$>))
 import Control.Concurrent.Async (async, wait)
-import Control.Monad (void, unless, replicateM)
+import Control.Monad (void, replicateM)
 
 import Data.BTree.Impure (toList, insertTree)
 import Data.ByteString (ByteString)
 import Data.Int (Int32)
 import Data.Text.Encoding (encodeUtf8)
+import qualified Data.Text as Text
 
 import Database.Haskey.Alloc.Concurrent (ConcurrentDb,
                                          ConcurrentHandles,
                                          concurrentHandles,
                                          openConcurrentDb,
                                          createConcurrentDb,
-                                         transact,
+                                         transact_,
                                          transactReadOnly,
-                                         abort,
-                                         commit)
+                                         commit_)
 import Database.Haskey.Store.File (FileStoreT, Files, newFileStore,
                                    runFileStoreT, defFileStoreConfig)
-
-import Text.Numeral (defaultInflection)
-import qualified Text.Numeral.Language.ENG as EN
 
 main :: IO ()
 main = do
@@ -40,15 +36,12 @@ writer :: Files FilePath
        -> ConcurrentDb Int32 ByteString
        -> Int32
        -> IO ()
-writer store db i = do
-    s <- runDatabase store $ transact tx db
-    unless s $ putStrLn ("Could not encode " ++ show i)
+writer store db i =
+    runDatabase store $ transact_ tx db
   where
-    value = encodeUtf8 <$> EN.us_cardinal defaultInflection i
+    bs = encodeUtf8 $ Text.pack (show i)
 
-    tx tree
-        | Just bs <- value = insertTree i bs tree >>= commit True
-        | otherwise        = abort False
+    tx tree = insertTree i bs tree >>= commit_
 
 reader :: Files FilePath
        -> ConcurrentDb Int32 ByteString

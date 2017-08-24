@@ -1,5 +1,5 @@
 name:                haskey
-version:             0.1.0.0
+version:             0.1.0.1
 synopsis:            A transcatoinal, ACID compliant, embeddable key-value store.
 description:
     Haskey is a transactional, ACID compliant, embeddable, scalable key-value

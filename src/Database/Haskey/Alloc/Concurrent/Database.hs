@@ -218,6 +218,7 @@ transactReadOnly act db =
     addOne (Just x) = Just $! x + 1
     subOne Nothing = Nothing
     subOne (Just 0) = Nothing
+    subOne (Just 1) = Nothing
     subOne (Just x) = Just $! x - 1
 
     acquireMeta = liftIO . atomically $ do

@@ -180,6 +180,7 @@ checkFreePages :: (Functor m, MonadIO m, MonadState (WriterEnv hnd) m)
 checkFreePages (Unchecked v) = do
     readers <- writerReaders <$> get
     oldest  <- liftIO . atomically $ Map.lookupMinKey readers
-    if maybe True (> fst v) oldest
+    tx      <- writerTxId <$> get
+    if maybe True (> fst v) oldest && fst v + 1 < tx
         then return (Just v)
         else return Nothing

@@ -205,7 +205,7 @@ transact_ act db = void $ transact act db
 transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
                  => (forall n. (AllocReaderM n, MonadMask m) => Tree key val -> n a)
                  -> ConcurrentDb key val -> m a
-transactReadOnly act db =
+transactReadOnly act db = withRLock (concurrentDbWriterLock db) $
     bracket acquireMeta
             releaseMeta $
             \meta -> evalConcurrentT (act $ concurrentMetaTree meta)

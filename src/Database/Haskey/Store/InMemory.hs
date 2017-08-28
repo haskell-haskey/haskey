@@ -208,10 +208,13 @@ instance (Applicative m, Monad m, MonadIO m, MonadCatch m) =>
         pg = toStrict . encode $ ConcurrentMetaPage meta
 
     readConcurrentMeta hnd k v = do
-        Just bs <- gets (M.lookup hnd >=> M.lookup 0)
-        handle handle' (Just <$> decodeM (concurrentMetaPage k v) bs) >>= \case
-            Just (ConcurrentMetaPage meta) -> return . Just $! coerce meta
+        maybeBs <- gets (M.lookup hnd >=> M.lookup 0)
+        case maybeBs of
             Nothing -> return Nothing
+            Just bs ->
+                handle handle' (Just <$> decodeM (concurrentMetaPage k v) bs) >>= \case
+                    Just (ConcurrentMetaPage meta) -> return . Just $! coerce meta
+                    Nothing -> return Nothing
       where
         handle' (DecodeError _) = return Nothing
 

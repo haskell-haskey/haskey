@@ -154,7 +154,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m,
     StoreM fp (MemoryStoreT fp m)
   where
     openHandle fp =
-        modify' $ M.insertWith (flip const) fp M.empty
+        modify' $ M.insertWith (\_new old -> old) fp M.empty
 
     flushHandle _ = return ()
 

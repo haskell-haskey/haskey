@@ -109,10 +109,9 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
     tmpDir <- if w then return "/var/run/shm"
                    else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
-
     let hnds = concurrentHandles fp
-    files  <- run newFileStore
-    db     <- run $ create files hnds
+
+    (db, files) <- run $ create hnds
     result <- run . runMaybeT $ foldM (writeReadTest db files)
                                       M.empty
                                       txs
@@ -140,22 +139,27 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: Files FilePath
-           -> ConcurrentHandles
-           -> IO (ConcurrentDb Integer TestValue)
-    create files hnds = runFileStoreT (createConcurrentDb hnds) config files
+    create :: ConcurrentHandles
+           -> IO (ConcurrentDb Integer TestValue, Files FilePath)
+    create hnds = runFileStoreT m config emptyFileStore
+        where m = do openConcurrentHandles hnds
+                     createConcurrentDb hnds
 
     openAndRead :: ConcurrentDb Integer TestValue
                 -> Files FilePath
                 -> IO [(Integer, TestValue)]
-    openAndRead db = runFileStoreT (readAll db) config
+
+    openAndRead :: ConcurrentDb Integer TestValue
+                -> Files FilePath
+                -> IO [(Integer, TestValue)]
+    openAndRead db = evalFileStoreT (readAll db) config
 
     openAndWrite :: ConcurrentDb Integer TestValue
                  -> Files FilePath
                  -> TestTransaction Integer TestValue
-                 -> IO ()
+                 -> IO (Files FilePath)
     openAndWrite db files tx =
-        runFileStoreT (void $ writeTransaction tx db) config files
+        execFileStoreT (void $ writeTransaction tx db) config files
 
     config = fromJust $ fileStoreConfigWithPageSize 256
 

@@ -13,15 +13,11 @@
 module Database.Haskey.Store.File (
   -- * Storage
   Page(..)
-, Files
 , FileStoreConfig(..)
 , defFileStoreConfig
 , fileStoreConfigWithPageSize
 , FileStoreT
 , runFileStoreT
-, evalFileStoreT
-, execFileStoreT
-, emptyFileStore
 
   -- * Binary encoding
 , encodeAndPad
@@ -39,7 +35,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.State.Class
-import Control.Monad.Trans.State.Strict ( StateT, evalStateT, execStateT , runStateT)
+import Control.Monad.Trans.State.Strict ( StateT, evalStateT)
 
 import Data.Coerce (coerce)
 import Data.Map (Map)
@@ -143,33 +139,11 @@ fileStoreConfigWithPageSize pageSize
 
 -- | Run the storage operations in the 'FileStoreT' monad, given a collection of
 -- open files.
-runFileStoreT :: FileStoreT fp m a -- ^ Action
+runFileStoreT :: Monad m
+              => FileStoreT FilePath m a -- ^ Action
               -> FileStoreConfig   -- ^ Configuration
-              -> Files fp          -- ^ Open files
-              -> m (a, Files fp)
-runFileStoreT m config = runStateT (runReaderT (fromFileStoreT m) config)
-
--- | Evaluate the storage operations in the 'FileStoreT' monad, given a collection
--- of open files.
-evalFileStoreT :: Monad m
-               => FileStoreT fp m a -- ^ Action
-               -> FileStoreConfig   -- ^ Configuration
-               -> Files fp          -- ^ Open files
-               -> m a
-evalFileStoreT m config = evalStateT (runReaderT (fromFileStoreT m) config)
-
--- | Execute the storage operations in the 'FileStoreT' monad, given a collection
--- of open files.
-execFileStoreT :: Monad m
-               => FileStoreT fp m a -- ^ Action
-               -> FileStoreConfig   -- ^ Configuration
-               -> Files fp          -- ^ Open files
-               -> m (Files fp)
-execFileStoreT m config = execStateT (runReaderT (fromFileStoreT m) config)
-
--- | An empty file store, with no open files.
-emptyFileStore :: Files fp
-emptyFileStore = M.empty
+              -> m a
+runFileStoreT m config = evalStateT (runReaderT (fromFileStoreT m) config) M.empty
 
 --------------------------------------------------------------------------------
 

@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (async, wait)
 import Control.Monad (void, replicateM)
 
@@ -17,22 +18,31 @@ import Database.Haskey.Alloc.Concurrent (ConcurrentDb,
                                          transact_,
                                          transactReadOnly,
                                          commit_)
-import Database.Haskey.Store.File (FileStoreT, Files, newFileStore,
-                                   runFileStoreT, defFileStoreConfig)
+--import Database.Haskey.Store.File (FileStoreT, Files, newFileStore,
+--                                   runFileStoreT, defFileStoreConfig)
+import Database.Haskey.Store.InMemory (MemoryStoreT, MemoryFiles, newEmptyMemoryStore,
+                                       runMemoryStoreT, defMemoryStoreConfig)
+
+import System.Random (randomIO)
+
+concurrency :: Integral a => a
+concurrency = 1000
 
 main :: IO ()
 main = do
-    store <- newFileStore
+    store <- newEmptyMemoryStore
     db    <- openOrCreate store
 
-    writers <- mapM (async . writer store db) [1..100]
-    readers <- replicateM 100 $ async (reader store db)
+    writers <- mapM (async . writer store db) [1..concurrency]
+    readers <- replicateM concurrency . async $ do
+        delay <- randomIO
+        reader store db (delay `rem` 5000)
     mapM_ wait writers
     mapM_ wait readers
     putStrLn "Done"
 
 
-writer :: Files FilePath
+writer :: MemoryFiles FilePath
        -> ConcurrentDb Int32 ByteString
        -> Int32
        -> IO ()
@@ -43,13 +53,15 @@ writer store db i =
 
     tx tree = insertTree i bs tree >>= commit_
 
-reader :: Files FilePath
+reader :: MemoryFiles FilePath
        -> ConcurrentDb Int32 ByteString
+       -> Int
        -> IO ()
-reader files db = void $ replicateM 100 $ runDatabase files $
-    transactReadOnly toList db
+reader files db delay = void $ replicateM 10 $ do
+    threadDelay delay
+    runDatabase files $ transactReadOnly toList db
 
-openOrCreate :: Files FilePath
+openOrCreate :: MemoryFiles FilePath
              -> IO (ConcurrentDb Int32 ByteString)
 openOrCreate store = runDatabase store $ do
     maybeDb <- openConcurrentDb handles
@@ -57,10 +69,16 @@ openOrCreate store = runDatabase store $ do
         Nothing -> createConcurrentDb handles
         Just db -> return db
 
+{-
 runDatabase :: Files FilePath
             -> FileStoreT FilePath m a
             -> m a
 runDatabase files action = runFileStoreT action defFileStoreConfig files
+-}
+runDatabase :: MemoryFiles FilePath
+            -> MemoryStoreT FilePath m a
+            -> m a
+runDatabase files action = runMemoryStoreT action defMemoryStoreConfig files
 
 handles :: ConcurrentHandles
 handles = concurrentHandles "example-database.haskey"

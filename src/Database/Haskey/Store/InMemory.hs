@@ -30,6 +30,7 @@ module Database.Haskey.Store.InMemory (
 ) where
 
 import Control.Applicative (Applicative, (<$>))
+import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
@@ -38,7 +39,6 @@ import Control.Monad.Reader
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce
-import Data.IORef
 import Data.Map (Map)
 import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
@@ -61,11 +61,11 @@ type MemoryFile = Map PageId ByteString
 -- | A collection of 'File's, each associated with a certain @fp@ handle.
 --
 -- This is shareable amongst multiple threads.
-type MemoryFiles fp = IORef (Map fp MemoryFile)
+type MemoryFiles fp = MVar (Map fp MemoryFile)
 
 -- | Access the files.
 get :: MonadIO m => MemoryStoreT fp m (Map fp MemoryFile)
-get = MemoryStoreT . lift $ ask >>= liftIO . readIORef
+get = MemoryStoreT . lift $ ask >>= liftIO . readMVar
 
 -- | Access the files.
 gets :: (Functor m, MonadIO m)
@@ -77,7 +77,7 @@ gets f = f <$> get
 modify' :: MonadIO m =>
         (Map fp MemoryFile -> Map fp MemoryFile)
         -> MemoryStoreT fp m ()
-modify' f = MemoryStoreT . lift $ ask >>= liftIO . flip modifyIORef' f
+modify' f = MemoryStoreT . lift $ ask >>= liftIO . flip modifyMVar_ (return . f)
 
 lookupFile :: (MonadThrow m, Ord fp, Show fp, Typeable fp)
            => fp -> Map fp MemoryFile -> m MemoryFile
@@ -145,7 +145,7 @@ runMemoryStoreT m config = runReaderT (runReaderT (fromMemoryStoreT m) config)
 
 -- | Construct a store with an empty database with name of type @hnd@.
 newEmptyMemoryStore :: IO (MemoryFiles hnd)
-newEmptyMemoryStore = newIORef M.empty
+newEmptyMemoryStore = newMVar M.empty
 
 --------------------------------------------------------------------------------
 

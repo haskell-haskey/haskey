@@ -109,29 +109,25 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
     tmpDir <- if w then return "/var/run/shm"
                    else run getTemporaryDirectory
     fp     <- run $ createTempDirectory tmpDir "db.haskey"
-
     let hnds = concurrentHandles fp
-    files  <- run newFileStore
-    db     <- run $ create files hnds
-    result <- run . runMaybeT $ foldM (writeReadTest db files)
+
+    db     <- run $ create hnds
+    result <- run . runMaybeT $ foldM (writeReadTest db)
                                       M.empty
                                       txs
-
-    _ <- run $ runFileStoreT (closeConcurrentHandles hnds) config files
 
     run $ removeDirectoryRecursive fp
 
     assert $ isJust result
   where
     writeReadTest :: ConcurrentDb Integer TestValue
-                  -> Files FilePath
                   -> Map Integer TestValue
                   -> TestTransaction Integer TestValue
                   -> MaybeT IO (Map Integer TestValue)
-    writeReadTest db files m tx = do
-        _     <- lift $ void (openAndWrite db files tx) `catch`
+    writeReadTest db m tx = do
+        _     <- lift $ void (openAndWrite db tx) `catch`
                             \TestException -> return ()
-        read' <- lift $ openAndRead db files
+        read' <- lift $ openAndRead db
         let expected = fromMaybe m $ testTransactionResult m tx
         if read' == M.toList expected
             then return expected
@@ -140,22 +136,20 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: Files FilePath
-           -> ConcurrentHandles
+    create :: ConcurrentHandles
            -> IO (ConcurrentDb Integer TestValue)
-    create files hnds = runFileStoreT (createConcurrentDb hnds) config files
+    create hnds = runFileStoreT (createConcurrentDb hnds) config
+
 
     openAndRead :: ConcurrentDb Integer TestValue
-                -> Files FilePath
                 -> IO [(Integer, TestValue)]
     openAndRead db = runFileStoreT (readAll db) config
 
     openAndWrite :: ConcurrentDb Integer TestValue
-                 -> Files FilePath
                  -> TestTransaction Integer TestValue
                  -> IO ()
-    openAndWrite db files tx =
-        runFileStoreT (void $ writeTransaction tx db) config files
+    openAndWrite db tx =
+        runFileStoreT (void $ writeTransaction tx db) config
 
     config = fromJust $ fileStoreConfigWithPageSize 256
 

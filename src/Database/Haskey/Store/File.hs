@@ -13,13 +13,11 @@
 module Database.Haskey.Store.File (
   -- * Storage
   Page(..)
-, Files
 , FileStoreConfig(..)
 , defFileStoreConfig
 , fileStoreConfigWithPageSize
 , FileStoreT
 , runFileStoreT
-, newFileStore
 
   -- * Binary encoding
 , encodeAndPad
@@ -36,12 +34,13 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
+import Control.Monad.State.Class
+import Control.Monad.Trans.State.Strict ( StateT, evalStateT)
 
 import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
-import Data.IORef
 import Data.Typeable (Typeable)
 import Data.Word (Word64)
 import qualified Data.ByteString.Lazy as BL
@@ -85,22 +84,10 @@ encodeAndPad size page
 --
 -- Each file is a 'Handle' opened in 'System.IO.ReadWriteMode' and contains a
 -- collection of physical pages.
---
--- These files can be safely shared between threads.
-type Files fp = IORef (Map fp IO.FHandle)
-
--- | Access the files.
-get :: MonadIO m => FileStoreT fp m (Map fp IO.FHandle)
-get = FileStoreT . lift $ ask >>= liftIO . readIORef
-
--- | Modify the files.
-modify' :: MonadIO m
-        => (Map fp IO.FHandle -> Map fp IO.FHandle)
-        -> FileStoreT fp m ()
-modify' f = FileStoreT . lift $ ask >>= liftIO . flip modifyIORef' f
+type Files fp = Map fp IO.FHandle
 
 lookupHandle :: (Functor m, MonadThrow m, Ord fp, Show fp, Typeable fp)
-             => fp -> Map fp IO.FHandle -> m IO.FHandle
+             => fp -> Files fp -> m IO.FHandle
 lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 
 -- | Monad in which on-disk storage operations can take place.
@@ -109,10 +96,10 @@ lookupHandle fp m = justErrM (FileNotFoundError fp) $ M.lookup fp m
 -- 'ConcurrentMetaStoreM' making it a storage back-end compatible with the
 -- concurrent page allocator.
 newtype FileStoreT fp m a = FileStoreT
-    { fromFileStoreT :: ReaderT FileStoreConfig (ReaderT (Files fp) m) a
+    { fromFileStoreT :: ReaderT FileStoreConfig (StateT (Files fp) m) a
     } deriving (Applicative, Functor, Monad,
                 MonadIO, MonadThrow, MonadCatch, MonadMask,
-                MonadReader FileStoreConfig)
+                MonadReader FileStoreConfig, MonadState (Files fp))
 
 -- | File store configuration.
 --
@@ -152,15 +139,11 @@ fileStoreConfigWithPageSize pageSize
 
 -- | Run the storage operations in the 'FileStoreT' monad, given a collection of
 -- open files.
-runFileStoreT :: FileStoreT fp m a -- ^ Action
+runFileStoreT :: Monad m
+              => FileStoreT FilePath m a -- ^ Action
               -> FileStoreConfig   -- ^ Configuration
-              -> Files fp          -- ^ Open files
               -> m a
-runFileStoreT m config = runReaderT (runReaderT (fromFileStoreT m) config)
-
--- | An empty file store, with no open files.
-newFileStore :: IO (Files fp)
-newFileStore = newIORef M.empty
+runFileStoreT m config = evalStateT (runReaderT (fromFileStoreT m) config) M.empty
 
 --------------------------------------------------------------------------------
 
@@ -172,7 +155,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         unless alreadyOpen $ do
             liftIO $ createDirectoryIfMissing True (takeDirectory fp)
             fh <- liftIO $ IO.openReadWrite fp
-            modify' $ M.insert fp fh
+            modify $ M.insert fp fh
 
     flushHandle fp = do
         fh <- get >>= lookupHandle fp
@@ -182,7 +165,7 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
         fh <- get >>= lookupHandle fp
         liftIO $ IO.flush fh
         liftIO $ IO.close fh
-        modify' (M.delete fp)
+        modify (M.delete fp)
 
     removeHandle fp =
         liftIO $ removeFile fp `catchIOError` \e ->

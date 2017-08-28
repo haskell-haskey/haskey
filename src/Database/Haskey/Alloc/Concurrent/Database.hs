@@ -10,7 +10,7 @@ import Control.Concurrent.STM
 import Control.Monad (void, unless)
 import Control.Monad.IO.Class
 import Control.Monad.Catch (MonadCatch, MonadMask, SomeException,
-                            catch, mask, onException, bracket)
+                            catch, mask, onException, bracket, bracket_)
 import Control.Monad.State
 import Control.Monad.Trans (lift)
 
@@ -58,10 +58,12 @@ openConcurrentHandles ConcurrentHandles{..} = do
     openHandle concurrentHandlesMetadata2
 
 -- | Open a new concurrent database, with the given handles.
-createConcurrentDb :: (Key k, Value v, MonadIO m, ConcurrentMetaStoreM m)
+createConcurrentDb :: (Key k, Value v, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                    => ConcurrentHandles -> m (ConcurrentDb k v)
-createConcurrentDb hnds = do
-    openConcurrentHandles hnds
+createConcurrentDb hnds =
+    bracket_ (openConcurrentHandles hnds)
+             (closeConcurrentHandles hnds) $ do
+
     db <- newConcurrentDb hnds meta0
     setCurrentMeta meta0 db
     setCurrentMeta meta0 db
@@ -82,8 +84,10 @@ createConcurrentDb hnds = do
 -- | Open the an existing database, with the given handles.
 openConcurrentDb :: (Key k, Value v, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                  => ConcurrentHandles -> m (Maybe (ConcurrentDb k v))
-openConcurrentDb hnds@ConcurrentHandles{..} = do
-    openConcurrentHandles hnds
+openConcurrentDb hnds@ConcurrentHandles{..} =
+    bracket_ (openConcurrentHandles hnds)
+             (closeConcurrentHandles hnds) $ do
+
     m1 <- readConcurrentMeta concurrentHandlesMetadata1 Proxy Proxy
     m2 <- readConcurrentMeta concurrentHandlesMetadata2 Proxy Proxy
     maybeDb <- case (m1, m2) of
@@ -205,7 +209,10 @@ transact_ act db = void $ transact act db
 transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
                  => (forall n. (AllocReaderM n, MonadMask m) => Tree key val -> n a)
                  -> ConcurrentDb key val -> m a
-transactReadOnly act db = withRLock (concurrentDbWriterLock db) $
+transactReadOnly act db =
+    bracket_ (openConcurrentHandles hnds)
+             (closeConcurrentHandles hnds) $
+
     bracket acquireMeta
             releaseMeta $
             \meta -> evalConcurrentT (act $ concurrentMetaTree meta)
@@ -248,7 +255,9 @@ actAndCommit db act
       , concurrentDbWriterLock = lock
       , concurrentDbReaders = readers
       } <- db
-    = withRLock lock $ do
+    = withRLock lock $
+        bracket_ (openConcurrentHandles hnds)
+                 (closeConcurrentHandles hnds) $ do
 
     meta <- liftIO . atomically $ getCurrentMeta db
     let newRevision = concurrentMetaRevision meta + 1

@@ -11,9 +11,10 @@ module FileIO (
   , seek
   , setFileSize
   , getFileSize
+  , PrefixLock
+  , prefixLockFromPrefix
   , obtainPrefixLock
   , releasePrefixLock
-  , PrefixLock
 ) where
 
 import Prelude hiding (read)
@@ -51,6 +52,9 @@ import qualified System.IO.Error as SE
 
 
 newtype PrefixLock = PrefixLock FilePath
+
+prefixLockFromPrefix :: FilePath -> PrefixLock
+prefixLockFromPrefix = PrefixLock . (++ ".lock")
 
 newtype FHandle = FHandle Fd
 
@@ -99,8 +103,9 @@ close (FHandle fd) = closeFd fd
 --    where flags = defaultFileFlags {exclusive = True, trunc = True}
 
 
-
-
+-- | Obtain a lock on a file.
+--
+-- Use 'releasePrefixLock' to release the prefix lock.
 obtainPrefixLock :: FilePath -> IO PrefixLock
 obtainPrefixLock prefix = checkLock fp >> takeLock fp
     where fp = prefix ++ ".lock"

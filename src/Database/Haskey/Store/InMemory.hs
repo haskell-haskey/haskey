@@ -156,6 +156,10 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m,
     openHandle fp =
         modify' $ M.insertWith (\_new old -> old) fp M.empty
 
+    lockHandle _ = return ()
+
+    releaseHandle _ = return ()
+
     flushHandle _ = return ()
 
     closeHandle _ = return ()

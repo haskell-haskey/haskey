@@ -40,6 +40,12 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
     -- | Open a database handle for reading and writing.
     openHandle :: hnd -> m ()
 
+    -- | Obtain a lock on the given handle, so no other process can access it.
+    lockHandle :: hnd -> m ()
+
+    -- | Release the lock on the given handle, so other processes can access it.
+    releaseHandle :: hnd -> m ()
+
     -- | Flush the contents of a handle to disk (or other storage).
     flushHandle :: hnd -> m ()
 
@@ -118,6 +124,8 @@ class (Applicative m, Monad m) => StoreM hnd m | m -> hnd where
 
 instance StoreM hnd m => StoreM hnd (StateT s m) where
     openHandle    = lift.             openHandle
+    lockHandle    = lift.             lockHandle
+    releaseHandle = lift.             releaseHandle
     flushHandle   = lift.             flushHandle
     closeHandle   = lift.             closeHandle
     removeHandle  = lift.             closeHandle
@@ -133,6 +141,8 @@ instance StoreM hnd m => StoreM hnd (StateT s m) where
 
 instance StoreM hnd m => StoreM hnd (ReaderT s m) where
     openHandle    = lift.             openHandle
+    lockHandle    = lift.             lockHandle
+    releaseHandle = lift.             releaseHandle
     flushHandle   = lift.             flushHandle
     closeHandle   = lift.             closeHandle
     removeHandle  = lift.             closeHandle

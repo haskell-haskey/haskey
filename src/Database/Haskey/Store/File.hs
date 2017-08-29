@@ -157,6 +157,10 @@ instance (Applicative m, Monad m, MonadIO m, MonadThrow m) =>
             fh <- liftIO $ IO.openReadWrite fp
             modify $ M.insert fp fh
 
+    lockHandle = void . liftIO . IO.obtainPrefixLock
+
+    releaseHandle = liftIO . IO.releasePrefixLock . IO.prefixLockFromPrefix
+
     flushHandle fp = do
         fh <- get >>= lookupHandle fp
         liftIO $ IO.flush fh

@@ -48,6 +48,20 @@ data ConcurrentDb k v = ConcurrentDb
     , concurrentDbReaders :: Map TxId Integer
     }
 
+-- | Lock the database.
+--
+-- This needs to be called manually, if you want exclusive access, before
+-- calling either 'createConcurrentDb' or 'openConcurrentDb'
+--
+-- Use 'unlockConcurrentDb' using the 'bracket' pattern to properly unlock the
+-- database.
+lockConcurrentDb :: ConcurrentMetaStoreM m => ConcurrentHandles -> m ()
+lockConcurrentDb = lockHandle . concurrentHandlesRoot
+
+-- | Unlock the database.
+unlockConcurrentDb :: ConcurrentMetaStoreM m => ConcurrentHandles -> m ()
+unlockConcurrentDb = releaseHandle . concurrentHandlesRoot
+
 -- | Open all concurrent handles.
 openConcurrentHandles :: ConcurrentMetaStoreM m
                       => ConcurrentHandles -> m ()

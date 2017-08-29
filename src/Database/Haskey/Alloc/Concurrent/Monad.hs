@@ -31,7 +31,8 @@ import qualified Database.Haskey.Store.Class as Store
 
 -- | All necessary database handles.
 data ConcurrentHandles = ConcurrentHandles {
-    concurrentHandlesData :: FilePath
+    concurrentHandlesRoot :: FilePath
+  , concurrentHandlesData :: FilePath
   , concurrentHandlesIndex :: FilePath
   , concurrentHandlesMetadata1 :: FilePath
   , concurrentHandlesMetadata2 :: FilePath
@@ -41,7 +42,8 @@ data ConcurrentHandles = ConcurrentHandles {
 -- | Construct a set of 'ConcurrentHandles' from a root directory.
 concurrentHandles :: FilePath -> ConcurrentHandles
 concurrentHandles fp = ConcurrentHandles {
-    concurrentHandlesData        = fp </> "data" </> "data"
+    concurrentHandlesRoot        = fp
+  , concurrentHandlesData        = fp </> "data" </> "data"
   , concurrentHandlesIndex       = fp </> "index" </> "index"
   , concurrentHandlesMetadata1   = fp </> "meta" </> "1"
   , concurrentHandlesMetadata2   = fp </> "meta" </> "2"

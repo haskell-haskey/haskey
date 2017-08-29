@@ -7,6 +7,8 @@ module Database.Haskey.Alloc.Concurrent (
   -- * Open, close and create databases
 , ConcurrentHandles(..)
 , concurrentHandles
+, lockConcurrentDb
+, unlockConcurrentDb
 , createConcurrentDb
 , openConcurrentDb
 , closeConcurrentHandles

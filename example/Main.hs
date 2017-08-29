@@ -2,8 +2,8 @@ module Main where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (async, wait)
-import Control.Exception (finally)
 import Control.Monad (void, replicateM)
+import Control.Monad.Catch (bracket_, finally)
 
 import Data.BTree.Impure (toList, insertTree)
 import Data.ByteString (ByteString)
@@ -14,6 +14,8 @@ import qualified Data.Text as Text
 import Database.Haskey.Alloc.Concurrent (ConcurrentDb,
                                          ConcurrentHandles,
                                          concurrentHandles,
+                                         lockConcurrentDb,
+                                         unlockConcurrentDb,
                                          openConcurrentDb,
                                          createConcurrentDb,
                                          transact_,
@@ -86,9 +88,10 @@ inMemoryMain root = do
     handles = concurrentHandles root
 
 fileMain :: FilePath -> IO ()
-fileMain root = do
-    db <- openOrCreate
+fileMain root = bracket_ (runDatabase $ lockConcurrentDb handles)
+                         (runDatabase $ unlockConcurrentDb handles) $ do
 
+    db <- openOrCreate
     writers <- mapM (async . writer db) [1..concurrency]
     readers <- replicateM concurrency . async $ do
         delay <- randomIO

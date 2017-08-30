@@ -9,7 +9,6 @@ module Database.Haskey.Alloc.Concurrent.Meta where
 
 import Data.Binary (Binary)
 import Data.Proxy (Proxy)
-import Data.Set as Set
 
 import GHC.Generics (Generic)
 
@@ -33,8 +32,8 @@ data ConcurrentMeta k v = ConcurrentMeta {
   , concurrentMetaDataFreeTree :: S 'TypeData FreeTree
   , concurrentMetaIndexFreeTree :: S 'TypeIndex FreeTree
   , concurrentMetaOverflowTree :: OverflowTree
-  , concurrentMetaDataFreshUnusedPages :: S 'TypeData (Set DirtyFree)
-  , concurrentMetaIndexFreshUnusedPages :: S 'TypeIndex (Set DirtyFree)
+  , concurrentMetaDataCachedFreePages :: S 'TypeData [FreePage]
+  , concurrentMetaIndexCachedFreePages :: S 'TypeIndex [FreePage]
   } deriving (Generic)
 
 deriving instance (Show k, Show v) => Show (ConcurrentMeta k v)

@@ -91,7 +91,7 @@ instance
         hnd <- getWriterHnd height
         pid <- getAndTouchPid
 
-        let nid = pageIdToNodeId (getSomeFreePageId pid)
+        let nid = pageIdToNodeId pid
         lift $ putNodePage hnd height nid n
         return nid
       where
@@ -114,14 +114,12 @@ instance
         newTouchedPid = case viewHeight height of
             UZero -> do
                 pid <- fileStateNewNumPages . writerDataFileState <$> get
-                let pid' = FreshFreePage . Fresh <$> pid
-                touchPage pid'
-                return $ getSValue pid'
+                touchPage pid
+                return $ getSValue pid
             USucc _ -> do
                 pid <- fileStateNewNumPages . writerIndexFileState <$> get
-                let pid'' = FreshFreePage . Fresh <$> pid
-                touchPage pid''
-                return $ getSValue pid''
+                touchPage pid
+                return $ getSValue pid
 
 
     freeNode height nid = case viewHeight height of

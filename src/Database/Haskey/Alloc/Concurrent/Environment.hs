@@ -70,25 +70,15 @@ data FileState stateType = FileState {
     -- 'fileStateNewNumPages' (excluding) are freshly allocated in the
     -- ongoing transaction.
 
-    , fileStateFreedDirtyPages :: !(S stateType (Set DirtyFree))
-    -- ^ Pages freshly allocated AND free'd in this transaction. Immediately
-    -- ready for reuse.
+    , fileStateDirtyPages :: !(Set PageId)
+    -- ^ Pages written to in this transaction.
 
     , fileStateFreeTree :: !(S stateType FreeTree)
     -- ^ The root of the free tree, might change during a transaction.
 
-    , fileStateDirtyReusablePages :: !(Set DirtyOldFree)
-    -- ^ All pages queried from the free page database for
-    -- 'fileStateReusablePagesTxId', and actually used once already.
-
-    , fileStateReusablePages :: ![OldFree]
-    -- ^ Pages queried from the free pages database and ready for immediate
-    -- reuse.
-
-    , fileStateReusablePagesTxId :: !(Maybe TxId)
-    -- ^ The 'TxId' of the pages in 'fileStateReusablePages', or 'Nothing' if no
-    -- pages were queried yet from the free database.
-
+    , fileStateCachedFreePages :: !(S stateType [FreePage])
+    -- ^ All pages that are immediately ready for reuse in this and any
+    -- subsequent transactions.
     }
 
 data WriterEnv hnds = WriterEnv
@@ -102,8 +92,8 @@ data WriterEnv hnds = WriterEnv
     , writerDataFileState :: FileState 'TypeData
     -- ^ State of the file with data/leaf nodes.
 
-    , writerReusablePagesOn :: !Bool
-    -- ^ Used to turn of querying the free page database for free pages.
+    , writerQueryFreeTreeOn :: !Bool
+    -- ^ Whether or not querying free pages from the free is enabled.
 
     , writerDirtyOverflows :: !(Set DirtyOverflow)
     -- ^ Newly allocated overflow pages in this transaction.
@@ -118,111 +108,81 @@ data WriterEnv hnds = WriterEnv
 
 -- | Create a new writer.
 newWriter :: hnd -> TxId -> Map TxId Integer
-          -> S 'TypeData PageId          -> S 'TypeIndex PageId
-          -> S 'TypeData (Set DirtyFree) -> S 'TypeIndex (Set DirtyFree)
-          -> S 'TypeData FreeTree        -> S 'TypeIndex FreeTree
+          -> S 'TypeData PageId     -> S 'TypeIndex PageId
+          -> S 'TypeData [FreePage] -> S 'TypeIndex [FreePage]
+          -> S 'TypeData FreeTree   -> S 'TypeIndex FreeTree
           -> WriterEnv hnd
 newWriter hnd tx readers
           numDataPages numIndexPages
-          dataDirtyFree indexDirtyFree
+          dataFreePages indexFreePages
           dataFreeTree indexFreeTree =
    WriterEnv {
      writerHnds = hnd
    , writerTxId = tx
    , writerReaders = readers
 
-   , writerIndexFileState = newFileState numIndexPages indexDirtyFree indexFreeTree
-   , writerDataFileState = newFileState numDataPages dataDirtyFree dataFreeTree
+   , writerIndexFileState = newFileState numIndexPages indexFreePages indexFreeTree
+   , writerDataFileState = newFileState numDataPages dataFreePages dataFreeTree
 
-   , writerReusablePagesOn = True
+   , writerQueryFreeTreeOn = True
    , writerDirtyOverflows = S.empty
    , writerOverflowCounter = 0
    , writerRemovedOverflows = []
    }
   where
-    newFileState numPages dirtyFree freeTree = FileState {
+    newFileState numPages freePages freeTree = FileState {
         fileStateNewlyFreedPages = []
       , fileStateOriginalNumPages = numPages
       , fileStateNewNumPages = numPages
-      , fileStateFreedDirtyPages = dirtyFree
+      , fileStateDirtyPages = S.empty
+      , fileStateCachedFreePages = freePages
       , fileStateFreeTree = freeTree
-      , fileStateDirtyReusablePages = S.empty
-      , fileStateReusablePages = []
-      , fileStateReusablePagesTxId = Nothing
       }
-
--- | Wrapper around 'PageId' indicating it is a fresh page, allocated at the
--- end of the database.
-newtype Fresh = Fresh PageId deriving (Eq, Ord, Show)
 
 -- | Wrapper around 'PageId' indicating it is newly free'd and cannot be reused
 -- in the same transaction.
 newtype NewlyFreed = NewlyFreed PageId deriving (Eq, Ord, Show)
 
--- | Wrapper around 'PageId' indicating it is a dirty page.
+-- | Wrapper around 'PageId' indicating it is free and can be reused in any
+-- transaction.
+newtype FreePage = FreePage PageId deriving (Binary, Eq, Ord, Show)
+
+-- | Wrapper around 'PageId' indicating that it is dirty, i.e. written to in
+-- this transaction.
 newtype Dirty = Dirty PageId deriving (Eq, Ord, Show)
-
--- | Wrapper around 'PageId' indicating the page is dirty and free for reuse.
-newtype DirtyFree = DirtyFree PageId deriving (Binary, Eq, Ord, Show)
-
--- | Wrapper around 'PageId' inidcating it was fetched from the free database
--- and is ready for reuse.
-newtype OldFree = OldFree PageId deriving (Eq, Ord, Show)
-
--- | Wrapper around 'PageId' indicating it wa fetched from the free database
--- and is actually dirty.
-newtype DirtyOldFree = DirtyOldFree PageId deriving (Eq, Ord, Show)
-
--- | A sum type repesenting any type of free page, that can immediately be used
--- to write something to.
-data SomeFreePage = FreshFreePage Fresh
-                  | DirtyFreePage DirtyFree
-                  | OldFreePage OldFree
-
-getSomeFreePageId :: SomeFreePage -> PageId
-getSomeFreePageId (FreshFreePage (Fresh     pid)) = pid
-getSomeFreePageId (DirtyFreePage (DirtyFree pid)) = pid
-getSomeFreePageId (OldFreePage   (OldFree   pid)) = pid
 
 -- | Try to free a page, given a set of dirty pages.
 --
--- If the page was dirty, a 'DirtyFree' page is added to the environment, if
+-- If the page was dirty, a 'FreePage' page is added to the environment, if
 -- not a 'NewlyFreed' page is added to the environment.
 --
 -- Btw, give me lenses...
 freePage :: (Functor m, MonadState (WriterEnv hnd) m) => S stateType PageId -> m ()
 freePage pid@(DataState pid') = do
     dirty'        <- dirty pid
-    dirtyOldFree' <- dirtyOldFree pid
     modify' $ \e ->
         e { writerDataFileState =
                 updateFileState (writerDataFileState e) DataState
-                                dirty' dirtyOldFree' pid'
+                                dirty' pid'
           }
 
 freePage pid@(IndexState pid') = do
     dirty'        <- dirty pid
-    dirtyOldFree' <- dirtyOldFree pid
     modify' $ \e ->
         e { writerIndexFileState =
                 updateFileState (writerIndexFileState e) IndexState
-                                dirty' dirtyOldFree' pid'
+                                dirty' pid'
           }
 
 updateFileState :: FileState t
                 -> (forall a. a -> S t a)
                 -> Maybe Dirty
-                -> Maybe DirtyOldFree
                 -> PageId
                 -> FileState t
-updateFileState e cons dirty' dirtyOldFree' pid' =
+updateFileState e cons dirty' pid' =
   if | Just (Dirty p) <- dirty' ->
-          e { fileStateFreedDirtyPages =
-                cons $ S.insert (DirtyFree p) (getSValue $ fileStateFreedDirtyPages e) }
-
-     | Just (DirtyOldFree p) <- dirtyOldFree' ->
-          e { fileStateReusablePages =
-                OldFree p : fileStateReusablePages e }
+          e { fileStateCachedFreePages =
+                cons $ FreePage p : getSValue (fileStateCachedFreePages e) }
 
      | p <- pid' ->
           e { fileStateNewlyFreedPages =
@@ -231,58 +191,42 @@ updateFileState e cons dirty' dirtyOldFree' pid' =
 -- | Get a 'Dirty' page, by first proving it is in fact dirty.
 dirty :: (Functor m, MonadState (WriterEnv hnd) m) => S stateType PageId -> m (Maybe Dirty)
 dirty pid = case pid of
-    DataState p  -> (page p . fileStateOriginalNumPages . writerDataFileState) <$> get
-    IndexState p -> (page p . fileStateOriginalNumPages . writerIndexFileState) <$> get
+    DataState p  -> (page p . fileStateDirtyPages . writerDataFileState) <$> get
+    IndexState p -> (page p . fileStateDirtyPages . writerIndexFileState) <$> get
   where
-    page p origNumPages
-        | p >= getSValue origNumPages = Just (Dirty p)
-        | otherwise                   = Nothing
-
--- | Get a 'DirtyOldFree' page, by first proving it is in fact a dirty old free page.
-dirtyOldFree :: (Functor m, MonadState (WriterEnv hnd) m) => S stateType PageId -> m (Maybe DirtyOldFree)
-dirtyOldFree pid = case pid of
-    DataState p  -> (page p . fileStateDirtyReusablePages . writerDataFileState) <$> get
-    IndexState p -> (page p . fileStateDirtyReusablePages . writerIndexFileState) <$> get
-  where
-    page p dirty'
-        | S.member (DirtyOldFree p) dirty' = Just (DirtyOldFree p)
-        | otherwise                        = Nothing
-
+    page p dirtyPages
+        | p `S.member` dirtyPages = Just (Dirty p)
+        | otherwise                         = Nothing
 
 -- | Touch a fresh page, make it dirty.
 --
 -- We really need lenses...
-touchPage :: MonadState (WriterEnv hnd) m => S stateType SomeFreePage -> m ()
-touchPage (DataState (DirtyFreePage _)) = return()
-touchPage (IndexState (DirtyFreePage _)) = return ()
+touchPage :: MonadState (WriterEnv hnd) m => S stateType PageId -> m ()
+touchPage (DataState pid) = do
+    modify' $ \e ->
+        let dirtyPages = fileStateDirtyPages (writerDataFileState e) in
+        e { writerDataFileState = (writerDataFileState e) {
+            fileStateDirtyPages = S.insert pid dirtyPages }
+          }
+    modify' $ \e ->
+        let oldNum = getSValue $ fileStateNewNumPages (writerDataFileState e)
+            newNum = max oldNum (pid + 1)
+        in e { writerDataFileState = (writerDataFileState e) {
+                fileStateNewNumPages = DataState newNum }
+             }
 
-touchPage (DataState (FreshFreePage (Fresh pid))) = modify' $ \e ->
-    case fileStateNewNumPages (writerDataFileState e) of
-        DataState numPages ->
-            if numPages < pid + 1
-                then e { writerDataFileState = (writerDataFileState e) {
-                            fileStateNewNumPages = DataState (pid + 1) }
-                       }
-                else e
-touchPage (IndexState (FreshFreePage (Fresh pid))) = modify' $ \e ->
-    case fileStateNewNumPages (writerIndexFileState e) of
-        IndexState numPages ->
-            if numPages < pid + 1
-                then e { writerIndexFileState = (writerIndexFileState e) {
-                            fileStateNewNumPages = IndexState (pid + 1) }
-                       }
-                else e
-
-touchPage (DataState (OldFreePage (OldFree pid))) = modify' $ \e ->
-    let s = fileStateDirtyReusablePages (writerDataFileState e) in
-    e { writerDataFileState = (writerDataFileState e) {
-            fileStateDirtyReusablePages = S.insert (DirtyOldFree pid) s }
-      }
-touchPage (IndexState (OldFreePage (OldFree pid))) = modify' $ \e ->
-    let s = fileStateDirtyReusablePages (writerIndexFileState e) in
-    e { writerIndexFileState = (writerIndexFileState e) {
-            fileStateDirtyReusablePages = S.insert (DirtyOldFree pid) s }
-      }
+touchPage (IndexState pid) = do
+    modify' $ \e ->
+        let dirtyPages = fileStateDirtyPages (writerIndexFileState e) in
+        e { writerIndexFileState = (writerIndexFileState e) {
+            fileStateDirtyPages = S.insert pid dirtyPages }
+          }
+    modify' $ \e ->
+        let oldNum = getSValue $ fileStateNewNumPages (writerIndexFileState e)
+            newNum = max oldNum (pid + 1)
+        in e { writerIndexFileState = (writerIndexFileState e) {
+                fileStateNewNumPages = IndexState newNum }
+             }
 
 -- | Wrapper around 'OverflowId' indicating that it is dirty.
 newtype DirtyOverflow = DirtyOverflow OverflowId deriving (Eq, Ord, Show)

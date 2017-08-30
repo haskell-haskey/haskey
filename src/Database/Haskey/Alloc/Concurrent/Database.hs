@@ -17,7 +17,6 @@ import Control.Monad.Trans (lift)
 import Data.Proxy (Proxy(..))
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe)
-import qualified Data.Set as S
 
 import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
@@ -91,8 +90,8 @@ createConcurrentDb hnds =
       , concurrentMetaDataFreeTree = DataState $ Tree zeroHeight Nothing
       , concurrentMetaIndexFreeTree = IndexState $ Tree zeroHeight Nothing
       , concurrentMetaOverflowTree = Tree zeroHeight Nothing
-      , concurrentMetaDataFreshUnusedPages = DataState S.empty
-      , concurrentMetaIndexFreshUnusedPages = IndexState S.empty
+      , concurrentMetaDataCachedFreePages = DataState []
+      , concurrentMetaIndexCachedFreePages = IndexState []
       }
 
 -- | Open the an existing database, with the given handles.
@@ -282,8 +281,8 @@ actAndCommit db act
                                              readers
                                              (concurrentMetaDataNumPages meta)
                                              (concurrentMetaIndexNumPages meta)
-                                             (concurrentMetaDataFreshUnusedPages meta)
-                                             (concurrentMetaIndexFreshUnusedPages meta)
+                                             (concurrentMetaDataCachedFreePages meta)
+                                             (concurrentMetaIndexCachedFreePages meta)
                                              (concurrentMetaDataFreeTree meta)
                                              (concurrentMetaIndexFreeTree meta)
 
@@ -304,7 +303,7 @@ actAndCommit db act
                     saveFreePages' 0 IndexState
                                      writerIndexFileState
                                      (\e s -> e { writerIndexFileState = s })
-                    handleFreedDirtyPages
+                    handleCachedFreePages
 
                 -- Commit
                 setCurrentMeta (newMeta { concurrentMetaRevision = newRevision })
@@ -385,37 +384,11 @@ saveFreePages' paranoid cons getState setState
     | otherwise-}
     = do
 
-    -- Saving the free pages
-    -- =====================
-    --
-    -- Saving free pages to the free database is a complicated task. At the
-    -- end of a transaction we have 3 types of free pages:
-    --
-    --  1. 'DirtyFree': Pages that were freshly allocated from the end of
-    --          the dabase file, but are no longer used. These are free'd
-    --          by saving them in the metadata. They can freely be used
-    --          during this routine.
-    --
-    --  2. 'NewlyFreed': Pages that were written by a previous transaction,
-    --          but free'd in this transaction. They might still be in use
-    --          by an older reader, and can thus not be used anyways.
-    --
-    --          Note that this list **may grow during this routine**, as
-    --          new pages can be free'd.
-    --
-    --  3. 'OldFree': Pages that were fetched from the free database while
-    --          executing the transaction. Technically, they can be used
-    --          during this routine, BUT that would mean the list of
-    --          'OldFree' pages can grow and shrink during the call, which
-    --          would complicate the convergence/termination conditions of
-    --          this routine. So currently, **we disable the use of these
-    --          pages in this routine.**
-
     (meta, env) <- get
     let tx = writerTxId env
     (tree', envWithoutTree) <- lift $
         runConcurrentT (saveFreePages tx (getState env)) $
-            env { writerReusablePagesOn = False }
+            env { writerQueryFreeTreeOn = False }
 
     let state' = (getState envWithoutTree) { fileStateFreeTree = cons tree' }
     let env'   = setState envWithoutTree state'
@@ -426,14 +399,14 @@ saveFreePages' paranoid cons getState setState
     unless (fileStateNewlyFreedPages state' == fileStateNewlyFreedPages (getState env)) $
        saveFreePages' (paranoid + 1) cons getState setState
 
--- | Handle the dirty pages.
+-- | Handle the cached free pages.
 --
--- Save the newly created free dirty pages to the metadata for later use.
+-- Save the cached free pages to the metadata for later use.
 --
 -- Update the database size.
-handleFreedDirtyPages :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
+handleCachedFreePages :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                       => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
-handleFreedDirtyPages = do
+handleCachedFreePages = do
     (meta, env) <- get
 
     let dataEnv  = writerDataFileState env
@@ -443,15 +416,15 @@ handleFreedDirtyPages = do
                             fileStateNewNumPages dataEnv
                      , concurrentMetaDataFreeTree =
                             fileStateFreeTree dataEnv
-                     , concurrentMetaDataFreshUnusedPages =
-                            fileStateFreedDirtyPages dataEnv
+                     , concurrentMetaDataCachedFreePages =
+                            fileStateCachedFreePages dataEnv
 
                      , concurrentMetaIndexNumPages =
                             fileStateNewNumPages indexEnv
                      , concurrentMetaIndexFreeTree =
                             fileStateFreeTree indexEnv
-                     , concurrentMetaIndexFreshUnusedPages =
-                            fileStateFreedDirtyPages indexEnv
+                     , concurrentMetaIndexCachedFreePages =
+                            fileStateCachedFreePages indexEnv
                      }
     put (meta', env)
 

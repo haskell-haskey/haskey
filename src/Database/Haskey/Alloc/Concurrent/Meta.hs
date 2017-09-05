@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -9,6 +10,7 @@ module Database.Haskey.Alloc.Concurrent.Meta where
 
 import Data.Binary (Binary)
 import Data.Proxy (Proxy)
+import Data.Typeable (Typeable)
 
 import GHC.Generics (Generic)
 
@@ -46,7 +48,7 @@ data ConcurrentMeta root = ConcurrentMeta {
   , concurrentMetaOverflowTree :: OverflowTree
   , concurrentMetaDataCachedFreePages :: S 'TypeData [FreePage]
   , concurrentMetaIndexCachedFreePages :: S 'TypeIndex [FreePage]
-  } deriving (Generic)
+  } deriving (Generic, Typeable)
 
 deriving instance (Show root) => Show (ConcurrentMeta root)
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Integration.CreateAndOpen where
 
@@ -9,6 +10,7 @@ import Control.Applicative ((<$>))
 
 import Data.Binary (Binary)
 import Data.Maybe (fromJust)
+import Data.Typeable (Typeable)
 
 import System.Directory (removeDirectoryRecursive,
                          getTemporaryDirectory, doesDirectoryExist,
@@ -56,6 +58,6 @@ case_file_backend = do
 
     root = TestRoot "Hello World!"
 
-newtype TestRoot = TestRoot String deriving (Binary, Eq, Value, Show)
+newtype TestRoot = TestRoot String deriving (Binary, Eq, Value, Show, Typeable)
 
 instance Root TestRoot where

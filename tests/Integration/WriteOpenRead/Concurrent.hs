@@ -61,6 +61,8 @@ case_bad_seed = do
     gen = (mkQCGen seed, seed)
     args = stdArgs { replay = Just gen }
 
+type Root' = Tree Integer TestValue
+
 prop_memory_backend :: PropertyM IO ()
 prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> do
     files <- run newEmptyMemoryStore
@@ -71,7 +73,7 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
     return ()
   where
 
-    writeReadTest :: ConcurrentDb Integer TestValue
+    writeReadTest :: ConcurrentDb Root'
                   -> MemoryFiles String
                   -> Map Integer TestValue
                   -> TestTransaction Integer TestValue
@@ -87,8 +89,8 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
                     ++ "\n    expectd: " ++ show (M.toList expected)
                     ++ "\n    got:     " ++ show read'
 
-    create :: MemoryFiles String -> IO (ConcurrentDb Integer TestValue)
-    create = runMemoryStoreT (createConcurrentDb hnds) config
+    create :: MemoryFiles String -> IO (ConcurrentDb Root')
+    create = runMemoryStoreT (createConcurrentDb hnds Tree.empty) config
       where
         hnds = concurrentHandles ""
 
@@ -120,7 +122,7 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
 
     assert $ isJust result
   where
-    writeReadTest :: ConcurrentDb Integer TestValue
+    writeReadTest :: ConcurrentDb Root'
                   -> Map Integer TestValue
                   -> TestTransaction Integer TestValue
                   -> MaybeT IO (Map Integer TestValue)
@@ -137,15 +139,15 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
                     ++ "\n    got:     " ++ show read'
 
     create :: ConcurrentHandles
-           -> IO (ConcurrentDb Integer TestValue)
-    create hnds = runFileStoreT (createConcurrentDb hnds) config
+           -> IO (ConcurrentDb Root')
+    create hnds = runFileStoreT (createConcurrentDb hnds Tree.empty) config
 
 
-    openAndRead :: ConcurrentDb Integer TestValue
+    openAndRead :: ConcurrentDb Root'
                 -> IO [(Integer, TestValue)]
     openAndRead db = runFileStoreT (readAll db) config
 
-    openAndWrite :: ConcurrentDb Integer TestValue
+    openAndWrite :: ConcurrentDb Root'
                  -> TestTransaction Integer TestValue
                  -> IO ()
     openAndWrite db tx =
@@ -157,7 +159,7 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
 
 writeTransaction :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
                  => TestTransaction k v
-                 -> ConcurrentDb k v
+                 -> ConcurrentDb (Tree k v)
                  -> m ()
 writeTransaction (TestTransaction txType actions) =
     transaction
@@ -171,13 +173,13 @@ writeTransaction (TestTransaction txType actions) =
         foldl (>=>) return (map writeAction actions)
         >=> commitOrAbort
 
-    commitOrAbort :: (AllocM n, MonadMask n) => Tree key val -> n (Transaction key val ())
+    commitOrAbort :: (AllocM n, MonadMask n) => root -> n (Transaction root ())
     commitOrAbort
         | TxAbort  <- txType = const abort_
         | TxCommit <- txType = commit_
 
 readAll :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
-        => ConcurrentDb k v
+        => ConcurrentDb (Tree k v)
         -> m [(k, v)]
 readAll = transactReadOnly Tree.toList
 

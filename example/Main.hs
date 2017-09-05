@@ -5,10 +5,11 @@ import Control.Concurrent.Async (async, wait)
 import Control.Monad (void, replicateM)
 import Control.Monad.Catch (bracket_, finally)
 
-import Data.BTree.Impure (toList, insertTree)
+import Data.BTree.Impure (Tree, toList, insertTree)
 import Data.ByteString (ByteString)
 import Data.Int (Int32)
 import Data.Text.Encoding (encodeUtf8)
+import qualified Data.BTree.Impure as Tree
 import qualified Data.Text as Text
 
 import Database.Haskey.Alloc.Concurrent (ConcurrentDb,
@@ -30,6 +31,8 @@ import System.Random (randomIO)
 
 concurrency :: Integral a => a
 concurrency = 100
+
+type Root = Tree Int32 ByteString
 
 main :: IO ()
 main = do
@@ -53,7 +56,7 @@ inMemoryMain root = do
     putStrLn "InMemory: done"
   where
     writer :: MemoryFiles FilePath
-           -> ConcurrentDb Int32 ByteString
+           -> ConcurrentDb Root
            -> Int32
            -> IO ()
     writer store db i =
@@ -64,7 +67,7 @@ inMemoryMain root = do
         tx tree = insertTree i bs tree >>= commit_
 
     reader :: MemoryFiles FilePath
-           -> ConcurrentDb Int32 ByteString
+           -> ConcurrentDb Root
            -> Int
            -> IO ()
     reader files db delay = void $ replicateM 10 $ do
@@ -72,11 +75,11 @@ inMemoryMain root = do
         runDatabase files $ transactReadOnly toList db
 
     openOrCreate :: MemoryFiles FilePath
-                 -> IO (ConcurrentDb Int32 ByteString)
+                 -> IO (ConcurrentDb Root)
     openOrCreate store = runDatabase store $ do
         maybeDb <- openConcurrentDb handles
         case maybeDb of
-            Nothing -> createConcurrentDb handles
+            Nothing -> createConcurrentDb handles Tree.empty
             Just db -> return db
 
     runDatabase :: MemoryFiles FilePath
@@ -100,7 +103,7 @@ fileMain root = bracket_ (runDatabase $ lockConcurrentDb handles)
     mapM_ wait readers
     putStrLn "File: done"
   where
-    writer :: ConcurrentDb Int32 ByteString
+    writer :: ConcurrentDb Root
            -> Int32
            -> IO ()
     writer db i =
@@ -110,18 +113,18 @@ fileMain root = bracket_ (runDatabase $ lockConcurrentDb handles)
 
         tx tree = insertTree i bs tree >>= commit_
 
-    reader :: ConcurrentDb Int32 ByteString
+    reader :: ConcurrentDb Root
            -> Int
            -> IO ()
     reader db delay = void $ replicateM 10 $ do
         threadDelay delay
         runDatabase $ transactReadOnly toList db
 
-    openOrCreate :: IO (ConcurrentDb Int32 ByteString)
+    openOrCreate :: IO (ConcurrentDb Root)
     openOrCreate = runDatabase $ do
         maybeDb <- openConcurrentDb handles
         case maybeDb of
-            Nothing -> createConcurrentDb handles
+            Nothing -> createConcurrentDb handles Tree.empty
             Just db -> return db
 
     runDatabase :: Monad m

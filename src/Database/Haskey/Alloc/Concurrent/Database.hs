@@ -229,7 +229,7 @@ transact_ act db = void $ transact act db
 
 -- | Execute a read-only transaction.
 transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Root root)
-                 => (forall n. (AllocReaderM n, MonadMask m) => root -> n a)
+                 => (forall n. (AllocReaderM n, MonadMask n) => root -> n a)
                  -> ConcurrentDb root
                  -> m a
 transactReadOnly act db =

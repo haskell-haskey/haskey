@@ -37,11 +37,10 @@ import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.Trans.State.Strict ( StateT, evalStateT)
 
-import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
-import Data.Typeable (Typeable)
+import Data.Typeable (Typeable, cast)
 import Data.Word (Word64)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as M
@@ -251,14 +250,14 @@ instance (Applicative m, Monad m, MonadIO m, MonadCatch m) =>
         liftIO $ IO.seek h 0
         liftIO $ writeLazyByteString h bs
 
-    readConcurrentMeta fp k v = do
+    readConcurrentMeta fp root = do
         fh <- get >>=  lookupHandle fp
 
         len <- liftIO $ IO.getFileSize fh
         liftIO $ IO.seek fh 0
         bs <- liftIO $ readByteString fh (fromIntegral len)
-        handle handle' (Just <$> decodeM (concurrentMetaPage k v) bs) >>= \case
-            Just (ConcurrentMetaPage meta) -> return $ Just (coerce meta)
+        handle handle' (Just <$> decodeM (concurrentMetaPage root) bs) >>= \case
+            Just (ConcurrentMetaPage meta) -> return $! cast meta
             Nothing -> return Nothing
       where
         handle' (DecodeError _) = return Nothing

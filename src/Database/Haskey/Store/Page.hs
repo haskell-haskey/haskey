@@ -70,8 +70,8 @@ instance Binary PageType where
 -- | A decoded page, of a certain type @t@ of kind 'PageType'.
 data Page (t :: PageType) where
     EmptyPage :: Page 'TypeEmpty
-    ConcurrentMetaPage :: (Key k, Value v)
-                       => ConcurrentMeta k v
+    ConcurrentMetaPage :: Root root
+                       => ConcurrentMeta root
                        -> Page 'TypeConcurrentMeta
     OverflowPage :: (Value v)
                  => v
@@ -230,16 +230,15 @@ overflowPage v = SGet STypeOverflow $ get >>= \case
     get' :: (Value v) => Proxy v -> Get v
     get' _ = get
 
-concurrentMetaPage :: (Key k, Value v)
-                   => Proxy k
-                   -> Proxy v
+concurrentMetaPage :: Root root
+                   => Proxy root
                    -> SGet 'TypeConcurrentMeta
-concurrentMetaPage k v = SGet STypeConcurrentMeta $ get >>= \ case
-    TypeConcurrentMeta -> ConcurrentMetaPage <$> get' k v
+concurrentMetaPage root = SGet STypeConcurrentMeta $ get >>= \ case
+    TypeConcurrentMeta -> ConcurrentMetaPage <$> get' root
     x -> fail $ "unexpected " ++ show x ++ " while decoding TypeConcurrentMeta"
   where
-    get' :: (Key k, Value v) => Proxy k -> Proxy v -> Get (ConcurrentMeta k v)
-    get' _ _ = get
+    get' :: Root root => Proxy root -> Get (ConcurrentMeta root)
+    get' _ = get
 
 -- | Exception thrown when decoding of a page fails.
 newtype DecodeError = DecodeError String deriving (Show, Typeable)

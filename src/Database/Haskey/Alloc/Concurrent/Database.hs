@@ -38,12 +38,12 @@ import qualified Database.Haskey.Utils.STM.Map as Map
 -- | An active concurrent database.
 --
 -- This can be shared amongst threads.
-data ConcurrentDb k v = ConcurrentDb
+data ConcurrentDb root = ConcurrentDb
     { concurrentDbHandles :: ConcurrentHandles
     , concurrentDbWriterLock :: RLock
     , concurrentDbCurrentMeta :: TVar CurrentMetaPage
-    , concurrentDbMeta1 :: TVar (ConcurrentMeta k v)
-    , concurrentDbMeta2 :: TVar (ConcurrentMeta k v)
+    , concurrentDbMeta1 :: TVar (ConcurrentMeta root)
+    , concurrentDbMeta2 :: TVar (ConcurrentMeta root)
     , concurrentDbReaders :: Map TxId Integer
     }
 
@@ -71,9 +71,11 @@ openConcurrentHandles ConcurrentHandles{..} = do
     openHandle concurrentHandlesMetadata2
 
 -- | Open a new concurrent database, with the given handles.
-createConcurrentDb :: (Key k, Value v, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
-                   => ConcurrentHandles -> m (ConcurrentDb k v)
-createConcurrentDb hnds =
+createConcurrentDb :: (Root root, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
+                   => ConcurrentHandles
+                   -> root
+                   -> m (ConcurrentDb root)
+createConcurrentDb hnds root =
     bracket_ (openConcurrentHandles hnds)
              (closeConcurrentHandles hnds) $ do
 
@@ -86,7 +88,7 @@ createConcurrentDb hnds =
         concurrentMetaRevision = 0
       , concurrentMetaDataNumPages = DataState 0
       , concurrentMetaIndexNumPages = IndexState 0
-      , concurrentMetaTree = Tree zeroHeight Nothing
+      , concurrentMetaRoot = root
       , concurrentMetaDataFreeTree = DataState $ Tree zeroHeight Nothing
       , concurrentMetaIndexFreeTree = IndexState $ Tree zeroHeight Nothing
       , concurrentMetaOverflowTree = Tree zeroHeight Nothing
@@ -95,14 +97,15 @@ createConcurrentDb hnds =
       }
 
 -- | Open the an existing database, with the given handles.
-openConcurrentDb :: (Key k, Value v, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
-                 => ConcurrentHandles -> m (Maybe (ConcurrentDb k v))
+openConcurrentDb :: (Root root, MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
+                 => ConcurrentHandles
+                 -> m (Maybe (ConcurrentDb root))
 openConcurrentDb hnds@ConcurrentHandles{..} =
     bracket_ (openConcurrentHandles hnds)
              (closeConcurrentHandles hnds) $ do
 
-    m1 <- readConcurrentMeta concurrentHandlesMetadata1 Proxy Proxy
-    m2 <- readConcurrentMeta concurrentHandlesMetadata2 Proxy Proxy
+    m1 <- readConcurrentMeta concurrentHandlesMetadata1 Proxy
+    m2 <- readConcurrentMeta concurrentHandlesMetadata2 Proxy
     maybeDb <- case (m1, m2) of
         (Nothing, Nothing) -> return Nothing
         (Just m , Nothing) -> Just <$> newConcurrentDb hnds m
@@ -128,10 +131,10 @@ closeConcurrentHandles ConcurrentHandles{..} = do
     closeHandle concurrentHandlesMetadata2
 
 -- | Create a new concurrent database with handles and metadata provided.
-newConcurrentDb :: (Key k, Value v, MonadIO m)
+newConcurrentDb :: (Root root, MonadIO m)
                 => ConcurrentHandles
-                -> ConcurrentMeta k v
-                -> m (ConcurrentDb k v)
+                -> ConcurrentMeta root
+                -> m (ConcurrentDb root)
 newConcurrentDb hnds meta0 = do
     readers <- liftIO Map.newIO
     meta    <- liftIO $ newTVarIO Meta1
@@ -148,8 +151,9 @@ newConcurrentDb hnds meta0 = do
         }
 
 -- | Get the current meta data.
-getCurrentMeta :: (Key k, Value v)
-               => ConcurrentDb k v -> STM (ConcurrentMeta k v)
+getCurrentMeta :: Root root
+               => ConcurrentDb root
+               -> STM (ConcurrentMeta root)
 getCurrentMeta db
     | ConcurrentDb { concurrentDbCurrentMeta = v } <- db
     = readTVar v >>= \case
@@ -157,8 +161,10 @@ getCurrentMeta db
         Meta2 -> readTVar $ concurrentDbMeta2 db
 
 -- | Write the new metadata, and switch the pointer to the current one.
-setCurrentMeta :: (MonadIO m, ConcurrentMetaStoreM m, Key k, Value v)
-               => ConcurrentMeta k v -> ConcurrentDb k v -> m ()
+setCurrentMeta :: (Root root, MonadIO m, ConcurrentMetaStoreM m)
+               => ConcurrentMeta root
+               -> ConcurrentDb root
+               -> m ()
 setCurrentMeta new db
     | ConcurrentDb
       { concurrentDbCurrentMeta = v
@@ -183,9 +189,10 @@ setCurrentMeta new db
                 writeTVar (concurrentDbMeta1 db) new
 
 -- | Execute a write transaction, with a result.
-transact :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
-         => (forall n. (AllocM n, MonadMask n) => Tree key val -> n (Transaction key val a))
-         -> ConcurrentDb key val -> m a
+transact :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Root root)
+         => (forall n. (AllocM n, MonadMask n) => root -> n (Transaction root a))
+         -> ConcurrentDb root
+         -> m a
 transact act db = withRLock (concurrentDbWriterLock db) $ do
     cleanup
     transactNow act db
@@ -200,35 +207,38 @@ transact act db = withRLock (concurrentDbWriterLock db) $ do
                 return (Just meta', ())
 
 -- | Execute a write transaction, without cleaning up old overflow pages.
-transactNow :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
-            => (forall n. (AllocM n, MonadMask n) => Tree k v -> n (Transaction k v a))
-            -> ConcurrentDb k v -> m a
+transactNow :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Root root)
+            => (forall n. (AllocM n, MonadMask n) => root -> n (Transaction root a))
+            -> ConcurrentDb root
+            -> m a
 transactNow act db = withRLock (concurrentDbWriterLock db) $
     actAndCommit db $ \meta -> do
-        tx <- act (concurrentMetaTree meta)
+        tx <- act (concurrentMetaRoot meta)
         case tx of
             Abort v -> return (Nothing, v)
-            Commit tree v ->
-                let meta' = meta { concurrentMetaTree = tree } in
+            Commit root v ->
+                let meta' = meta { concurrentMetaRoot = root } in
                 return (Just meta', v)
 
 -- | Execute a write transaction, without a result.
-transact_ :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
-          => (forall n. (AllocM n, MonadMask n) => Tree k v -> n (Transaction k v ()))
-          -> ConcurrentDb k v -> m ()
+transact_ :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Root root)
+          => (forall n. (AllocM n, MonadMask n) => root -> n (Transaction root ()))
+          -> ConcurrentDb root
+          -> m ()
 transact_ act db = void $ transact act db
 
 -- | Execute a read-only transaction.
-transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key key, Value val)
-                 => (forall n. (AllocReaderM n, MonadMask m) => Tree key val -> n a)
-                 -> ConcurrentDb key val -> m a
+transactReadOnly :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Root root)
+                 => (forall n. (AllocReaderM n, MonadMask m) => root -> n a)
+                 -> ConcurrentDb root
+                 -> m a
 transactReadOnly act db =
     bracket_ (openConcurrentHandles hnds)
              (closeConcurrentHandles hnds) $
 
     bracket acquireMeta
             releaseMeta $
-            \meta -> evalConcurrentT (act $ concurrentMetaTree meta)
+            \meta -> evalConcurrentT (act $ concurrentMetaRoot meta)
                                      (ReaderEnv hnds)
   where
     hnds    = concurrentDbHandles db
@@ -255,11 +265,11 @@ transactReadOnly act db =
 -- | Run a write action that takes the current meta-data and returns new
 -- meta-data to be commited, or 'Nothing' if the write transaction should be
 -- aborted.
-actAndCommit :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
-             => ConcurrentDb k v
+actAndCommit :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Root root)
+             => ConcurrentDb root
              -> (forall n. (MonadIO n, MonadMask n, ConcurrentMetaStoreM n)
-                 => ConcurrentMeta k v
-                 -> ConcurrentT WriterEnv ConcurrentHandles n (Maybe (ConcurrentMeta k v), a)
+                 => ConcurrentMeta root
+                 -> ConcurrentT WriterEnv ConcurrentHandles n (Maybe (ConcurrentMeta root), a)
                 )
              -> m a
 actAndCommit db act
@@ -350,7 +360,7 @@ removeNewlyAllocatedOverflows env = do
         removeHandle (getOverflowHandle root i)
 
 -- | Update the meta-data from a writer environment
-updateMeta :: WriterEnv ConcurrentHandles -> ConcurrentMeta k v -> ConcurrentMeta k v
+updateMeta :: WriterEnv ConcurrentHandles -> ConcurrentMeta root -> ConcurrentMeta root
 updateMeta env m = m {
     concurrentMetaDataFreeTree = fileStateFreeTree (writerDataFileState env)
   , concurrentMetaIndexFreeTree = fileStateFreeTree (writerIndexFileState env) }
@@ -358,7 +368,7 @@ updateMeta env m = m {
 
 -- | Save the newly free'd overflow pages, for deletion on the next tx.
 saveOverflowIds :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
-                => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
+                => StateT (ConcurrentMeta root, WriterEnv ConcurrentHandles) m ()
 saveOverflowIds = do
     (meta, env) <- get
     case map (\(OldOverflow i) ->i) (writerRemovedOverflows env) of
@@ -378,7 +388,7 @@ saveFreePages' :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
                -> (forall a. a -> S t a)
                -> (forall hnds. WriterEnv hnds -> FileState t)
                -> (forall hnds. WriterEnv hnds -> FileState t -> WriterEnv hnds)
-               -> StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
+               -> StateT (ConcurrentMeta root, WriterEnv ConcurrentHandles) m ()
 saveFreePages' paranoid cons getState setState
     {- paranoid >= 100 = error "paranoid: looping!"
     | otherwise-}
@@ -405,7 +415,7 @@ saveFreePages' paranoid cons getState setState
 --
 -- Update the database size.
 handleCachedFreePages :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m)
-                      => StateT (ConcurrentMeta k v, WriterEnv ConcurrentHandles) m ()
+                      => StateT (ConcurrentMeta root, WriterEnv ConcurrentHandles) m ()
 handleCachedFreePages = do
     (meta, env) <- get
 

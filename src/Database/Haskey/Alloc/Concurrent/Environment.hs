@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -15,6 +16,7 @@ import Control.Monad.State
 
 import Data.Binary (Binary)
 import Data.Set (Set)
+import Data.Typeable (Typeable)
 import Data.Word (Word32)
 import qualified Data.Binary as B
 import qualified Data.Set as S
@@ -33,6 +35,7 @@ data StateType = TypeData
 data S (t :: StateType) a where
     DataState  :: a -> S 'TypeData  a
     IndexState :: a -> S 'TypeIndex a
+    deriving (Typeable)
 
 deriving instance Show a => Show (S t a)
 

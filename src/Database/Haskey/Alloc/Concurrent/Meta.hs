@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -9,6 +10,7 @@ module Database.Haskey.Alloc.Concurrent.Meta where
 
 import Data.Binary (Binary)
 import Data.Proxy (Proxy)
+import Data.Typeable (Typeable)
 
 import GHC.Generics (Generic)
 
@@ -20,41 +22,52 @@ import Database.Haskey.Alloc.Concurrent.FreePages.Tree
 import Database.Haskey.Alloc.Concurrent.Overflow
 import Database.Haskey.Store
 
+-- | User-defined data root stored inside 'ConcurrentMeta'.
+--
+-- This can be a user-defined collection of 'Tree' roots.
+class Value root => Root root where
+
+instance (Key k, Value v) => Root (Tree k v) where
+
 -- | Data type used to point to the most recent version of the meta data.
 data CurrentMetaPage = Meta1 | Meta2
 
 -- | Meta data of the page allocator.
-data ConcurrentMeta k v = ConcurrentMeta {
+--
+-- The @root@ type parameter should be a user-defined collection of 'Tree'
+-- roots, instantiating the 'Root' type class.
+--
+-- To store store a single tree, use @ConcurrentMeta (Tree k v)@.
+data ConcurrentMeta root = ConcurrentMeta {
     concurrentMetaRevision :: TxId
   , concurrentMetaDataNumPages :: S 'TypeData PageId
   , concurrentMetaIndexNumPages :: S 'TypeIndex PageId
-  , concurrentMetaTree :: Tree k v
+  , concurrentMetaRoot :: root
   , concurrentMetaDataFreeTree :: S 'TypeData FreeTree
   , concurrentMetaIndexFreeTree :: S 'TypeIndex FreeTree
   , concurrentMetaOverflowTree :: OverflowTree
   , concurrentMetaDataCachedFreePages :: S 'TypeData [FreePage]
   , concurrentMetaIndexCachedFreePages :: S 'TypeIndex [FreePage]
-  } deriving (Generic)
+  } deriving (Generic, Typeable)
 
-deriving instance (Show k, Show v) => Show (ConcurrentMeta k v)
+deriving instance (Show root) => Show (ConcurrentMeta root)
 
-instance (Binary k, Binary v) => Binary (ConcurrentMeta k v) where
+instance (Binary root) => Binary (ConcurrentMeta root) where
 
 -- | A class representing the storage requirements of the page allocator.
 --
 -- A store supporting the page allocator should be an instance of this class.
 class StoreM FilePath m => ConcurrentMetaStoreM m where
     -- | Write the meta-data structure to a certain page.
-    putConcurrentMeta :: (Key k, Value v)
+    putConcurrentMeta :: Root root
                       => FilePath
-                      -> ConcurrentMeta k v
+                      -> ConcurrentMeta root
                       -> m ()
 
     -- | Try to read the meta-data structure from a handle, or return 'Nothing'
     -- if the handle doesn't contain a meta page.
-    readConcurrentMeta :: (Key k, Value v)
+    readConcurrentMeta :: Root root
                        => FilePath
-                       -> Proxy k
-                       -> Proxy v
-                       -> m (Maybe (ConcurrentMeta k v))
+                       -> Proxy root
+                       -> m (Maybe (ConcurrentMeta root))
 

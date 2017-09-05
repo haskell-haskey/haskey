@@ -38,10 +38,9 @@ import Control.Monad.Reader
 
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict)
-import Data.Coerce
 import Data.Map (Map)
 import Data.Maybe (fromJust)
-import Data.Typeable (Typeable)
+import Data.Typeable (Typeable, cast)
 import Data.Word (Word64)
 import qualified Data.Map as M
 
@@ -211,13 +210,13 @@ instance (Applicative m, Monad m, MonadIO m, MonadCatch m) =>
       where
         pg = toStrict . encode $ ConcurrentMetaPage meta
 
-    readConcurrentMeta hnd k v = do
+    readConcurrentMeta hnd root = do
         maybeBs <- gets (M.lookup hnd >=> M.lookup 0)
         case maybeBs of
             Nothing -> return Nothing
             Just bs ->
-                handle handle' (Just <$> decodeM (concurrentMetaPage k v) bs) >>= \case
-                    Just (ConcurrentMetaPage meta) -> return . Just $! coerce meta
+                handle handle' (Just <$> decodeM (concurrentMetaPage root) bs) >>= \case
+                    Just (ConcurrentMetaPage meta) -> return $! cast meta
                     Nothing -> return Nothing
       where
         handle' (DecodeError _) = return Nothing

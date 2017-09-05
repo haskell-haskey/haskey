@@ -20,6 +20,7 @@ module Database.Haskey.Alloc.Concurrent (
 , transactReadOnly
 
   -- * Storage requirements
+, Root
 , ConcurrentMeta(..)
 , ConcurrentMetaStoreM(..)
 ) where

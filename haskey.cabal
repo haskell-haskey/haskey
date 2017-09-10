@@ -1,6 +1,6 @@
 name:                haskey
 version:             0.1.0.1
-synopsis:            A transcatoinal, ACID compliant, embeddable key-value store.
+synopsis:            A transactional, ACID compliant, embeddable key-value store.
 description:
     Haskey is a transactional, ACID compliant, embeddable, scalable key-value
     store written entirely in Haskell.

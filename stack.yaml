@@ -2,9 +2,9 @@ resolver: lts-9.0
 packages:
 - '.'
 extra-deps:
-- xxhash-ffi-0.2.0.0
+- haskey-btree-0.2.0.0
 - lz4-0.2.3.1
-- haskey-btree-0.1.0.0
 - numerals-0.4.1
+- xxhash-ffi-0.2.0.0
 flags: {}
 extra-package-dbs: []

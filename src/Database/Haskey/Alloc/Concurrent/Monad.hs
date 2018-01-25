@@ -139,7 +139,9 @@ instance
 
     freeOverflow oid = overflowType oid >>= \case
         Right i -> removeOldOverflow i
-        Left (DirtyOverflow i) -> do
+        Left (DirtyOverflow i) -> deleteOverflowData i
+
+    deleteOverflowData i = do
             root <- concurrentHandlesOverflowDir . writerHnds <$> get
             lift $ removeHandle (getOverflowHandle root i)
 

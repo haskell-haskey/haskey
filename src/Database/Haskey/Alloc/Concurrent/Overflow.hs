@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
@@ -14,6 +15,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Word (Word8)
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Map as M
 
 import Numeric (showHex, readHex)
 
@@ -91,16 +93,21 @@ deleteOverflowIds tx tree = lookupTree tx tree >>= \case
         freeAllNodes h nid
         deleteTree tx tree
   where
-    freeAllNodes :: (AllocM m, Key key, Value val)
+    freeAllNodes :: (AllocM m)
                  => Height h
-                 -> NodeId h key val
+                 -> NodeId h OverflowId ()
                  -> m ()
     freeAllNodes h nid = readNode h nid >>= \case
-        Leaf _ -> freeNode h nid
+        l@(Leaf _) -> freeOverflowInLeaf l >> freeNode h nid
         Idx idx -> do
             let subHgt = decrHeight h
             traverse_ (freeAllNodes subHgt) idx
             freeNode h nid
+
+    freeOverflowInLeaf :: (AllocM m)
+                       => Node 'Z OverflowId ()
+                       -> m ()
+    freeOverflowInLeaf (Leaf items) = mapM_ deleteOverflowData $ M.keys items
 
 --------------------------------------------------------------------------------
 

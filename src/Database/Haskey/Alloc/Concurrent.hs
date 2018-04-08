@@ -25,7 +25,7 @@ module Database.Haskey.Alloc.Concurrent (
 , ConcurrentMetaStoreM(..)
 ) where
 
-import Database.Haskey.Alloc.Concurrent.Database
-import Database.Haskey.Alloc.Concurrent.Meta
-import Database.Haskey.Alloc.Concurrent.Monad
+import Database.Haskey.Alloc.Concurrent.Internal.Database
+import Database.Haskey.Alloc.Concurrent.Internal.Meta
+import Database.Haskey.Alloc.Concurrent.Internal.Monad
 import Database.Haskey.Alloc.Transaction

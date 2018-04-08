@@ -9,7 +9,7 @@
 --
 -- The 'ConcurrentT' monad is used to implement a page allocator with
 -- concurrent readers and serialized writers.
-module Database.Haskey.Alloc.Concurrent.Monad where
+module Database.Haskey.Alloc.Concurrent.Internal.Monad where
 
 import Control.Applicative (Applicative, (<$>))
 import Control.Monad.Catch
@@ -22,10 +22,10 @@ import System.FilePath ((</>))
 import Data.BTree.Alloc.Class
 import Data.BTree.Primitives
 
-import Database.Haskey.Alloc.Concurrent.Environment
-import Database.Haskey.Alloc.Concurrent.FreePages.Query
-import Database.Haskey.Alloc.Concurrent.Meta
-import Database.Haskey.Alloc.Concurrent.Overflow
+import Database.Haskey.Alloc.Concurrent.Internal.Environment
+import Database.Haskey.Alloc.Concurrent.Internal.FreePages.Query
+import Database.Haskey.Alloc.Concurrent.Internal.Meta
+import Database.Haskey.Alloc.Concurrent.Internal.Overflow
 import Database.Haskey.Store
 import qualified Database.Haskey.Store.Class as Store
 

@@ -3,7 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 -- | This module implements data structures and functions related to the database.
-module Database.Haskey.Alloc.Concurrent.Database where
+module Database.Haskey.Alloc.Concurrent.Internal.Database where
 
 import Control.Applicative ((<$>))
 import Control.Concurrent.STM
@@ -25,11 +25,11 @@ import Data.BTree.Alloc.Class
 import Data.BTree.Impure
 import Data.BTree.Primitives
 
-import Database.Haskey.Alloc.Concurrent.Environment
-import Database.Haskey.Alloc.Concurrent.FreePages.Save
-import Database.Haskey.Alloc.Concurrent.Meta
-import Database.Haskey.Alloc.Concurrent.Monad
-import Database.Haskey.Alloc.Concurrent.Overflow
+import Database.Haskey.Alloc.Concurrent.Internal.Environment
+import Database.Haskey.Alloc.Concurrent.Internal.FreePages.Save
+import Database.Haskey.Alloc.Concurrent.Internal.Meta
+import Database.Haskey.Alloc.Concurrent.Internal.Monad
+import Database.Haskey.Alloc.Concurrent.Internal.Overflow
 import Database.Haskey.Alloc.Transaction
 import Database.Haskey.Store
 import Database.Haskey.Utils.RLock

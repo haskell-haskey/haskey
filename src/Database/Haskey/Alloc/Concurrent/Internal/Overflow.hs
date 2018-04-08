@@ -3,7 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 -- | Data structures and functions related to handling overflow pages.
-module Database.Haskey.Alloc.Concurrent.Overflow where
+module Database.Haskey.Alloc.Concurrent.Internal.Overflow where
 
 import Control.Applicative ((<$>))
 import Control.Concurrent.STM
@@ -26,7 +26,7 @@ import Data.BTree.Impure
 import Data.BTree.Impure.NonEmpty
 import Data.BTree.Primitives
 
-import Database.Haskey.Alloc.Concurrent.Environment
+import Database.Haskey.Alloc.Concurrent.Internal.Environment
 import qualified Database.Haskey.Utils.STM.Map as Map
 
 getNewOverflowId :: (Functor m, MonadState (WriterEnv hnd) m)

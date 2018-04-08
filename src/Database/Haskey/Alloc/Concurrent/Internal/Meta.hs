@@ -6,7 +6,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 -- | This module implements data structures and function related to the
 -- metadata of the concurrent page allocator.
-module Database.Haskey.Alloc.Concurrent.Meta where
+module Database.Haskey.Alloc.Concurrent.Internal.Meta where
 
 import Data.Binary (Binary)
 import Data.Proxy (Proxy)
@@ -17,9 +17,9 @@ import GHC.Generics (Generic)
 import Data.BTree.Impure.Structures
 import Data.BTree.Primitives
 
-import Database.Haskey.Alloc.Concurrent.Environment
-import Database.Haskey.Alloc.Concurrent.FreePages.Tree
-import Database.Haskey.Alloc.Concurrent.Overflow
+import Database.Haskey.Alloc.Concurrent.Internal.Environment
+import Database.Haskey.Alloc.Concurrent.Internal.FreePages.Tree
+import Database.Haskey.Alloc.Concurrent.Internal.Overflow
 import Database.Haskey.Store
 
 -- | User-defined data root stored inside 'ConcurrentMeta'.

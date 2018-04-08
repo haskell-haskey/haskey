@@ -22,14 +22,14 @@ extra-source-files:  README.md
 library
   exposed-modules:
     Database.Haskey.Alloc.Concurrent
-    Database.Haskey.Alloc.Concurrent.Database
-    Database.Haskey.Alloc.Concurrent.Environment
-    Database.Haskey.Alloc.Concurrent.FreePages.Query
-    Database.Haskey.Alloc.Concurrent.FreePages.Save
-    Database.Haskey.Alloc.Concurrent.FreePages.Tree
-    Database.Haskey.Alloc.Concurrent.Meta
-    Database.Haskey.Alloc.Concurrent.Monad
-    Database.Haskey.Alloc.Concurrent.Overflow
+    Database.Haskey.Alloc.Concurrent.Internal.Database
+    Database.Haskey.Alloc.Concurrent.Internal.Environment
+    Database.Haskey.Alloc.Concurrent.Internal.FreePages.Query
+    Database.Haskey.Alloc.Concurrent.Internal.FreePages.Save
+    Database.Haskey.Alloc.Concurrent.Internal.FreePages.Tree
+    Database.Haskey.Alloc.Concurrent.Internal.Meta
+    Database.Haskey.Alloc.Concurrent.Internal.Monad
+    Database.Haskey.Alloc.Concurrent.Internal.Overflow
     Database.Haskey.Alloc.Transaction
     Database.Haskey.Store
     Database.Haskey.Store.Class

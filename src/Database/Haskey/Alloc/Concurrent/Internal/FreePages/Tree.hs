@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 -- | Module describing the tree structure of the free page database.
-module Database.Haskey.Alloc.Concurrent.FreePages.Tree where
+module Database.Haskey.Alloc.Concurrent.Internal.FreePages.Tree where
 
 import Control.Monad ((>=>))
 

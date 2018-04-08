@@ -1,12 +1,12 @@
-module Database.Haskey.Alloc.Concurrent.FreePages.Save where
+module Database.Haskey.Alloc.Concurrent.Internal.FreePages.Save where
 
 import Data.List.NonEmpty (NonEmpty((:|)))
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Primitives
 
-import Database.Haskey.Alloc.Concurrent.Environment
-import Database.Haskey.Alloc.Concurrent.FreePages.Tree
+import Database.Haskey.Alloc.Concurrent.Internal.Environment
+import Database.Haskey.Alloc.Concurrent.Internal.FreePages.Tree
 
 -- | Save the free pages from the dirty page list and the free page
 -- cache.

@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
-module Database.Haskey.Alloc.Concurrent.FreePages.Query where
+module Database.Haskey.Alloc.Concurrent.Internal.FreePages.Query where
 
 import Control.Applicative ((<|>), (<$>))
 import Control.Concurrent.STM
@@ -17,8 +17,8 @@ import Data.BTree.Impure
 import Data.BTree.Impure.NonEmpty
 import Data.BTree.Primitives
 
-import Database.Haskey.Alloc.Concurrent.Environment
-import Database.Haskey.Alloc.Concurrent.FreePages.Tree
+import Database.Haskey.Alloc.Concurrent.Internal.Environment
+import Database.Haskey.Alloc.Concurrent.Internal.FreePages.Tree
 import Database.Haskey.Utils.Monad (ifM)
 import qualified Database.Haskey.Utils.STM.Map as Map
 

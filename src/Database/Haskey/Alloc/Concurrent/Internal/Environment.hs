@@ -9,7 +9,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 -- | Environments of a read or write transaction.
-module Database.Haskey.Alloc.Concurrent.Environment where
+module Database.Haskey.Alloc.Concurrent.Internal.Environment where
 
 import Control.Applicative ((<$>))
 import Control.Monad.State
@@ -25,7 +25,7 @@ import STMContainers.Map (Map)
 
 import Data.BTree.Primitives
 
-import Database.Haskey.Alloc.Concurrent.FreePages.Tree
+import Database.Haskey.Alloc.Concurrent.Internal.FreePages.Tree
 
 data StateType = TypeData
                | TypeIndex

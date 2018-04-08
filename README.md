@@ -2,7 +2,6 @@ haskey
 ======
 
 [![Travis](https://travis-ci.org/haskell-haskey/haskey.svg?branch=master)](https://travis-ci.org/haskell-haskey/haskey)
-[![Coverage](https://coveralls.io/repos/github/haskell-haskey/haskey/badge.svg?branch=master)](https://coveralls.io/github/haskell-haskey/haskey?branch=master)
 [![Hackage](https://img.shields.io/hackage/v/haskey.svg?maxAge=2592000)](https://hackage.haskell.org/package/haskey)
 [![Stackage Nightly](http://stackage.org/package/haskey/badge/nightly)](http://stackage.org/nightly/package/haskey)
 [![Stackage LTS](http://stackage.org/package/haskey/badge/lts)](http://stackage.org/lts/package/haskey)

@@ -164,7 +164,8 @@ script:
       stack --no-terminal $ARGS test --bench --no-run-benchmarks --haddock --no-haddock-deps
       ;;
     cabal)
-      if [ "$GHCVER" != "8.0.2" ]; then
+      # disale coverage for now
+      if [ "$GHCVER" != "8.0.2" -o true ]; then
         cabal install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
       else
         cabal install --enable-tests --enable-coverage --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES

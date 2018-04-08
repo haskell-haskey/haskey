@@ -22,7 +22,7 @@ import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
 
 import Data.BTree.Alloc.Class
-import Data.BTree.Impure
+import Data.BTree.Impure (Tree(..))
 import Data.BTree.Primitives
 
 import Database.Haskey.Alloc.Concurrent.Internal.Environment

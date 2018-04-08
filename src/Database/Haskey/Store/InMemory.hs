@@ -44,7 +44,7 @@ import Data.Typeable (Typeable, cast)
 import Data.Word (Word64)
 import qualified Data.Map as M
 
-import Data.BTree.Impure.Structures
+import Data.BTree.Impure.Internal.Structures
 import Data.BTree.Primitives
 
 import Database.Haskey.Alloc.Concurrent

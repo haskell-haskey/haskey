@@ -14,7 +14,7 @@ import Data.Typeable (Typeable)
 
 import GHC.Generics (Generic)
 
-import Data.BTree.Impure.Structures
+import Data.BTree.Impure.Internal.Structures
 import Data.BTree.Primitives
 
 import Database.Haskey.Alloc.Concurrent.Internal.Environment

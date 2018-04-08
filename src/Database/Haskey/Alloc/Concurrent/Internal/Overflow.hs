@@ -22,9 +22,11 @@ import Numeric (showHex, readHex)
 import System.FilePath ((</>), (<.>), dropExtension, takeFileName)
 
 import Data.BTree.Alloc.Class
-import Data.BTree.Impure
-import Data.BTree.Impure.NonEmpty
+import Data.BTree.Impure (Tree)
+import Data.BTree.Impure.NonEmpty (NonEmptyTree(..))
 import Data.BTree.Primitives
+import qualified Data.BTree.Impure as B
+import qualified Data.BTree.Impure.NonEmpty as NEB
 
 import Database.Haskey.Alloc.Concurrent.Internal.Environment
 import qualified Database.Haskey.Utils.STM.Map as Map
@@ -79,35 +81,35 @@ insertOverflowIds :: AllocM m
                   -> OverflowTree
                   -> m OverflowTree
 insertOverflowIds tx oids tree = do
-    subtree <- fromNonEmptyList (NE.zip oids (NE.repeat ()))
-    insertTree tx subtree tree
+    subtree <- NEB.fromList (NE.zip oids (NE.repeat ()))
+    B.insert tx subtree tree
 
 -- | Delete the set of overflow ids that were free'd in the transaction.
 deleteOverflowIds :: AllocM m
                   => TxId
                   -> OverflowTree
                   -> m OverflowTree
-deleteOverflowIds tx tree = lookupTree tx tree >>= \case
+deleteOverflowIds tx tree = B.lookup tx tree >>= \case
     Nothing -> return tree
     Just (NonEmptyTree h nid) -> do
         freeAllNodes h nid
-        deleteTree tx tree
+        B.delete tx tree
   where
     freeAllNodes :: (AllocM m)
                  => Height h
                  -> NodeId h OverflowId ()
                  -> m ()
     freeAllNodes h nid = readNode h nid >>= \case
-        l@(Leaf _) -> freeOverflowInLeaf l >> freeNode h nid
-        Idx idx -> do
+        l@(NEB.Leaf _) -> freeOverflowInLeaf l >> freeNode h nid
+        NEB.Idx idx -> do
             let subHgt = decrHeight h
             traverse_ (freeAllNodes subHgt) idx
             freeNode h nid
 
     freeOverflowInLeaf :: (AllocM m)
-                       => Node 'Z OverflowId ()
+                       => NEB.Node 'Z OverflowId ()
                        -> m ()
-    freeOverflowInLeaf (Leaf items) = mapM_ deleteOverflowData $ M.keys items
+    freeOverflowInLeaf (NEB.Leaf items) = mapM_ deleteOverflowData $ M.keys items
 
 --------------------------------------------------------------------------------
 
@@ -121,7 +123,7 @@ deleteOutdatedOverflowIds tree = do
     oldest    <- liftIO . atomically $
         fromMaybe defaultTx <$> Map.lookupMinKey readers
 
-    lookupMinTree tree >>= \case
+    B.lookupMin tree >>= \case
         Nothing -> return Nothing
         Just (tx, _) -> if tx >= oldest
             then return Nothing
@@ -129,7 +131,7 @@ deleteOutdatedOverflowIds tree = do
   where
     go oldest tx t = do
         t' <- deleteOverflowIds tx t
-        lookupMinTree t' >>= \case
+        B.lookupMin t' >>= \case
             Nothing -> return t'
             Just (tx', _) -> if tx' >= oldest
                 then return t'

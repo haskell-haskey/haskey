@@ -30,7 +30,7 @@ import Data.Word (Word8, Word64)
 import qualified Data.Map as M
 
 import Data.BTree.Impure
-import Data.BTree.Impure.Structures
+import Data.BTree.Impure.Internal.Structures
 import Data.BTree.Primitives
 
 --------------------------------------------------------------------------------

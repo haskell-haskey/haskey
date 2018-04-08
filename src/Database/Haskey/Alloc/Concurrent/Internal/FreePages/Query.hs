@@ -13,9 +13,9 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.List.NonEmpty as NE
 
 import Data.BTree.Alloc.Class
-import Data.BTree.Impure
-import Data.BTree.Impure.NonEmpty
 import Data.BTree.Primitives
+import qualified Data.BTree.Impure as B
+import qualified Data.BTree.Impure.NonEmpty as NEB
 
 import Database.Haskey.Alloc.Concurrent.Internal.Environment
 import Database.Haskey.Alloc.Concurrent.Internal.FreePages.Tree
@@ -127,13 +127,13 @@ lookupValidFreePageIds tree = runMaybeT $
 lookupFreePageIds :: (Functor m, AllocReaderM m, MonadState (WriterEnv hnd) m)
                   => FreeTree
                   -> m (Maybe (Unchecked (TxId, NonEmpty PageId)))
-lookupFreePageIds tree = lookupMinTree tree >>= \case
+lookupFreePageIds tree = B.lookupMin tree >>= \case
     Nothing -> return Nothing
     Just (tx, subtree) -> do
         pids <- subtreeToList subtree
         return . Just $ Unchecked (tx, pids)
   where
-    subtreeToList subtree = NE.map fst <$> nonEmptyToList subtree
+    subtreeToList subtree = NE.map fst <$> NEB.toList subtree
 
 -- | Auxiliry type to ensure the transaction ID of free pages are checked.
 newtype Unchecked a = Unchecked a

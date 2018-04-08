@@ -65,7 +65,7 @@ library
     exceptions              >=0.8.3 && <0.9,
     filepath                >=1.4  && <2,
     focus                   >=0.1.2 && <0.2,
-    haskey-btree            >=0.2.0.1 && <1,
+    haskey-btree            >=0.3.0.0 && <0.4,
     list-t                  >=0.2  && <2,
     lz4                     >=0.2  && <1,
     mtl                     >=2.1  && <3,

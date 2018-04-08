@@ -51,7 +51,7 @@ import System.Directory (createDirectoryIfMissing, removeFile, getDirectoryConte
 import System.FilePath (takeDirectory)
 import System.IO.Error (ioError, isDoesNotExistError)
 
-import Data.BTree.Impure.Structures
+import Data.BTree.Impure.Internal.Structures
 import Data.BTree.Primitives
 
 import Database.Haskey.Alloc.Concurrent

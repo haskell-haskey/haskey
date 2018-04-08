@@ -36,7 +36,7 @@ import System.IO.Temp (createTempDirectory)
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure
 import Data.BTree.Primitives
-import qualified Data.BTree.Impure as Tree
+import qualified Data.BTree.Impure as B
 
 import Database.Haskey.Alloc.Concurrent
 import Database.Haskey.Store.File
@@ -90,7 +90,7 @@ prop_memory_backend = forAllM (genTestSequence False) $ \(TestSequence txs) -> d
                     ++ "\n    got:     " ++ show read'
 
     create :: MemoryFiles String -> IO (ConcurrentDb Root')
-    create = runMemoryStoreT (createConcurrentDb hnds Tree.empty) config
+    create = runMemoryStoreT (createConcurrentDb hnds B.empty) config
       where
         hnds = concurrentHandles ""
 
@@ -140,7 +140,7 @@ prop_file_backend = forAllM (genTestSequence True) $ \(TestSequence txs) -> do
 
     create :: ConcurrentHandles
            -> IO (ConcurrentDb Root')
-    create hnds = runFileStoreT (createConcurrentDb hnds Tree.empty) config
+    create hnds = runFileStoreT (createConcurrentDb hnds B.empty) config
 
 
     openAndRead :: ConcurrentDb Root'
@@ -164,9 +164,9 @@ writeTransaction :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Valu
 writeTransaction (TestTransaction txType actions) =
     transaction
   where
-    writeAction (Insert k v)   = insertTree k v
-    writeAction (Replace k v)  = insertTree k v
-    writeAction (Delete k)     = deleteTree k
+    writeAction (Insert k v)   = B.insert k v
+    writeAction (Replace k v)  = B.insert k v
+    writeAction (Delete k)     = B.delete k
     writeAction ThrowException = const (throwM TestException)
 
     transaction = transact_ $
@@ -181,7 +181,7 @@ writeTransaction (TestTransaction txType actions) =
 readAll :: (MonadIO m, MonadMask m, ConcurrentMetaStoreM m, Key k, Value v)
         => ConcurrentDb (Tree k v)
         -> m [(k, v)]
-readAll = transactReadOnly Tree.toList
+readAll = transactReadOnly B.toList
 
 --------------------------------------------------------------------------------
 

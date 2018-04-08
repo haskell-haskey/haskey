@@ -5,11 +5,11 @@ import Control.Concurrent.Async (async, wait)
 import Control.Monad (void, replicateM)
 import Control.Monad.Catch (bracket_, finally)
 
-import Data.BTree.Impure (Tree, toList, insertTree)
+import Data.BTree.Impure (Tree)
 import Data.ByteString (ByteString)
 import Data.Int (Int32)
 import Data.Text.Encoding (encodeUtf8)
-import qualified Data.BTree.Impure as Tree
+import qualified Data.BTree.Impure as B
 import qualified Data.Text as Text
 
 import Database.Haskey.Alloc.Concurrent (ConcurrentDb,
@@ -64,7 +64,7 @@ inMemoryMain root = do
       where
         bs = encodeUtf8 $ Text.pack (show i)
 
-        tx tree = insertTree i bs tree >>= commit_
+        tx tree = B.insert i bs tree >>= commit_
 
     reader :: MemoryFiles FilePath
            -> ConcurrentDb Root
@@ -72,14 +72,14 @@ inMemoryMain root = do
            -> IO ()
     reader files db delay = void $ replicateM 10 $ do
         threadDelay delay
-        runDatabase files $ transactReadOnly toList db
+        runDatabase files $ transactReadOnly B.toList db
 
     openOrCreate :: MemoryFiles FilePath
                  -> IO (ConcurrentDb Root)
     openOrCreate store = runDatabase store $ do
         maybeDb <- openConcurrentDb handles
         case maybeDb of
-            Nothing -> createConcurrentDb handles Tree.empty
+            Nothing -> createConcurrentDb handles B.empty
             Just db -> return db
 
     runDatabase :: MemoryFiles FilePath
@@ -111,20 +111,20 @@ fileMain root = bracket_ (runDatabase $ lockConcurrentDb handles)
       where
         bs = encodeUtf8 $ Text.pack (show i)
 
-        tx tree = insertTree i bs tree >>= commit_
+        tx tree = B.insert i bs tree >>= commit_
 
     reader :: ConcurrentDb Root
            -> Int
            -> IO ()
     reader db delay = void $ replicateM 10 $ do
         threadDelay delay
-        runDatabase $ transactReadOnly toList db
+        runDatabase $ transactReadOnly B.toList db
 
     openOrCreate :: IO (ConcurrentDb Root)
     openOrCreate = runDatabase $ do
         maybeDb <- openConcurrentDb handles
         case maybeDb of
-            Nothing -> createConcurrentDb handles Tree.empty
+            Nothing -> createConcurrentDb handles B.empty
             Just db -> return db
 
     runDatabase :: Monad m

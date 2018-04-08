@@ -33,7 +33,7 @@ import qualified Data.ByteString.Lazy as BL
 import Numeric (showHex)
 
 import Data.BTree.Impure
-import Data.BTree.Impure.Structures (putLeafNode, getLeafNode, putIndexNode, getIndexNode)
+import Data.BTree.Impure.Internal.Structures (putLeafNode, getLeafNode, putIndexNode, getIndexNode)
 import Data.BTree.Primitives
 
 import Database.Haskey.Alloc.Concurrent

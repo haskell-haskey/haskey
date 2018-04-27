@@ -13,7 +13,7 @@ store written entirely in Haskell. It was developed as part of the [Summer of Ha
 
 ## Tutorial
 
-A full tutorial can be [found in the haskey-mtl library](https://github.com/haskell-haskey/haskey-mtl/blob/master/docs/tutorial.md), along with a [full code example](https://github.com/haskell-haskey/haskey-mtl/tree/feature/tutorial/example).
+A full tutorial can be [found in the haskey-mtl library](https://github.com/haskell-haskey/haskey-mtl/blob/master/docs/tutorial.md), along with a [full code example](https://github.com/haskell-haskey/haskey-mtl/tree/master/example).
 
 ## Historical blog posts
 Some blog posts have been written on Haskey's design an internals. These give an insight in the inner workings of Haskey, but the used APIs might be a bit outdated.

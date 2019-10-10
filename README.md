@@ -21,5 +21,5 @@ Some blog posts have been written on Haskey's design an internals. These give an
   - An introductory blog post on Haskey can be found [here][introduction].
   - An blog post on user-defined schemas and using the `HaskeyT` monad can be found [here][haskey-mtl-post]
 
-  [introduction]: https://deliquus.com/posts/2017-08-24-introducing-haskey.html
-  [haskey-mtl-post]: https://deliquus.com/posts/2017-09-14-haskey-user-defined-schemas-and-monad-transformers.html
+  [introduction]: https://hverr.github.io/posts/2017-08-24-introducing-haskey.html
+  [haskey-mtl-post]: https://hverr.github.io/posts/2017-09-14-haskey-user-defined-schemas-and-monad-transformers.html

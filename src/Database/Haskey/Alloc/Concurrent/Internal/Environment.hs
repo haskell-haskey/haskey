@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -21,7 +22,11 @@ import Data.Word (Word32)
 import qualified Data.Binary as B
 import qualified Data.Set as S
 
+#if MIN_VERSION_stm_containers(1,1,0)
+import StmContainers.Map (Map)
+#else
 import STMContainers.Map (Map)
+#endif
 
 import Data.BTree.Primitives
 

@@ -19,6 +19,7 @@ cabal-dev
 cabal.config
 cabal.sandbox.config
 dist
+dist-newstyle
 .stack-work
 .*.sw[a-z]
 *.tix

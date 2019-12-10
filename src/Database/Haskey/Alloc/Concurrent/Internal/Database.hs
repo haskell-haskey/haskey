@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
@@ -18,8 +19,13 @@ import Data.Proxy (Proxy(..))
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe)
 
+#if MIN_VERSION_stm_containers(1,1,0)
+import StmContainers.Map (Map)
+import qualified StmContainers.Map as Map
+#else
 import STMContainers.Map (Map)
 import qualified STMContainers.Map as Map
+#endif
 
 import Data.BTree.Alloc.Class
 import Data.BTree.Impure (Tree(..))

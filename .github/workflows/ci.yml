@@ -7,14 +7,14 @@ on:
 
 jobs:
   cabal:
-    name: cabal / ${{ matrix.os }} / ghc ${{ matrix.ghc }}
+    name: cabal ${{ matrix.cabal }} / ${{ matrix.os }} / ghc ${{ matrix.ghc }}
 
     strategy:
+      fail-fast: false
       matrix:
         os:
           - ubuntu-latest
           - macOS-latest
-          - windows-latest
         cabal:
           - "3.2"
         ghc:
@@ -25,10 +25,6 @@ jobs:
           - os: macOS-latest
             ghc: 8.8.4
           - os: macOS-latest
-            ghc: 8.6.5
-          - os: windows-latest
-            ghc: 8.10.2
-          - os: windows-latest
             ghc: 8.6.5
 
     runs-on: ${{ matrix.os }}
@@ -55,7 +51,6 @@ jobs:
             dist-newstyle
           key: ${{ runner.os }}-${{ matrix.ghc }}-cabal-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.ghc }}-cabal-${{ github.sha }}
             ${{ runner.os }}-${{ matrix.ghc }}-cabal
 
       - name: Install dependencies
@@ -74,11 +69,11 @@ jobs:
     name: stack / ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
         os:
           - ubuntu-latest
           - macOS-latest
-          - windows-latest
 
     runs-on:
       - ${{ matrix.os }}
@@ -98,7 +93,6 @@ jobs:
             ~/.stack
           key: ${{ runner.os }}-${{ matrix.ghc }}-stack-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.ghc }}-stack-${{ github.sha }}
             ${{ runner.os }}-${{ matrix.ghc }}-stack-
 
       - name: Install dependencies

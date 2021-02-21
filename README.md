@@ -1,6 +1,7 @@
 haskey
 ======
 
+[![CI](https://github.com/haskell-haskey/haskey/actions/workflows/ci.yml/badge.svg)](https://github.com/haskell-haskey/haskey/actions/workflows/ci.yml)
 [![Hackage](https://img.shields.io/hackage/v/haskey.svg?maxAge=2592000)](https://hackage.haskell.org/package/haskey)
 [![Stackage Nightly](http://stackage.org/package/haskey/badge/nightly)](http://stackage.org/nightly/package/haskey)
 [![Stackage LTS](http://stackage.org/package/haskey/badge/lts)](http://stackage.org/lts/package/haskey)
